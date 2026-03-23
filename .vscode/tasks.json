@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Apply Postgres Migrations",
+      "type": "shell",
+      "command": "source .env.local && export PGPASSWORD=\"$(echo \"$DATABASE_URL\" | cut -d: -f3 | cut -d@ -f1)\" && for f in migrations/*.sql; do echo \"Applying $f...\"; '/c/Program Files/PostgreSQL/16/bin/psql' -U postgres -h localhost -p 5432 -d traildb -f \"$f\"; done",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+          "args": ["-c"]
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

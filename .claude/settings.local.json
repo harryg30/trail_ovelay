@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where psql:*)",
+      "Read(//c/Program Files/PostgreSQL//**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Bash(\"/c/Program Files/PostgreSQL/16/bin/psql\" \"postgres://postgres:hometown_pranks_tapestry@localhost:5432/traildb\" -f migrations/001_create_trails.sql)",
+      "Bash(\"/c/Program Files/PostgreSQL/16/bin/psql\" \"postgres://postgres:hometown_pranks_tapestry@localhost:5432/traildb\" -f migrations/002_create_users.sql)",
+      "Bash(DB_URL=\"postgres://postgres:hometown_pranks_tapestry@localhost:5432/traildb\")",
+      "Bash(\"/c/Program Files/PostgreSQL/16/bin/psql.exe\" \"$DB_URL\" -f migrations/001_create_trails.sql)",
+      "Bash(\"/c/Program Files/PostgreSQL/16/bin/psql.exe\" \"$DB_URL\" -f migrations/002_create_users.sql)",
+      "Bash(\"/c/Program Files/PostgreSQL/16/bin/psql.exe\" \"$DB_URL\" -f migrations/003_create_rides.sql)",
+      "Bash(PGPASSWORD=\"hometown_pranks_tapestry\" \"/c/Program Files/PostgreSQL/16/bin/psql.exe\" -h localhost -p 5432 -U postgres -d traildb -f migrations/001_create_trails.sql)",
+      "Bash(PGPASSWORD=\"hometown_pranks_tapestry\" \"/c/Program Files/PostgreSQL/16/bin/psql.exe\" -h localhost -p 5432 -U postgres -d traildb -f migrations/002_create_users.sql)",
+      "Bash(PGPASSWORD=\"hometown_pranks_tapestry\" \"/c/Program Files/PostgreSQL/16/bin/psql.exe\" -h localhost -p 5432 -U postgres -d traildb -f migrations/003_create_rides.sql)"
+    ]
+  }
+}

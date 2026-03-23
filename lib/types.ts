@@ -23,6 +23,29 @@ export interface Trail {
   createdAt: Date;
 }
 
+export interface TrimPoint {
+  rideId: string;
+  index: number;
+}
+
+export interface TrimSegment {
+  ride: Ride;
+  startIndex: number;
+  endIndex: number;
+  polyline: [number, number][];
+  distanceKm: number;
+  elevationGainFt: number;
+}
+
+export interface TrimFormState {
+  name: string;
+  difficulty: Trail["difficulty"];
+  direction: Trail["direction"];
+  notes: string;
+}
+
+export type EditMode = 'add-trail' | 'edit-trail' | null
+
 export interface SaveTrailRequest {
   trails: Omit<Trail, "id" | "createdAt" | "uploadedByEmail">[];
 }
