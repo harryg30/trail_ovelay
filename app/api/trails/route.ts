@@ -91,12 +91,12 @@ function rowToTrail(row: TrailRow): Trail {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse<SaveTrailResponse>> {
-  const userId = await getSessionUserId()
-  if (!userId) {
-    return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
+    const userId = await getSessionUserId()
+    if (!userId) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
     const body: SaveTrailRequest = await request.json()
 
     if (!body.trails || !Array.isArray(body.trails) || body.trails.length === 0) {
@@ -137,7 +137,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<SaveTrail
 
     return NextResponse.json({ success: true, savedTrails })
   } catch (error) {
-    console.error('POST /api/trails error:', error)
+    const message = error instanceof Error ? error.message : String(error)
+    console.error('POST /api/trails error:', message)
     return NextResponse.json({ success: false, error: 'Failed to save trail' }, { status: 500 })
   }
 }

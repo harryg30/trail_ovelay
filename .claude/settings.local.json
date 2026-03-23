@@ -12,7 +12,16 @@
       "Bash(\"/c/Program Files/PostgreSQL/16/bin/psql.exe\" \"$DB_URL\" -f migrations/003_create_rides.sql)",
       "Bash(PGPASSWORD=\"hometown_pranks_tapestry\" \"/c/Program Files/PostgreSQL/16/bin/psql.exe\" -h localhost -p 5432 -U postgres -d traildb -f migrations/001_create_trails.sql)",
       "Bash(PGPASSWORD=\"hometown_pranks_tapestry\" \"/c/Program Files/PostgreSQL/16/bin/psql.exe\" -h localhost -p 5432 -U postgres -d traildb -f migrations/002_create_users.sql)",
-      "Bash(PGPASSWORD=\"hometown_pranks_tapestry\" \"/c/Program Files/PostgreSQL/16/bin/psql.exe\" -h localhost -p 5432 -U postgres -d traildb -f migrations/003_create_rides.sql)"
+      "Bash(PGPASSWORD=\"hometown_pranks_tapestry\" \"/c/Program Files/PostgreSQL/16/bin/psql.exe\" -h localhost -p 5432 -U postgres -d traildb -f migrations/003_create_rides.sql)",
+      "Bash(node -e \"const p = require\\(''./node_modules/next/package.json''\\); console.log\\(p.version\\)\")",
+      "Bash(node -e \"const p = require\\(''./node_modules/pg/package.json''\\); console.log\\(''pg:'', p.version\\)\")",
+      "Bash(node -e \"console.log\\(typeof URL.canParse\\)\")",
+      "Bash(grep -r URL.canParse c:UsersgordeDocumentsGitHubtrail_ovelaynode_modulespg --include=*.js -l)",
+      "Bash(grep -r canParse c:UsersgordeDocumentsGitHubtrail_ovelaynode_modulespg-connection-string --include=*.js -n)",
+      "Bash(find c:UsersgordeDocumentsGitHubtrail_ovelaynode_modules -name *.js -newer c:UsersgordeDocumentsGitHubtrail_ovelaypackage.json)",
+      "Bash(xargs grep:*)",
+      "Bash(grep -rn canParse c:UsersgordeDocumentsGitHubtrail_ovelaynode_modules --include=*.js)",
+      "Bash(node scripts/migrate.mjs)"
     ]
   }
 }

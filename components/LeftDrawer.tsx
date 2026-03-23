@@ -8,6 +8,7 @@ import AuthButton from '@/components/AuthButton'
 interface LeftDrawerProps {
   user: SessionUser | null
   rides: Ride[]
+  trails: Trail[]
   onRidesUploaded: (rides: Ride[]) => void
   editMode: EditMode
   onEditModeChange: (mode: EditMode) => void
@@ -19,11 +20,13 @@ interface LeftDrawerProps {
   selectedTrail: Trail | null
   onSelectTrail: (trail: Trail | null) => void
   onUpdateTrail: (form: TrimFormState) => Promise<string | null>
+  onDeleteTrail: () => Promise<string | null>
 }
 
 export default function LeftDrawer({
   user,
   rides,
+  trails,
   onRidesUploaded,
   editMode,
   onEditModeChange,
@@ -35,6 +38,7 @@ export default function LeftDrawer({
   selectedTrail,
   onSelectTrail,
   onUpdateTrail,
+  onDeleteTrail,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -133,6 +137,39 @@ export default function LeftDrawer({
         )}
       </div>
 
+      {/* Trails list */}
+      <div className="px-4 py-4 border-b border-zinc-100 flex flex-col gap-2">
+        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+          Trails ({trails.length})
+        </h2>
+        {trails.length === 0 ? (
+          <p className="text-xs text-zinc-400">No trails saved yet.</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {trails.map((trail) => (
+              <li
+                key={trail.id}
+                className="flex items-center justify-between py-2 px-3 rounded-md bg-zinc-50 text-sm"
+              >
+                <span className="text-zinc-800 truncate pr-2">{trail.name}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-zinc-400 text-xs">{trail.distanceKm.toFixed(1)} km</span>
+                  {trail.difficulty !== 'not_set' && (
+                    <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                      trail.difficulty === 'easy' ? 'bg-green-100 text-green-700' :
+                      trail.difficulty === 'intermediate' ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      {trail.difficulty[0].toUpperCase() + trail.difficulty.slice(1)}
+                    </span>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {/* Edit section */}
       <div className="px-4 py-4 flex flex-col gap-3">
         <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Edit</h2>
@@ -173,9 +210,11 @@ export default function LeftDrawer({
         )}
         {editMode === 'edit-trail' && (
           <EditTrailContent
+            trails={trails}
             selectedTrail={selectedTrail}
             onSelectTrail={onSelectTrail}
             onUpdateTrail={onUpdateTrail}
+            onDeleteTrail={onDeleteTrail}
           />
         )}
       </div>
@@ -398,23 +437,110 @@ function TrimForm({
 }
 
 function EditTrailContent({
+  trails,
   selectedTrail,
   onSelectTrail,
   onUpdateTrail,
+  onDeleteTrail,
 }: {
+  trails: Trail[]
   selectedTrail: Trail | null
   onSelectTrail: (trail: Trail | null) => void
   onUpdateTrail: (form: TrimFormState) => Promise<string | null>
+  onDeleteTrail: () => Promise<string | null>
 }) {
+  const [query, setQuery] = useState(selectedTrail?.name ?? '')
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // Sync input when trail is selected externally (e.g. map click)
+  useEffect(() => {
+    if (selectedTrail) setQuery(selectedTrail.name)
+  }, [selectedTrail?.id])
+
+  const filtered = query.trim()
+    ? trails.filter((t) => t.name.toLowerCase().includes(query.toLowerCase()))
+    : trails
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleSelect = (trail: Trail) => {
+    onSelectTrail(trail)
+    setQuery(trail.name)
+    setOpen(false)
+  }
+
+  const handleClear = () => {
+    onSelectTrail(null)
+    setQuery('')
+  }
+
+  const inputCls =
+    'w-full rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-sm text-zinc-800 focus:outline-none focus:border-orange-400'
+
   return (
     <div className="flex flex-col gap-3">
+      <div ref={containerRef} className="relative">
+        <div className="flex gap-1">
+          <input
+            type="text"
+            placeholder="Search trails…"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setOpen(true) }}
+            onFocus={() => setOpen(true)}
+            className={inputCls}
+          />
+          {selectedTrail && (
+            <button
+              type="button"
+              onClick={handleClear}
+              className="px-2 rounded border border-zinc-200 text-zinc-400 text-xs hover:border-red-300 hover:text-red-500 transition-colors"
+              title="Clear selection"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        {open && filtered.length > 0 && (
+          <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-zinc-200 bg-white shadow-md">
+            {filtered.map((trail) => (
+              <li key={trail.id}>
+                <button
+                  type="button"
+                  onMouseDown={() => handleSelect(trail)}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-orange-50 flex items-center justify-between gap-2 ${
+                    selectedTrail?.id === trail.id ? 'bg-orange-50 text-orange-700' : 'text-zinc-800'
+                  }`}
+                >
+                  <span className="truncate">{trail.name}</span>
+                  <span className="text-xs text-zinc-400 shrink-0">{trail.distanceKm.toFixed(1)} km</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {open && query.trim() !== '' && filtered.length === 0 && (
+          <div className="absolute z-10 mt-1 w-full rounded-md border border-zinc-200 bg-white shadow-md px-3 py-2 text-xs text-zinc-400">
+            No trails match &ldquo;{query}&rdquo;
+          </div>
+        )}
+      </div>
       {!selectedTrail && (
-        <p className="text-xs text-zinc-500">Click a trail on the map to select it.</p>
+        <p className="text-xs text-zinc-500">Search above or click a trail on the map.</p>
       )}
       <EditTrailForm
         selectedTrail={selectedTrail}
         onSave={onUpdateTrail}
-        onCancel={() => onSelectTrail(null)}
+        onDelete={onDeleteTrail}
+        onCancel={handleClear}
         disabled={!selectedTrail}
       />
     </div>
@@ -424,11 +550,13 @@ function EditTrailContent({
 function EditTrailForm({
   selectedTrail,
   onSave,
+  onDelete,
   onCancel,
   disabled,
 }: {
   selectedTrail: Trail | null
   onSave: (form: TrimFormState) => Promise<string | null>
+  onDelete: () => Promise<string | null>
   onCancel: () => void
   disabled: boolean
 }) {
@@ -439,6 +567,8 @@ function EditTrailForm({
     notes: '',
   })
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -450,6 +580,7 @@ function EditTrailForm({
       notes: selectedTrail.notes ?? '',
     })
     setSaveError(null)
+    setConfirmDelete(false)
   }, [selectedTrail])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -460,6 +591,14 @@ function EditTrailForm({
     const err = await onSave(form)
     if (err) setSaveError(err)
     setSaving(false)
+  }
+
+  const handleDelete = async () => {
+    if (!confirmDelete) { setConfirmDelete(true); return }
+    setDeleting(true)
+    setSaveError(null)
+    const err = await onDelete()
+    if (err) { setSaveError(err); setDeleting(false); setConfirmDelete(false) }
   }
 
   const field = (label: string, children: React.ReactNode) => (
@@ -549,7 +688,7 @@ function EditTrailForm({
       <div className="flex gap-2">
         <button
           type="submit"
-          disabled={disabled || saving || !form.name.trim()}
+          disabled={disabled || saving || deleting || !form.name.trim()}
           className="flex-1 py-2 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? 'Saving...' : 'Save Changes'}
@@ -563,6 +702,28 @@ function EditTrailForm({
           Cancel
         </button>
       </div>
+
+      <button
+        type="button"
+        onClick={handleDelete}
+        disabled={disabled || saving || deleting}
+        className={`w-full py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+          confirmDelete
+            ? 'bg-red-600 text-white hover:bg-red-700'
+            : 'border border-red-200 text-red-500 hover:bg-red-50'
+        }`}
+      >
+        {deleting ? 'Deleting...' : confirmDelete ? 'Confirm Delete' : 'Delete Trail'}
+      </button>
+      {confirmDelete && !deleting && (
+        <button
+          type="button"
+          onClick={() => setConfirmDelete(false)}
+          className="text-xs text-zinc-400 hover:text-zinc-600 text-center -mt-2"
+        >
+          Cancel delete
+        </button>
+      )}
     </form>
   )
 }

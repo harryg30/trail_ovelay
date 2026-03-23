@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { queryOne } from '@/lib/db'
+import { queryOne, query } from '@/lib/db'
 import { getSessionUserId } from '@/lib/auth'
 import type { Trail } from '@/lib/types'
 
@@ -70,5 +70,24 @@ export async function PATCH(
   } catch (error) {
     console.error('PATCH /api/trails/[id] error:', error)
     return NextResponse.json({ success: false, error: 'Failed to update trail' }, { status: 500 })
+  }
+}
+
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const userId = await getSessionUserId()
+    if (!userId) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id } = await params
+    await query(`DELETE FROM trails WHERE id=$1`, [id])
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('DELETE /api/trails/[id] error:', error instanceof Error ? error.message : String(error))
+    return NextResponse.json({ success: false, error: 'Failed to delete trail' }, { status: 500 })
   }
 }

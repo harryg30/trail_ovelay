@@ -85,28 +85,31 @@ export default function LeafletMap({
     if (rides.length === 0) return
 
     rides.forEach((ride) => {
+      const ridePopupContent = `<strong>${ride.name}</strong><br/>${(ride.distance / 1000).toFixed(1)} km`
       const pl = L.polyline(ride.polyline, {
         color: '#3b82f6',
         weight: 3,
         dashArray: '8, 6',
         opacity: 0.85,
-      }).bindPopup(`<strong>${ride.name}</strong><br/>${(ride.distance / 1000).toFixed(1)} km`)
+      })
 
       pl.on('click', (e: L.LeafletMouseEvent) => {
         L.DomEvent.stopPropagation(e)
-        if (!trimModeRef.current) return
-
-        let minDist = Infinity
-        let closestIdx = 0
-        ride.polyline.forEach(([lat, lng], i) => {
-          const d = e.latlng.distanceTo(L.latLng(lat, lng))
-          if (d < minDist) {
-            minDist = d
-            closestIdx = i
-          }
-        })
-
-        onTrimPointSelectedRef.current(ride.id, closestIdx)
+        if (trimModeRef.current) {
+          let minDist = Infinity
+          let closestIdx = 0
+          ride.polyline.forEach(([lat, lng], i) => {
+            const d = e.latlng.distanceTo(L.latLng(lat, lng))
+            if (d < minDist) {
+              minDist = d
+              closestIdx = i
+            }
+          })
+          onTrimPointSelectedRef.current(ride.id, closestIdx)
+          return
+        }
+        if (editTrailModeRef.current) return
+        L.popup().setLatLng(e.latlng).setContent(ridePopupContent).openOn(mapRef.current!)
       })
 
       pl.addTo(ridesLayerRef.current!)
@@ -125,18 +128,21 @@ export default function LeafletMap({
     trailsLayerRef.current.clearLayers()
 
     trails.forEach((trail) => {
+      const trailPopupContent = `<strong>${trail.name}</strong><br/>${trail.difficulty} · ${trail.distanceKm.toFixed(1)} km`
       const pl = L.polyline(trail.polyline, {
         color: '#22c55e',
         weight: 3,
         opacity: 0.9,
-      }).bindPopup(
-        `<strong>${trail.name}</strong><br/>${trail.difficulty} · ${trail.distanceKm.toFixed(1)} km`
-      )
+      })
 
       pl.on('click', (e: L.LeafletMouseEvent) => {
         L.DomEvent.stopPropagation(e)
-        if (!editTrailModeRef.current) return
-        onTrailSelectedRef.current(trail)
+        if (editTrailModeRef.current) {
+          onTrailSelectedRef.current(trail)
+          return
+        }
+        if (trimModeRef.current) return
+        L.popup().setLatLng(e.latlng).setContent(trailPopupContent).openOn(mapRef.current!)
       })
 
       pl.addTo(trailsLayerRef.current!)

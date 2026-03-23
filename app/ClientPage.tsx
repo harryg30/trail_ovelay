@@ -86,6 +86,22 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     setSelectedTrail(trail)
   }, [])
 
+  const handleDeleteTrail = useCallback(async (): Promise<string | null> => {
+    if (!selectedTrail) return 'No trail selected'
+    try {
+      const res = await fetch(`/api/trails/${selectedTrail.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        setTrails((prev) => prev.filter((t) => t.id !== selectedTrail.id))
+        setSelectedTrail(null)
+        return null
+      }
+      return data.error ?? 'Delete failed'
+    } catch {
+      return 'Network error'
+    }
+  }, [selectedTrail])
+
   const handleUpdateTrail = useCallback(
     async (form: TrimFormState): Promise<string | null> => {
       if (!selectedTrail) return 'No trail selected'
@@ -214,6 +230,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       <LeftDrawer
         user={user}
         rides={rides}
+        trails={trails}
         onRidesUploaded={handleRidesUploaded}
         editMode={editMode}
         onEditModeChange={handleEditModeChange}
@@ -225,6 +242,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         selectedTrail={selectedTrail}
         onSelectTrail={setSelectedTrail}
         onUpdateTrail={handleUpdateTrail}
+        onDeleteTrail={handleDeleteTrail}
       />
       <LeafletMap
         rides={rides}
