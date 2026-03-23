@@ -7,6 +7,7 @@ import type { Ride, Trail, TrimPoint, TrimSegment } from '@/lib/types'
 
 export interface LeafletMapProps {
   rides: Ride[]
+  hiddenRideIds: Set<string>
   trails: Trail[]
   trimMode: boolean
   trimStart: TrimPoint | null
@@ -15,10 +16,14 @@ export interface LeafletMapProps {
   editTrailMode: boolean
   selectedTrailId: string | null
   onTrailSelected: (trail: Trail) => void
+  refineMode: boolean
+  refinePolyline: [number, number][] | null
+  onPolylineRefined: (polyline: [number, number][]) => void
 }
 
 export default function LeafletMap({
   rides,
+  hiddenRideIds,
   trails,
   trimMode,
   trimStart,
@@ -27,6 +32,9 @@ export default function LeafletMap({
   editTrailMode,
   selectedTrailId,
   onTrailSelected,
+  refineMode,
+  refinePolyline,
+  onPolylineRefined,
 }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -34,17 +42,20 @@ export default function LeafletMap({
   const trailsLayerRef = useRef<L.LayerGroup | null>(null)
   const trimLayerRef = useRef<L.LayerGroup | null>(null)
   const selectedTrailLayerRef = useRef<L.LayerGroup | null>(null)
+  const refineLayerRef = useRef<L.LayerGroup | null>(null)
 
   // Mutable refs — updated in component body so click handlers always read current values
   const trimModeRef = useRef(trimMode)
   const editTrailModeRef = useRef(editTrailMode)
   const onTrimPointSelectedRef = useRef(onTrimPointSelected)
   const onTrailSelectedRef = useRef(onTrailSelected)
+  const onPolylineRefinedRef = useRef(onPolylineRefined)
   const ridesRef = useRef(rides)
   trimModeRef.current = trimMode
   editTrailModeRef.current = editTrailMode
   onTrimPointSelectedRef.current = onTrimPointSelected
   onTrailSelectedRef.current = onTrailSelected
+  onPolylineRefinedRef.current = onPolylineRefined
   ridesRef.current = rides
 
   // Effect 1: map init
@@ -63,6 +74,7 @@ export default function LeafletMap({
     trailsLayerRef.current = L.layerGroup().addTo(map)
     trimLayerRef.current = L.layerGroup().addTo(map)
     selectedTrailLayerRef.current = L.layerGroup().addTo(map)
+    refineLayerRef.current = L.layerGroup().addTo(map)
 
     mapRef.current = map
 
@@ -73,6 +85,7 @@ export default function LeafletMap({
       trailsLayerRef.current = null
       trimLayerRef.current = null
       selectedTrailLayerRef.current = null
+      refineLayerRef.current = null
     }
   }, [])
 
@@ -84,7 +97,7 @@ export default function LeafletMap({
 
     if (rides.length === 0) return
 
-    rides.forEach((ride) => {
+    rides.filter((r) => !hiddenRideIds.has(r.id)).forEach((ride) => {
       const ridePopupContent = `<strong>${ride.name}</strong><br/>${(ride.distance / 1000).toFixed(1)} km`
       const pl = L.polyline(ride.polyline, {
         color: '#3b82f6',
@@ -115,11 +128,11 @@ export default function LeafletMap({
       pl.addTo(ridesLayerRef.current!)
     })
 
-    const allPoints = rides.flatMap((r) => r.polyline)
-    if (allPoints.length > 0) {
+    const allPoints = rides.filter((r) => !hiddenRideIds.has(r.id)).flatMap((r) => r.polyline)
+    if (allPoints.length > 0 && !trimModeRef.current && !editTrailModeRef.current) {
       mapRef.current.fitBounds(L.latLngBounds(allPoints), { padding: [40, 40] })
     }
-  }, [rides])
+  }, [rides, hiddenRideIds])
 
   // Effect 3: trails layer
   useEffect(() => {
@@ -213,7 +226,48 @@ export default function LeafletMap({
       .addTo(trimLayerRef.current)
   }, [trimSegment])
 
-  // Effect 7: selected trail highlight
+  // Effect 7: refine mode — draggable nodes
+  useEffect(() => {
+    if (!refineLayerRef.current || !mapRef.current) return
+    refineLayerRef.current.clearLayers()
+    if (!refineMode || !refinePolyline || refinePolyline.length < 2) return
+
+    // Working copy mutated during drag
+    const pts: [number, number][] = refinePolyline.map(([lat, lng]) => [lat, lng])
+
+    const pl = L.polyline(pts as L.LatLngExpression[], {
+      color: '#f97316',
+      weight: 4,
+      opacity: 1,
+    }).addTo(refineLayerRef.current)
+
+    const nodeIcon = L.divIcon({
+      className: '',
+      html: '<div style="width:10px;height:10px;background:#f97316;border:2px solid white;border-radius:50%;cursor:grab;box-shadow:0 1px 3px rgba(0,0,0,.5)"></div>',
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+    })
+
+    pts.forEach((pt, i) => {
+      const marker = L.marker(pt as L.LatLngExpression, {
+        draggable: true,
+        icon: nodeIcon,
+        zIndexOffset: 1000,
+      }).addTo(refineLayerRef.current!)
+
+      marker.on('drag', () => {
+        const { lat, lng } = marker.getLatLng()
+        pts[i] = [lat, lng]
+        pl.setLatLngs(pts as L.LatLngExpression[])
+      })
+
+      marker.on('dragend', () => {
+        onPolylineRefinedRef.current([...pts])
+      })
+    })
+  }, [refineMode, refinePolyline])
+
+  // Effect 9: selected trail highlight
   useEffect(() => {
     if (!selectedTrailLayerRef.current) return
 
@@ -229,7 +283,9 @@ export default function LeafletMap({
       weight: 6,
       opacity: 0.85,
     }).addTo(selectedTrailLayerRef.current)
+
+    mapRef.current?.flyToBounds(L.latLngBounds(trail.polyline), { padding: [60, 60], duration: 0.6 })
   }, [selectedTrailId, trails])
 
-  return <div ref={containerRef} className="flex-1 h-full" />
+  return <div ref={containerRef} className="w-full h-full" />
 }

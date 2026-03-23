@@ -3,6 +3,16 @@ import { query, queryOne } from '@/lib/db'
 import { getSessionUserId } from '@/lib/auth'
 import type { Trail, SaveTrailRequest, SaveTrailResponse } from '@/lib/types'
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS })
+}
+
 export async function GET() {
   try {
     const rows = await query<{
@@ -51,10 +61,10 @@ export async function GET() {
       createdAt: new Date(row.created_at),
     }))
 
-    return NextResponse.json({ success: true, trails })
+    return NextResponse.json({ success: true, trails }, { headers: CORS_HEADERS })
   } catch (error) {
     console.error('GET /api/trails error:', error)
-    return NextResponse.json({ success: true, trails: [] })
+    return NextResponse.json({ success: true, trails: [] }, { headers: CORS_HEADERS })
   }
 }
 

@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "Trail Overlay for Strava",
+  "version": "1.0.0",
+  "description": "Overlays mountain bike trails on Strava maps",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://www.strava.com/*",
+    "https://trail-overlay.vercel.app/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.strava.com/activities/*",
+        "https://www.strava.com/segments/*",
+        "https://www.strava.com/routes/*",
+        "https://www.strava.com/athlete/routes*"
+      ],
+      "js": ["content-bridge.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.strava.com/activities/*",
+        "https://www.strava.com/segments/*",
+        "https://www.strava.com/routes/*",
+        "https://www.strava.com/athlete/routes*"
+      ],
+      "js": ["content-init.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.strava.com/activities/*",
+        "https://www.strava.com/segments/*",
+        "https://www.strava.com/routes/*",
+        "https://www.strava.com/athlete/routes*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Trail Overlay Settings"
+  }
+}

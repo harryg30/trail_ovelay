@@ -21,7 +21,11 @@
       "Bash(find c:UsersgordeDocumentsGitHubtrail_ovelaynode_modules -name *.js -newer c:UsersgordeDocumentsGitHubtrail_ovelaypackage.json)",
       "Bash(xargs grep:*)",
       "Bash(grep -rn canParse c:UsersgordeDocumentsGitHubtrail_ovelaynode_modules --include=*.js)",
-      "Bash(node scripts/migrate.mjs)"
+      "Bash(node scripts/migrate.mjs)",
+      "Bash(grep -E \"\\\\.\\(tsx?|jsx?|json\\)$\")",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:api.github.com)"
     ]
   }
 }

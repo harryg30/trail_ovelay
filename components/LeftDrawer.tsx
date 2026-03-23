@@ -9,6 +9,8 @@ interface LeftDrawerProps {
   user: SessionUser | null
   rides: Ride[]
   trails: Trail[]
+  hiddenRideIds: Set<string>
+  onToggleRide: (id: string) => void
   onRidesUploaded: (rides: Ride[]) => void
   editMode: EditMode
   onEditModeChange: (mode: EditMode) => void
@@ -21,12 +23,18 @@ interface LeftDrawerProps {
   onSelectTrail: (trail: Trail | null) => void
   onUpdateTrail: (form: TrimFormState) => Promise<string | null>
   onDeleteTrail: () => Promise<string | null>
+  onEnterRefineMode: () => void
+  onSaveRefinedTrail: () => Promise<void>
+  savingRefined: boolean
+  refineError: string | null
 }
 
 export default function LeftDrawer({
   user,
   rides,
   trails,
+  hiddenRideIds,
+  onToggleRide,
   onRidesUploaded,
   editMode,
   onEditModeChange,
@@ -39,6 +47,10 @@ export default function LeftDrawer({
   onSelectTrail,
   onUpdateTrail,
   onDeleteTrail,
+  onEnterRefineMode,
+  onSaveRefinedTrail,
+  savingRefined,
+  refineError,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -74,13 +86,6 @@ export default function LeftDrawer({
   const handleModeClick = (mode: EditMode) => {
     onEditModeChange(editMode === mode ? null : mode)
   }
-
-  const activeCls =
-    'flex-1 py-1.5 rounded-md bg-orange-500 text-white text-xs font-medium transition-colors'
-  const inactiveCls =
-    'flex-1 py-1.5 rounded-md border border-zinc-200 text-zinc-600 text-xs font-medium hover:bg-zinc-50 transition-colors'
-  const disabledCls =
-    'flex-1 py-1.5 rounded-md border border-zinc-200 text-zinc-300 text-xs font-medium cursor-not-allowed opacity-50'
 
   return (
     <div className="w-80 h-screen bg-white border-r border-zinc-200 shadow-lg flex flex-col overflow-y-auto shrink-0">
@@ -122,26 +127,77 @@ export default function LeftDrawer({
           <p className="text-xs text-zinc-400">No rides uploaded yet.</p>
         ) : (
           <ul className="flex flex-col gap-1">
-            {rides.map((ride) => (
-              <li
-                key={ride.id}
-                className="flex items-center justify-between py-2 px-3 rounded-md bg-zinc-50 text-sm"
-              >
-                <span className="text-zinc-800 truncate pr-2">{ride.name}</span>
-                <span className="text-zinc-400 shrink-0 text-xs">
-                  {(ride.distance / 1000).toFixed(1)} km
-                </span>
-              </li>
-            ))}
+            {rides.map((ride) => {
+              const hidden = hiddenRideIds.has(ride.id)
+              return (
+                <li
+                  key={ride.id}
+                  className={`flex items-center justify-between py-2 px-3 rounded-md text-sm ${hidden ? 'bg-zinc-50 opacity-50' : 'bg-zinc-50'}`}
+                >
+                  <span className="text-zinc-800 truncate pr-2">{ride.name}</span>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-zinc-400 text-xs">
+                      {(ride.distance / 1000).toFixed(1)} km
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onToggleRide(ride.id)}
+                      title={hidden ? 'Show on map' : 'Hide from map'}
+                      className="text-zinc-400 hover:text-zinc-700 transition-colors"
+                    >
+                      {hidden ? (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M3.28 2.22a.75.75 0 00-1.06 1.06l14.5 14.5a.75.75 0 101.06-1.06l-1.745-1.745a10.029 10.029 0 003.3-4.38 1.651 1.651 0 000-1.185A10.004 10.004 0 009.999 3a9.956 9.956 0 00-4.744 1.194L3.28 2.22zM7.752 6.69l1.092 1.092a2.5 2.5 0 013.374 3.373l1.091 1.092a4 4 0 00-5.557-5.557z" clipRule="evenodd" />
+                          <path d="M10.748 13.93l2.523 2.523a9.987 9.987 0 01-3.27.547c-4.258 0-7.894-2.66-9.337-6.41a1.651 1.651 0 010-1.186A10.007 10.007 0 012.839 6.02L6.07 9.252a4 4 0 004.678 4.678z" />
+                        </svg>
+                      ) : (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                          <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+                          <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
+                </li>
+              )
+            })}
           </ul>
         )}
       </div>
 
       {/* Trails list */}
-      <div className="px-4 py-4 border-b border-zinc-100 flex flex-col gap-2">
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
-          Trails ({trails.length})
-        </h2>
+      <div className="px-4 py-4 flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+            Trails ({trails.length})
+          </h2>
+          {user && (
+            <button
+              type="button"
+              onClick={() => handleModeClick('add-trail')}
+              title={editMode === 'add-trail' ? 'Cancel' : 'Add new trail'}
+              className={`w-6 h-6 flex items-center justify-center rounded text-base font-light transition-colors ${
+                editMode === 'add-trail'
+                  ? 'bg-orange-500 text-white'
+                  : 'border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
+              }`}
+            >
+              {editMode === 'add-trail' ? '×' : '+'}
+            </button>
+          )}
+        </div>
+
+        {editMode === 'add-trail' && (
+          <AddTrailContent
+            trimStart={trimStart}
+            trimSegment={trimSegment}
+            onSaveTrail={onSaveTrail}
+            onCancel={() => onEditModeChange(null)}
+            onStepTrimPoint={onStepTrimPoint}
+            onClearTrimPoint={onClearTrimPoint}
+          />
+        )}
+
         {trails.length === 0 ? (
           <p className="text-xs text-zinc-400">No trails saved yet.</p>
         ) : (
@@ -149,7 +205,9 @@ export default function LeftDrawer({
             {trails.map((trail) => (
               <li
                 key={trail.id}
-                className="flex items-center justify-between py-2 px-3 rounded-md bg-zinc-50 text-sm"
+                className={`flex items-center justify-between py-2 px-3 rounded-md bg-zinc-50 text-sm ${
+                  selectedTrail?.id === trail.id && editMode === 'edit-trail' ? 'ring-1 ring-orange-400' : ''
+                }`}
               >
                 <span className="text-zinc-800 truncate pr-2">{trail.name}</span>
                 <div className="flex items-center gap-2 shrink-0">
@@ -163,51 +221,28 @@ export default function LeftDrawer({
                       {trail.difficulty[0].toUpperCase() + trail.difficulty.slice(1)}
                     </span>
                   )}
+                  {user && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelectTrail(trail)
+                        onEditModeChange('edit-trail')
+                      }}
+                      title="Edit trail"
+                      className="text-zinc-400 hover:text-zinc-700 transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
+                        <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
               </li>
             ))}
           </ul>
         )}
-      </div>
 
-      {/* Edit section */}
-      <div className="px-4 py-4 flex flex-col gap-3">
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Edit</h2>
-
-        {/* Mode buttons */}
-        <div className="flex gap-1.5">
-          <button
-            onClick={() => user && handleModeClick('add-trail')}
-            disabled={!user}
-            className={!user ? disabledCls : editMode === 'add-trail' ? activeCls : inactiveCls}
-            title={!user ? 'Connect with Strava to save trails' : undefined}
-          >
-            Add New Trail
-          </button>
-          <button
-            onClick={() => user && handleModeClick('edit-trail')}
-            disabled={!user}
-            className={!user ? disabledCls : editMode === 'edit-trail' ? activeCls : inactiveCls}
-            title={!user ? 'Connect with Strava to edit trails' : undefined}
-          >
-            Edit Trail
-          </button>
-          <button disabled className={disabledCls} title="Coming soon">
-            Trail Networks
-          </button>
-        </div>
-
-        {/* Per-mode content */}
-        {editMode === 'add-trail' && (
-          <AddTrailContent
-            trimStart={trimStart}
-            trimSegment={trimSegment}
-            onSaveTrail={onSaveTrail}
-            onCancel={() => onEditModeChange(null)}
-            onStepTrimPoint={onStepTrimPoint}
-            onClearTrimPoint={onClearTrimPoint}
-          />
-        )}
         {editMode === 'edit-trail' && (
           <EditTrailContent
             trails={trails}
@@ -215,7 +250,36 @@ export default function LeftDrawer({
             onSelectTrail={onSelectTrail}
             onUpdateTrail={onUpdateTrail}
             onDeleteTrail={onDeleteTrail}
+            onEnterRefineMode={selectedTrail ? onEnterRefineMode : undefined}
           />
+        )}
+
+        {editMode === 'refine-trail' && selectedTrail && (
+          <div className="flex flex-col gap-3">
+            <div className="py-2 px-2.5 rounded-md bg-orange-50 border border-orange-100">
+              <p className="text-xs font-medium text-orange-800 mb-0.5">{selectedTrail.name}</p>
+              <p className="text-xs text-orange-700">Drag nodes on the map to reposition the line.</p>
+            </div>
+            {refineError && <p className="text-xs text-red-500">{refineError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onSaveRefinedTrail}
+                disabled={savingRefined}
+                className="flex-1 py-2 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {savingRefined ? 'Saving…' : 'Save Refinement'}
+              </button>
+              <button
+                type="button"
+                onClick={() => onEditModeChange('edit-trail')}
+                disabled={savingRefined}
+                className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         )}
       </div>
     </div>
@@ -442,12 +506,14 @@ function EditTrailContent({
   onSelectTrail,
   onUpdateTrail,
   onDeleteTrail,
+  onEnterRefineMode,
 }: {
   trails: Trail[]
   selectedTrail: Trail | null
   onSelectTrail: (trail: Trail | null) => void
   onUpdateTrail: (form: TrimFormState) => Promise<string | null>
   onDeleteTrail: () => Promise<string | null>
+  onEnterRefineMode?: () => void
 }) {
   const [query, setQuery] = useState(selectedTrail?.name ?? '')
   const [open, setOpen] = useState(false)
@@ -543,6 +609,15 @@ function EditTrailContent({
         onCancel={handleClear}
         disabled={!selectedTrail}
       />
+      {selectedTrail && onEnterRefineMode && (
+        <button
+          type="button"
+          onClick={onEnterRefineMode}
+          className="w-full py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
+        >
+          Refine Line
+        </button>
+      )}
     </div>
   )
 }

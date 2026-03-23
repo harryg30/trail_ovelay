@@ -19,14 +19,19 @@ const LeafletMap = dynamic(() => import('@/components/LeafletMap'), {
 export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [rides, setRides] = useState<Ride[]>([])
   const [trails, setTrails] = useState<Trail[]>([])
+  const [hiddenRideIds, setHiddenRideIds] = useState<Set<string>>(new Set())
 
   // Edit state
   const [editMode, setEditMode] = useState<EditMode>(null)
   const trimMode = editMode === 'add-trail'
   const editTrailMode = editMode === 'edit-trail'
+  const refineMode = editMode === 'refine-trail'
   const [trimStart, setTrimStart] = useState<TrimPoint | null>(null)
   const [trimEnd, setTrimEnd] = useState<TrimPoint | null>(null)
   const [selectedTrail, setSelectedTrail] = useState<Trail | null>(null)
+  const [refinedPolyline, setRefinedPolyline] = useState<[number, number][] | null>(null)
+  const [savingRefined, setSavingRefined] = useState(false)
+  const [refineError, setRefineError] = useState<string | null>(null)
 
   // Stable ref to read trimEnd inside setTrimStart updater
   const trimEndRef = useRef<TrimPoint | null>(null)
@@ -46,7 +51,10 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     fetch('/api/rides')
       .then((r) => r.json())
       .then((data) => {
-        if (data.success) setRides(data.rides)
+        if (data.success) {
+          setRides(data.rides)
+          setHiddenRideIds(new Set(data.rides.map((r: Ride) => r.id)))
+        }
       })
       .catch(console.error)
   }, [user])
@@ -69,7 +77,21 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const handleRidesUploaded = (newRides: Ride[]) => {
     setRides((prev) => [...prev, ...newRides])
+    setHiddenRideIds((prev) => {
+      const next = new Set(prev)
+      newRides.forEach((r) => next.add(r.id))
+      return next
+    })
   }
+
+  const handleToggleRide = useCallback((id: string) => {
+    setHiddenRideIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
 
   const handleEditModeChange = useCallback((mode: EditMode) => {
     setEditMode(mode)
@@ -77,14 +99,64 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       setTrimStart(null)
       setTrimEnd(null)
     }
-    if (mode !== 'edit-trail') {
+    if (mode !== 'edit-trail' && mode !== 'refine-trail') {
       setSelectedTrail(null)
+    }
+    if (mode !== 'refine-trail') {
+      setRefinedPolyline(null)
+      setRefineError(null)
     }
   }, [])
 
   const handleTrailSelected = useCallback((trail: Trail) => {
     setSelectedTrail(trail)
   }, [])
+
+  const handleEnterRefineMode = useCallback(() => {
+    if (!selectedTrail) return
+    setRefinedPolyline([...selectedTrail.polyline])
+    setRefineError(null)
+    setEditMode('refine-trail')
+  }, [selectedTrail])
+
+  const handlePolylineRefined = useCallback((polyline: [number, number][]) => {
+    setRefinedPolyline([...polyline])
+  }, [])
+
+  const handleSaveRefinedTrail = useCallback(async () => {
+    if (!selectedTrail || !refinedPolyline) return
+    setSavingRefined(true)
+    setRefineError(null)
+    try {
+      const res = await fetch(`/api/trails/${selectedTrail.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: selectedTrail.name,
+          difficulty: selectedTrail.difficulty,
+          direction: selectedTrail.direction,
+          notes: selectedTrail.notes,
+          polyline: refinedPolyline,
+          distanceKm: refinedPolyline.length > 1
+            ? (await import('@/lib/geo-utils')).polylineDistanceKm(refinedPolyline)
+            : selectedTrail.distanceKm,
+        }),
+      })
+      const data = await res.json()
+      if (data.success && data.trail) {
+        setTrails((prev) => prev.map((t) => (t.id === data.trail.id ? data.trail : t)))
+        setSelectedTrail(data.trail)
+        setRefinedPolyline(null)
+        setEditMode('edit-trail')
+      } else {
+        setRefineError(data.error ?? 'Save failed')
+      }
+    } catch {
+      setRefineError('Network error')
+    } finally {
+      setSavingRefined(false)
+    }
+  }, [selectedTrail, refinedPolyline])
 
   const handleDeleteTrail = useCallback(async (): Promise<string | null> => {
     if (!selectedTrail) return 'No trail selected'
@@ -231,6 +303,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         user={user}
         rides={rides}
         trails={trails}
+        hiddenRideIds={hiddenRideIds}
+        onToggleRide={handleToggleRide}
         onRidesUploaded={handleRidesUploaded}
         editMode={editMode}
         onEditModeChange={handleEditModeChange}
@@ -243,9 +317,14 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         onSelectTrail={setSelectedTrail}
         onUpdateTrail={handleUpdateTrail}
         onDeleteTrail={handleDeleteTrail}
+        onEnterRefineMode={handleEnterRefineMode}
+        onSaveRefinedTrail={handleSaveRefinedTrail}
+        savingRefined={savingRefined}
+        refineError={refineError}
       />
       <LeafletMap
         rides={rides}
+        hiddenRideIds={hiddenRideIds}
         trails={trails}
         trimMode={trimMode}
         trimStart={trimStart}
@@ -254,6 +333,9 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         editTrailMode={editTrailMode}
         selectedTrailId={selectedTrail?.id ?? null}
         onTrailSelected={handleTrailSelected}
+        refineMode={refineMode}
+        refinePolyline={refineMode ? (refinedPolyline ?? selectedTrail?.polyline ?? null) : null}
+        onPolylineRefined={handlePolylineRefined}
       />
     </div>
   )

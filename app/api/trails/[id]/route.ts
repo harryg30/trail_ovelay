@@ -52,14 +52,25 @@ export async function PATCH(
       return NextResponse.json({ success: false, error: 'Name is required' }, { status: 400 })
     }
 
+    const hasPolyline = Array.isArray(body.polyline) && body.polyline.length >= 2
+
     const row = await queryOne<TrailRow>(
-      `UPDATE trails
-       SET name=$1, difficulty=$2, direction=$3, notes=$4
-       WHERE id=$5
-       RETURNING id, name, difficulty, direction, polyline,
-         distance_km, elevation_gain_ft, notes,
-         source, source_ride_id, uploaded_by_email, created_at`,
-      [body.name.trim(), body.difficulty, body.direction, body.notes ?? null, id]
+      hasPolyline
+        ? `UPDATE trails
+           SET name=$1, difficulty=$2, direction=$3, notes=$4, polyline=$5, distance_km=$6
+           WHERE id=$7
+           RETURNING id, name, difficulty, direction, polyline,
+             distance_km, elevation_gain_ft, notes,
+             source, source_ride_id, uploaded_by_email, created_at`
+        : `UPDATE trails
+           SET name=$1, difficulty=$2, direction=$3, notes=$4
+           WHERE id=$5
+           RETURNING id, name, difficulty, direction, polyline,
+             distance_km, elevation_gain_ft, notes,
+             source, source_ride_id, uploaded_by_email, created_at`,
+      hasPolyline
+        ? [body.name.trim(), body.difficulty, body.direction, body.notes ?? null, JSON.stringify(body.polyline), body.distanceKm ?? null, id]
+        : [body.name.trim(), body.difficulty, body.direction, body.notes ?? null, id]
     )
 
     if (!row) {

@@ -44,7 +44,7 @@ export interface TrimFormState {
   notes: string;
 }
 
-export type EditMode = 'add-trail' | 'edit-trail' | null
+export type EditMode = 'add-trail' | 'edit-trail' | 'refine-trail' | null
 
 export interface SaveTrailRequest {
   trails: Omit<Trail, "id" | "createdAt" | "uploadedByEmail">[];
