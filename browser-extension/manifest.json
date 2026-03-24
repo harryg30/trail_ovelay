@@ -3,20 +3,28 @@
   "name": "Trail Overlay for Strava",
   "version": "1.0.0",
   "description": "Overlays mountain bike trails on Strava maps",
-  "permissions": ["storage"],
+  "permissions": [
+    "storage"
+  ],
   "host_permissions": [
     "https://www.strava.com/*",
-    "https://trail-overlay.vercel.app/*"
+    "http://localhost:3000/*"
   ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": [
         "https://www.strava.com/activities/*",
         "https://www.strava.com/segments/*",
         "https://www.strava.com/routes/*",
+        "https://www.strava.com/maps/*",
         "https://www.strava.com/athlete/routes*"
       ],
-      "js": ["content-bridge.js"],
+      "js": [
+        "content-bridge.js"
+      ],
       "run_at": "document_idle"
     },
     {
@@ -24,9 +32,12 @@
         "https://www.strava.com/activities/*",
         "https://www.strava.com/segments/*",
         "https://www.strava.com/routes/*",
+        "https://www.strava.com/maps/*",
         "https://www.strava.com/athlete/routes*"
       ],
-      "js": ["content-init.js"],
+      "js": [
+        "content-init.js"
+      ],
       "run_at": "document_start",
       "world": "MAIN"
     },
@@ -35,9 +46,12 @@
         "https://www.strava.com/activities/*",
         "https://www.strava.com/segments/*",
         "https://www.strava.com/routes/*",
+        "https://www.strava.com/maps/*",
         "https://www.strava.com/athlete/routes*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle",
       "world": "MAIN"
     }

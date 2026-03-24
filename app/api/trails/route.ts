@@ -64,7 +64,7 @@ export async function GET() {
     return NextResponse.json({ success: true, trails }, { headers: CORS_HEADERS })
   } catch (error) {
     console.error('GET /api/trails error:', error)
-    return NextResponse.json({ success: true, trails: [] }, { headers: CORS_HEADERS })
+    return NextResponse.json({ success: false, error: String(error), trails: [] }, { status: 500, headers: CORS_HEADERS })
   }
 }
 

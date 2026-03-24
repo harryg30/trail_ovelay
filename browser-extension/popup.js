@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = 'https://trail-overlay.vercel.app'
+const DEFAULT_API_URL = 'http://localhost:3000'
 
 document.addEventListener('DOMContentLoaded', () => {
   const input = document.getElementById('apiUrl')
