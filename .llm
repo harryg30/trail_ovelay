@@ -1,0 +1,87 @@
+# Trail Overlay — Project Context
+
+## Purpose
+Next.js app to overlay mountain bike trails on maps. Users upload GPX rides, trim segments into reusable trails, tag difficulty/direction, organize into networks. Includes a Chrome extension that injects trail data into Strava.
+
+## Stack
+- Next.js 16 (App Router), React 19, TypeScript 5
+- Leaflet 1.9.4 (map), Tailwind CSS 4
+- PostgreSQL (pg driver), JWT sessions (jose)
+- Strava OAuth, Vercel deployment
+
+## Directory Layout
+```
+app/
+  page.tsx              # Server wrapper
+  ClientPage.tsx        # Main state container (rides, trails, networks, editMode)
+  layout.tsx
+  api/
+    auth/strava/        # OAuth init + callback (upserts user, sets cookie)
+    auth/logout/
+    upload/             # POST GPX/ZIP → parse → insert rides
+    trails/             # GET (CORS-open), POST
+    trails/[id]/        # PATCH, DELETE
+    rides/              # GET (auth required)
+    networks/           # GET (CORS-open), POST
+    networks/[id]/      # PATCH, DELETE
+    health/
+components/
+  LeafletMap.tsx        # Interactive map; trail/ride/network rendering; trimming UI
+  LeftDrawer.tsx        # Sidebar: upload, ride list, trail list, trim form, network list
+  AuthButton.tsx
+lib/
+  db.ts                 # pg pool; query() / queryOne()
+  auth.ts               # getSessionUser() / getSessionUserId()
+  session.ts            # JWT encrypt/decrypt; 30-day cookie
+  gpx-utils.ts          # GPX + ZIP parsing (gpxparser, jszip)
+  geo-utils.ts          # Haversine distance, elevation gain
+  types.ts              # Shared interfaces
+migrations/             # 001–006 SQL migrations
+browser-extension/      # Chrome extension (content.js, background.js, popup)
+```
+
+## Database Tables
+| Table | Key Columns |
+|-------|-------------|
+| users | id, strava_athlete_id, name, profile_picture, access/refresh_token, token_expires_at |
+| rides | id, user_id, name, distance, elevation, polyline (JSONB), point_count, timestamp |
+| trails | id, name, difficulty, direction, polyline (JSONB), distance_km, elevation_gain_ft, notes, source, source_ride_id, uploaded_by_user_id |
+| networks | id, name, polygon (JSONB) |
+| network_trails | network_id, trail_id (junction) |
+
+## Key Types (lib/types.ts)
+```ts
+Ride          { id, name, distance, elevation, polyline: [lat,lon][], timestamp, pointCount }
+Trail         { id, name, difficulty, direction, polyline, distanceKm, elevationGainFt, notes, source, sourceRideId, uploadedByEmail, createdAt }
+Network       { id, name, polygon: [lat,lon][], trailIds, createdAt }
+TrimSegment   { ride, startIndex, endIndex, polyline, distanceKm, elevationGainFt }
+SessionUser   { id, name, profilePicture, stravaAthleteId }
+EditMode      = 'add-trail' | 'edit-trail' | 'refine-trail' | 'add-network' | 'edit-network' | null
+difficulty    = 'easy' | 'intermediate' | 'hard' | 'not_set'
+direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
+```
+
+## Env Vars
+| Var | Notes |
+|-----|-------|
+| DATABASE_URL | Postgres connection string |
+| STRAVA_CLIENT_ID | OAuth app ID |
+| STRAVA_CLIENT_SECRET | Server-only |
+| SESSION_SECRET | 32-byte hex for JWT |
+| NEXT_PUBLIC_APP_URL | Base URL (browser-visible) |
+| NODE_ENV | Controls cookie security |
+
+## Architecture Notes
+- Single Next.js/Vercel deployment (no separate API server)
+- Leaflet loaded via `dynamic()` with SSR disabled
+- CORS open on `/api/trails` and `/api/networks` for browser extension
+- Trail trimming: client picks start/end indices on ride polyline → haversine math → save as trail
+- GPX parsed server-side on upload; polylines stored as JSONB
+- Browser extension injects into `strava.com/maps/create/*`, fetches trails from API
+
+## Recent Work (from git log)
+- Browser extension showing trail lines on Strava
+- Initial extension scaffold
+- Save trails feature
+- Strava OAuth integration
+- Networks feature (migration 006, new API routes)

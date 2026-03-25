@@ -6,6 +6,7 @@ export interface Ride {
   polyline: [number, number][];
   timestamp: Date;
   pointCount: number;
+  stravaActivityId?: number;
 }
 
 export interface Trail {
@@ -44,7 +45,15 @@ export interface TrimFormState {
   notes: string;
 }
 
-export type EditMode = 'add-trail' | 'edit-trail' | 'refine-trail' | null
+export type EditMode = 'add-trail' | 'edit-trail' | 'refine-trail' | 'add-network' | 'edit-network' | null
+
+export interface Network {
+  id: string;
+  name: string;
+  polygon: [number, number][];
+  trailIds: string[];
+  createdAt: Date;
+}
 
 export interface SaveTrailRequest {
   trails: Omit<Trail, "id" | "createdAt" | "uploadedByEmail">[];

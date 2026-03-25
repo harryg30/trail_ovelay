@@ -16,11 +16,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://www.strava.com/activities/*",
-        "https://www.strava.com/segments/*",
-        "https://www.strava.com/routes/*",
-        "https://www.strava.com/maps/*",
-        "https://www.strava.com/athlete/routes*"
+        "https://www.strava.com/maps/create/*"
       ],
       "js": [
         "content-bridge.js"
@@ -29,11 +25,7 @@
     },
     {
       "matches": [
-        "https://www.strava.com/activities/*",
-        "https://www.strava.com/segments/*",
-        "https://www.strava.com/routes/*",
-        "https://www.strava.com/maps/*",
-        "https://www.strava.com/athlete/routes*"
+        "https://www.strava.com/maps/create/*"
       ],
       "js": [
         "content-init.js"
@@ -43,11 +35,7 @@
     },
     {
       "matches": [
-        "https://www.strava.com/activities/*",
-        "https://www.strava.com/segments/*",
-        "https://www.strava.com/routes/*",
-        "https://www.strava.com/maps/*",
-        "https://www.strava.com/athlete/routes*"
+        "https://www.strava.com/maps/create/*"
       ],
       "js": [
         "content.js"

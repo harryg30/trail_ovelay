@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import LeftDrawer from '@/components/LeftDrawer'
-import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, SaveTrailResponse, EditMode } from '@/lib/types'
+import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, SaveTrailResponse, EditMode, Network } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import { polylineDistanceKm, estimatedElevationGainFt } from '@/lib/geo-utils'
 
@@ -19,6 +19,7 @@ const LeafletMap = dynamic(() => import('@/components/LeafletMap'), {
 export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [rides, setRides] = useState<Ride[]>([])
   const [trails, setTrails] = useState<Trail[]>([])
+  const [networks, setNetworks] = useState<Network[]>([])
   const [hiddenRideIds, setHiddenRideIds] = useState<Set<string>>(new Set())
 
   // Edit state
@@ -26,12 +27,16 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const trimMode = editMode === 'add-trail'
   const editTrailMode = editMode === 'edit-trail'
   const refineMode = editMode === 'refine-trail'
+  const drawNetworkMode = editMode === 'add-network'
+  const editNetworkMode = editMode === 'edit-network'
   const [trimStart, setTrimStart] = useState<TrimPoint | null>(null)
   const [trimEnd, setTrimEnd] = useState<TrimPoint | null>(null)
   const [selectedTrail, setSelectedTrail] = useState<Trail | null>(null)
   const [refinedPolyline, setRefinedPolyline] = useState<[number, number][] | null>(null)
   const [savingRefined, setSavingRefined] = useState(false)
   const [refineError, setRefineError] = useState<string | null>(null)
+  const [selectedNetwork, setSelectedNetwork] = useState<Network | null>(null)
+  const [drawNetworkPoints, setDrawNetworkPoints] = useState<[number, number][]>([])
 
   // Stable ref to read trimEnd inside setTrimStart updater
   const trimEndRef = useRef<TrimPoint | null>(null)
@@ -47,17 +52,27 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   }, [])
 
   useEffect(() => {
-    if (!user) return
-    fetch('/api/rides')
+    fetch('/api/networks')
       .then((r) => r.json())
       .then((data) => {
-        if (data.success) {
-          setRides(data.rides)
-          setHiddenRideIds(new Set(data.rides.map((r: Ride) => r.id)))
-        }
+        if (data.success) setNetworks(data.networks)
       })
       .catch(console.error)
+  }, [])
+
+  const loadRides = useCallback(async () => {
+    if (!user) return
+    const r = await fetch('/api/rides')
+    const data = await r.json()
+    if (data.success) {
+      setRides(data.rides)
+      setHiddenRideIds(new Set(data.rides.map((ride: Ride) => ride.id)))
+    }
   }, [user])
+
+  useEffect(() => {
+    loadRides()
+  }, [loadRides])
 
   const trimSegment = useMemo<TrimSegment | null>(() => {
     if (!trimStart || !trimEnd) return null
@@ -105,6 +120,13 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     if (mode !== 'refine-trail') {
       setRefinedPolyline(null)
       setRefineError(null)
+    }
+    if (mode !== 'add-network' && mode !== 'edit-network') {
+      setSelectedNetwork(null)
+      setDrawNetworkPoints([])
+    }
+    if (mode !== 'add-network') {
+      setDrawNetworkPoints([])
     }
   }, [])
 
@@ -297,6 +319,82 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     [trimSegment]
   )
 
+  const handleNetworkPointAdded = useCallback((latlng: [number, number]) => {
+    setDrawNetworkPoints((prev) => [...prev, latlng])
+  }, [])
+
+  const handleSaveNetwork = useCallback(
+    async (name: string, polygon: [number, number][], trailIds: string[]): Promise<string | null> => {
+      try {
+        const res = await fetch('/api/networks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, polygon, trailIds }),
+        })
+        const data = await res.json()
+        if (data.success && data.network) {
+          setNetworks((prev) => [data.network, ...prev])
+          setEditMode(null)
+          setDrawNetworkPoints([])
+          return null
+        }
+        return data.error ?? 'Save failed'
+      } catch {
+        return 'Network error'
+      }
+    },
+    []
+  )
+
+  const handleUpdateNetwork = useCallback(
+    async (name: string, polygon: [number, number][] | null, trailIds: string[]): Promise<string | null> => {
+      if (!selectedNetwork) return 'No network selected'
+      try {
+        const body: { name: string; trailIds: string[]; polygon?: [number, number][] } = { name, trailIds }
+        if (polygon) body.polygon = polygon
+        const res = await fetch(`/api/networks/${selectedNetwork.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+        const data = await res.json()
+        if (data.success && data.network) {
+          setNetworks((prev) => prev.map((n) => (n.id === data.network.id ? data.network : n)))
+          setSelectedNetwork(null)
+          setEditMode(null)
+          setDrawNetworkPoints([])
+          return null
+        }
+        return data.error ?? 'Update failed'
+      } catch {
+        return 'Network error'
+      }
+    },
+    [selectedNetwork]
+  )
+
+  const handleDeleteNetwork = useCallback(async (): Promise<string | null> => {
+    if (!selectedNetwork) return 'No network selected'
+    try {
+      const res = await fetch(`/api/networks/${selectedNetwork.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (data.success) {
+        setNetworks((prev) => prev.filter((n) => n.id !== selectedNetwork.id))
+        setSelectedNetwork(null)
+        setEditMode(null)
+        return null
+      }
+      return data.error ?? 'Delete failed'
+    } catch {
+      return 'Network error'
+    }
+  }, [selectedNetwork])
+
+  const handleStartRedrawNetwork = useCallback(() => {
+    setDrawNetworkPoints([])
+    setEditMode('add-network')
+  }, [])
+
   return (
     <div className="flex h-screen">
       <LeftDrawer
@@ -306,6 +404,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         hiddenRideIds={hiddenRideIds}
         onToggleRide={handleToggleRide}
         onRidesUploaded={handleRidesUploaded}
+        onSyncComplete={loadRides}
         editMode={editMode}
         onEditModeChange={handleEditModeChange}
         trimStart={trimStart}
@@ -321,6 +420,14 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         onSaveRefinedTrail={handleSaveRefinedTrail}
         savingRefined={savingRefined}
         refineError={refineError}
+        networks={networks}
+        selectedNetwork={selectedNetwork}
+        drawNetworkPoints={drawNetworkPoints}
+        onSelectNetwork={setSelectedNetwork}
+        onSaveNetwork={handleSaveNetwork}
+        onUpdateNetwork={handleUpdateNetwork}
+        onDeleteNetwork={handleDeleteNetwork}
+        onStartRedrawNetwork={handleStartRedrawNetwork}
       />
       <LeafletMap
         rides={rides}
@@ -336,6 +443,13 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         refineMode={refineMode}
         refinePolyline={refineMode ? (refinedPolyline ?? selectedTrail?.polyline ?? null) : null}
         onPolylineRefined={handlePolylineRefined}
+        networks={networks}
+        drawNetworkMode={drawNetworkMode}
+        drawNetworkPoints={drawNetworkPoints}
+        onNetworkPointAdded={handleNetworkPointAdded}
+        editNetworkMode={editNetworkMode}
+        selectedNetworkId={selectedNetwork?.id ?? null}
+        onNetworkSelected={setSelectedNetwork}
       />
     </div>
   )

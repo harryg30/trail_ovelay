@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Ride, Trail, TrimPoint, TrimSegment } from '@/lib/types'
+import type { Ride, Trail, TrimPoint, TrimSegment, Network } from '@/lib/types'
 
 export interface LeafletMapProps {
   rides: Ride[]
@@ -19,6 +19,13 @@ export interface LeafletMapProps {
   refineMode: boolean
   refinePolyline: [number, number][] | null
   onPolylineRefined: (polyline: [number, number][]) => void
+  networks: Network[]
+  drawNetworkMode: boolean
+  drawNetworkPoints: [number, number][]
+  onNetworkPointAdded: (latlng: [number, number]) => void
+  editNetworkMode: boolean
+  selectedNetworkId: string | null
+  onNetworkSelected: (network: Network) => void
 }
 
 export default function LeafletMap({
@@ -35,6 +42,13 @@ export default function LeafletMap({
   refineMode,
   refinePolyline,
   onPolylineRefined,
+  networks,
+  drawNetworkMode,
+  drawNetworkPoints,
+  onNetworkPointAdded,
+  editNetworkMode,
+  selectedNetworkId,
+  onNetworkSelected,
 }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -43,6 +57,8 @@ export default function LeafletMap({
   const trimLayerRef = useRef<L.LayerGroup | null>(null)
   const selectedTrailLayerRef = useRef<L.LayerGroup | null>(null)
   const refineLayerRef = useRef<L.LayerGroup | null>(null)
+  const networksLayerRef = useRef<L.LayerGroup | null>(null)
+  const drawNetworkLayerRef = useRef<L.LayerGroup | null>(null)
 
   // Mutable refs — updated in component body so click handlers always read current values
   const trimModeRef = useRef(trimMode)
@@ -51,12 +67,22 @@ export default function LeafletMap({
   const onTrailSelectedRef = useRef(onTrailSelected)
   const onPolylineRefinedRef = useRef(onPolylineRefined)
   const ridesRef = useRef(rides)
+  const drawNetworkModeRef = useRef(drawNetworkMode)
+  const editNetworkModeRef = useRef(editNetworkMode)
+  const onNetworkPointAddedRef = useRef(onNetworkPointAdded)
+  const onNetworkSelectedRef = useRef(onNetworkSelected)
+  const networksRef = useRef(networks)
   trimModeRef.current = trimMode
   editTrailModeRef.current = editTrailMode
   onTrimPointSelectedRef.current = onTrimPointSelected
   onTrailSelectedRef.current = onTrailSelected
   onPolylineRefinedRef.current = onPolylineRefined
   ridesRef.current = rides
+  drawNetworkModeRef.current = drawNetworkMode
+  editNetworkModeRef.current = editNetworkMode
+  onNetworkPointAddedRef.current = onNetworkPointAdded
+  onNetworkSelectedRef.current = onNetworkSelected
+  networksRef.current = networks
 
   // Effect 1: map init
   useEffect(() => {
@@ -70,11 +96,19 @@ export default function LeafletMap({
       maxZoom: 19,
     }).addTo(map)
 
+    networksLayerRef.current = L.layerGroup().addTo(map)
     ridesLayerRef.current = L.layerGroup().addTo(map)
     trailsLayerRef.current = L.layerGroup().addTo(map)
     trimLayerRef.current = L.layerGroup().addTo(map)
     selectedTrailLayerRef.current = L.layerGroup().addTo(map)
     refineLayerRef.current = L.layerGroup().addTo(map)
+    drawNetworkLayerRef.current = L.layerGroup().addTo(map)
+
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      if (drawNetworkModeRef.current) {
+        onNetworkPointAddedRef.current([e.latlng.lat, e.latlng.lng])
+      }
+    })
 
     mapRef.current = map
 
@@ -86,6 +120,8 @@ export default function LeafletMap({
       trimLayerRef.current = null
       selectedTrailLayerRef.current = null
       refineLayerRef.current = null
+      networksLayerRef.current = null
+      drawNetworkLayerRef.current = null
     }
   }, [])
 
@@ -165,9 +201,9 @@ export default function LeafletMap({
   // Effect 4: cursor
   useEffect(() => {
     if (!mapRef.current) return
-    const cursor = trimMode ? 'crosshair' : editTrailMode ? 'pointer' : ''
+    const cursor = trimMode || drawNetworkMode ? 'crosshair' : editTrailMode || editNetworkMode ? 'pointer' : ''
     mapRef.current.getContainer().style.cursor = cursor
-  }, [trimMode, editTrailMode])
+  }, [trimMode, editTrailMode, drawNetworkMode, editNetworkMode])
 
   // Effect 5: start marker (before second point is selected)
   useEffect(() => {
@@ -266,6 +302,72 @@ export default function LeafletMap({
       })
     })
   }, [refineMode, refinePolyline])
+
+  // Effect 8: networks layer
+  useEffect(() => {
+    if (!networksLayerRef.current) return
+    networksLayerRef.current.clearLayers()
+
+    networks.forEach((network) => {
+      if (network.polygon.length < 3) return
+      const isSelected = network.id === selectedNetworkId
+      const polygon = L.polygon(network.polygon as L.LatLngExpression[], {
+        color: '#3b82f6',
+        weight: isSelected ? 3 : 2,
+        fillColor: '#3b82f6',
+        fillOpacity: isSelected ? 0.25 : 0.1,
+        opacity: isSelected ? 1 : 0.7,
+      })
+
+      polygon.on('click', (e: L.LeafletMouseEvent) => {
+        L.DomEvent.stopPropagation(e)
+        if (editNetworkModeRef.current) {
+          onNetworkSelectedRef.current(network)
+        }
+      })
+
+      polygon.bindTooltip(network.name, { permanent: false, sticky: true })
+      polygon.addTo(networksLayerRef.current!)
+    })
+  }, [networks, selectedNetworkId])
+
+  // Effect: draw network polygon preview
+  useEffect(() => {
+    if (!drawNetworkLayerRef.current) return
+    drawNetworkLayerRef.current.clearLayers()
+    if (!drawNetworkMode || drawNetworkPoints.length === 0) return
+
+    const nodeIcon = L.divIcon({
+      className: '',
+      html: '<div style="width:10px;height:10px;background:#f97316;border:2px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.5)"></div>',
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+    })
+
+    drawNetworkPoints.forEach((pt) => {
+      L.marker(pt as L.LatLngExpression, { icon: nodeIcon }).addTo(drawNetworkLayerRef.current!)
+    })
+
+    if (drawNetworkPoints.length >= 2) {
+      // Preview polyline connecting placed points
+      L.polyline(drawNetworkPoints as L.LatLngExpression[], {
+        color: '#f97316',
+        weight: 2,
+        dashArray: '6, 4',
+        opacity: 0.8,
+      }).addTo(drawNetworkLayerRef.current!)
+    }
+
+    if (drawNetworkPoints.length >= 3) {
+      // Closing dash back to first point
+      L.polyline([drawNetworkPoints[drawNetworkPoints.length - 1], drawNetworkPoints[0]] as L.LatLngExpression[], {
+        color: '#f97316',
+        weight: 1,
+        dashArray: '4, 6',
+        opacity: 0.5,
+      }).addTo(drawNetworkLayerRef.current!)
+    }
+  }, [drawNetworkMode, drawNetworkPoints])
 
   // Effect 9: selected trail highlight
   useEffect(() => {
