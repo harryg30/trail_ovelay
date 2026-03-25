@@ -36,6 +36,9 @@ interface LeftDrawerProps {
   onUpdateNetwork: (name: string, polygon: [number, number][] | null, trailIds: string[]) => Promise<string | null>
   onDeleteNetwork: () => Promise<string | null>
   onStartRedrawNetwork: () => void
+  showHeatmap: boolean
+  onToggleHeatmap: () => void
+  onOpenAnnouncement: () => void
 }
 
 export default function LeftDrawer({
@@ -69,38 +72,57 @@ export default function LeftDrawer({
   onUpdateNetwork,
   onDeleteNetwork,
   onStartRedrawNetwork,
+  showHeatmap,
+  onToggleHeatmap,
+  onOpenAnnouncement,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
+  const [ridesQuery, setRidesQuery] = useState('')
+  const [ridesPageSize, setRidesPageSize] = useState(() => {
+    if (typeof window === 'undefined') return 10
+    const saved = localStorage.getItem('ridesPageSize')
+    return saved ? Number(saved) : 10
+  })
+  const [ridesPage, setRidesPage] = useState(0)
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
 
     setUploading(true)
     setUploadError(null)
+    setUploadProgress({ done: 0, total: files.length })
 
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
+    const allRides: Ride[] = []
+    const errors: string[] = []
 
-      const res = await fetch('/api/upload', { method: 'POST', body: formData })
-      const data = await res.json()
-
-      if (!data.success) {
-        setUploadError(data.error ?? 'Upload failed')
-      } else {
-        onRidesUploaded(data.rides)
+    for (let i = 0; i < files.length; i++) {
+      setUploadProgress({ done: i, total: files.length })
+      try {
+        const formData = new FormData()
+        formData.append('file', files[i])
+        const res = await fetch('/api/upload', { method: 'POST', body: formData })
+        const data = await res.json()
+        if (data.success) {
+          allRides.push(...data.rides)
+        } else {
+          errors.push(`${files[i].name}: ${data.error ?? 'failed'}`)
+        }
+      } catch {
+        errors.push(`${files[i].name}: network error`)
       }
-    } catch {
-      setUploadError('Network error — upload failed')
-    } finally {
-      setUploading(false)
-      if (inputRef.current) inputRef.current.value = ''
     }
+
+    if (allRides.length > 0) onRidesUploaded(allRides)
+    if (errors.length > 0) setUploadError(errors.join(', '))
+    setUploading(false)
+    setUploadProgress(null)
+    if (inputRef.current) inputRef.current.value = ''
   }
 
   const handleSync = async () => {
@@ -140,6 +162,7 @@ export default function LeftDrawer({
           ref={inputRef}
           type="file"
           accept=".gpx,.zip"
+          multiple
           className="hidden"
           onChange={handleFileChange}
         />
@@ -150,7 +173,9 @@ export default function LeftDrawer({
               disabled={uploading}
               className="w-full py-2 px-3 rounded-md bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {uploading ? 'Uploading...' : 'Upload GPX / ZIP'}
+              {uploadProgress
+                ? `Uploading ${uploadProgress.done} / ${uploadProgress.total}…`
+                : 'Upload GPX / ZIP'}
             </button>
             <button
               onClick={handleSync}
@@ -169,49 +194,120 @@ export default function LeftDrawer({
 
       {/* Rides list */}
       <div className="px-4 py-4 border-b border-zinc-100 flex flex-col gap-2">
-        <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
-          Rides ({rides.length})
-        </h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+            Rides ({rides.length})
+          </h2>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onToggleHeatmap}
+              title={showHeatmap ? 'Hide heatmap' : 'Show heatmap'}
+              className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
+                showHeatmap
+                  ? 'bg-orange-500 text-white'
+                  : 'border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
+                <path d="M12.316 3.051a1 1 0 01.633 1.265 4 4 0 00-.382 1.558c0 1.192.59 2.247 1.504 2.895a1 1 0 01-.416 1.791 5 5 0 01-5.343-1.888A7 7 0 003 13.5C3 16.538 5.463 19 8.5 19h3C14.538 19 17 16.538 17 13.5c0-3.316-1.74-6.224-4.362-7.946a1 1 0 01-.322-2.503z" />
+              </svg>
+            </button>
+            <select
+              value={ridesPageSize}
+              onChange={(e) => { const v = Number(e.target.value); setRidesPageSize(v); localStorage.setItem('ridesPageSize', String(v)); setRidesPage(0) }}
+              className="text-xs border border-zinc-200 rounded px-1 py-0.5 text-zinc-600 bg-white"
+            >
+              <option value={5}>5 / page</option>
+              <option value={10}>10 / page</option>
+              <option value={25}>25 / page</option>
+            </select>
+          </div>
+        </div>
         {rides.length === 0 ? (
           <p className="text-xs text-zinc-400">No rides uploaded yet.</p>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {rides.map((ride) => {
-              const hidden = hiddenRideIds.has(ride.id)
-              return (
-                <li
-                  key={ride.id}
-                  className={`flex items-center justify-between py-2 px-3 rounded-md text-sm ${hidden ? 'bg-zinc-50 opacity-50' : 'bg-zinc-50'}`}
-                >
-                  <span className="text-zinc-800 truncate pr-2">{ride.name}</span>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-zinc-400 text-xs">
-                      {(ride.distance / 1000).toFixed(1)} km
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onToggleRide(ride.id)}
-                      title={hidden ? 'Show on map' : 'Hide from map'}
-                      className="text-zinc-400 hover:text-zinc-700 transition-colors"
-                    >
-                      {hidden ? (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M3.28 2.22a.75.75 0 00-1.06 1.06l14.5 14.5a.75.75 0 101.06-1.06l-1.745-1.745a10.029 10.029 0 003.3-4.38 1.651 1.651 0 000-1.185A10.004 10.004 0 009.999 3a9.956 9.956 0 00-4.744 1.194L3.28 2.22zM7.752 6.69l1.092 1.092a2.5 2.5 0 013.374 3.373l1.091 1.092a4 4 0 00-5.557-5.557z" clipRule="evenodd" />
-                          <path d="M10.748 13.93l2.523 2.523a9.987 9.987 0 01-3.27.547c-4.258 0-7.894-2.66-9.337-6.41a1.651 1.651 0 010-1.186A10.007 10.007 0 012.839 6.02L6.07 9.252a4 4 0 004.678 4.678z" />
-                        </svg>
-                      ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                          <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
-                          <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
+        ) : (() => {
+          const filteredRides = ridesQuery.trim()
+            ? rides.filter(r => r.name.toLowerCase().includes(ridesQuery.toLowerCase()))
+            : rides
+          const totalPages = Math.max(1, Math.ceil(filteredRides.length / ridesPageSize))
+          const safePage = Math.min(ridesPage, totalPages - 1)
+          const pagedRides = filteredRides.slice(safePage * ridesPageSize, (safePage + 1) * ridesPageSize)
+          return (
+            <>
+              <input
+                type="text"
+                value={ridesQuery}
+                onChange={(e) => { setRidesQuery(e.target.value); setRidesPage(0) }}
+                placeholder="Search rides…"
+                className="w-full border border-zinc-200 rounded-md px-3 py-1.5 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300"
+              />
+              {pagedRides.length === 0 ? (
+                <p className="text-xs text-zinc-400">No rides match.</p>
+              ) : (
+                <ul className="flex flex-col gap-1">
+                  {pagedRides.map((ride) => {
+                    const hidden = hiddenRideIds.has(ride.id)
+                    return (
+                      <li
+                        key={ride.id}
+                        className={`flex items-center justify-between py-2 px-3 rounded-md text-sm ${hidden ? 'bg-zinc-50 opacity-50' : 'bg-zinc-50'}`}
+                      >
+                        <span className="text-zinc-800 truncate pr-2">{ride.name}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-zinc-400 text-xs">
+                            {(ride.distance / 1000).toFixed(1)} km
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => onToggleRide(ride.id)}
+                            title={hidden ? 'Show on map' : 'Hide from map'}
+                            className="text-zinc-400 hover:text-zinc-700 transition-colors"
+                          >
+                            {hidden ? (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M3.28 2.22a.75.75 0 00-1.06 1.06l14.5 14.5a.75.75 0 101.06-1.06l-1.745-1.745a10.029 10.029 0 003.3-4.38 1.651 1.651 0 000-1.185A10.004 10.004 0 009.999 3a9.956 9.956 0 00-4.744 1.194L3.28 2.22zM7.752 6.69l1.092 1.092a2.5 2.5 0 013.374 3.373l1.091 1.092a4 4 0 00-5.557-5.557z" clipRule="evenodd" />
+                                <path d="M10.748 13.93l2.523 2.523a9.987 9.987 0 01-3.27.547c-4.258 0-7.894-2.66-9.337-6.41a1.651 1.651 0 010-1.186A10.007 10.007 0 012.839 6.02L6.07 9.252a4 4 0 004.678 4.678z" />
+                              </svg>
+                            ) : (
+                              <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
+                                <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setRidesPage(p => Math.max(0, p - 1))}
+                    disabled={safePage === 0}
+                    className="text-xs px-2 py-1 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Prev
+                  </button>
+                  <span className="text-xs text-zinc-400">
+                    Page {safePage + 1} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRidesPage(p => Math.min(totalPages - 1, p + 1))}
+                    disabled={safePage === totalPages - 1}
+                    className="text-xs px-2 py-1 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
+            </>
+          )
+        })()}
       </div>
 
       {/* Trails list */}
@@ -397,6 +493,17 @@ export default function LeftDrawer({
             ))}
           </ul>
         )}
+      </div>
+
+      {/* About footer */}
+      <div className="mt-auto px-4 py-3 border-t border-zinc-100">
+        <button
+          type="button"
+          onClick={onOpenAnnouncement}
+          className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+        >
+          About Trail Overlay
+        </button>
       </div>
     </div>
   )

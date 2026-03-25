@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import LeftDrawer from '@/components/LeftDrawer'
+import AnnouncementModal from '@/components/AnnouncementModal'
+import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
 import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, SaveTrailResponse, EditMode, Network } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import { polylineDistanceKm, estimatedElevationGainFt } from '@/lib/geo-utils'
@@ -21,6 +23,14 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [trails, setTrails] = useState<Trail[]>([])
   const [networks, setNetworks] = useState<Network[]>([])
   const [hiddenRideIds, setHiddenRideIds] = useState<Set<string>>(new Set())
+  const [showHeatmap, setShowHeatmap] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('heatmap_visible') === 'true'
+  })
+  const [showAnnouncement, setShowAnnouncement] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`) !== 'true'
+  })
 
   // Edit state
   const [editMode, setEditMode] = useState<EditMode>(null)
@@ -104,6 +114,14 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleToggleHeatmap = useCallback(() => {
+    setShowHeatmap((prev) => {
+      const next = !prev
+      localStorage.setItem('heatmap_visible', String(next))
       return next
     })
   }, [])
@@ -395,6 +413,15 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     setEditMode('add-network')
   }, [])
 
+  const handleCloseAnnouncement = useCallback(() => {
+    localStorage.setItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`, 'true')
+    setShowAnnouncement(false)
+  }, [])
+
+  const handleOpenAnnouncement = useCallback(() => {
+    setShowAnnouncement(true)
+  }, [])
+
   return (
     <div className="flex h-screen">
       <LeftDrawer
@@ -428,6 +455,9 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         onUpdateNetwork={handleUpdateNetwork}
         onDeleteNetwork={handleDeleteNetwork}
         onStartRedrawNetwork={handleStartRedrawNetwork}
+        showHeatmap={showHeatmap}
+        onToggleHeatmap={handleToggleHeatmap}
+        onOpenAnnouncement={handleOpenAnnouncement}
       />
       <LeafletMap
         rides={rides}
@@ -450,7 +480,9 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         editNetworkMode={editNetworkMode}
         selectedNetworkId={selectedNetwork?.id ?? null}
         onNetworkSelected={setSelectedNetwork}
+        showHeatmap={showHeatmap}
       />
+      <AnnouncementModal isOpen={showAnnouncement} onClose={handleCloseAnnouncement} content={ANNOUNCEMENT} />
     </div>
   )
 }
