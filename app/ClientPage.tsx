@@ -27,6 +27,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     if (typeof window === 'undefined') return false
     return localStorage.getItem('heatmap_visible') === 'true'
   })
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showAnnouncement, setShowAnnouncement] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
     return localStorage.getItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`) !== 'true'
@@ -423,42 +424,67 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   }, [])
 
   return (
-    <div className="flex h-screen">
-      <LeftDrawer
-        user={user}
-        rides={rides}
-        trails={trails}
-        hiddenRideIds={hiddenRideIds}
-        onToggleRide={handleToggleRide}
-        onRidesUploaded={handleRidesUploaded}
-        onSyncComplete={loadRides}
-        editMode={editMode}
-        onEditModeChange={handleEditModeChange}
-        trimStart={trimStart}
-        trimSegment={trimSegment}
-        onSaveTrail={handleSaveTrail}
-        onStepTrimPoint={handleStepTrimPoint}
-        onClearTrimPoint={handleClearTrimPoint}
-        selectedTrail={selectedTrail}
-        onSelectTrail={setSelectedTrail}
-        onUpdateTrail={handleUpdateTrail}
-        onDeleteTrail={handleDeleteTrail}
-        onEnterRefineMode={handleEnterRefineMode}
-        onSaveRefinedTrail={handleSaveRefinedTrail}
-        savingRefined={savingRefined}
-        refineError={refineError}
-        networks={networks}
-        selectedNetwork={selectedNetwork}
-        drawNetworkPoints={drawNetworkPoints}
-        onSelectNetwork={setSelectedNetwork}
-        onSaveNetwork={handleSaveNetwork}
-        onUpdateNetwork={handleUpdateNetwork}
-        onDeleteNetwork={handleDeleteNetwork}
-        onStartRedrawNetwork={handleStartRedrawNetwork}
-        showHeatmap={showHeatmap}
-        onToggleHeatmap={handleToggleHeatmap}
-        onOpenAnnouncement={handleOpenAnnouncement}
-      />
+    <div className="flex h-screen relative">
+      {/* Mobile backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className="sm:hidden fixed inset-0 z-40 bg-black/30"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Drawer — always visible on desktop, slide-in sheet on mobile */}
+      <div className={`${mobileMenuOpen ? 'flex' : 'hidden'} sm:flex fixed top-0 left-0 sm:relative sm:top-auto sm:left-auto z-2000 sm:z-auto h-full`}>
+        <LeftDrawer
+          user={user}
+          rides={rides}
+          trails={trails}
+          hiddenRideIds={hiddenRideIds}
+          onToggleRide={handleToggleRide}
+          onRidesUploaded={handleRidesUploaded}
+          onSyncComplete={loadRides}
+          editMode={editMode}
+          onEditModeChange={handleEditModeChange}
+          trimStart={trimStart}
+          trimSegment={trimSegment}
+          onSaveTrail={handleSaveTrail}
+          onStepTrimPoint={handleStepTrimPoint}
+          onClearTrimPoint={handleClearTrimPoint}
+          selectedTrail={selectedTrail}
+          onSelectTrail={setSelectedTrail}
+          onUpdateTrail={handleUpdateTrail}
+          onDeleteTrail={handleDeleteTrail}
+          onEnterRefineMode={handleEnterRefineMode}
+          onSaveRefinedTrail={handleSaveRefinedTrail}
+          savingRefined={savingRefined}
+          refineError={refineError}
+          networks={networks}
+          selectedNetwork={selectedNetwork}
+          drawNetworkPoints={drawNetworkPoints}
+          onSelectNetwork={setSelectedNetwork}
+          onSaveNetwork={handleSaveNetwork}
+          onUpdateNetwork={handleUpdateNetwork}
+          onDeleteNetwork={handleDeleteNetwork}
+          onStartRedrawNetwork={handleStartRedrawNetwork}
+          showHeatmap={showHeatmap}
+          onToggleHeatmap={handleToggleHeatmap}
+          onOpenAnnouncement={handleOpenAnnouncement}
+        />
+      </div>
+
+      {/* Hamburger button — mobile only, shown when drawer is closed */}
+      {!mobileMenuOpen && (
+        <button
+          className="sm:hidden fixed top-4 right-4 z-1001 bg-white rounded-lg shadow-md p-2.5"
+          onClick={() => setMobileMenuOpen(true)}
+          aria-label="Open menu"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      )}
+
       <LeafletMap
         rides={rides}
         hiddenRideIds={hiddenRideIds}

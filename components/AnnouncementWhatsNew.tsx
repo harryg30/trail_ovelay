@@ -7,7 +7,7 @@ interface AnnouncementWhatsNewProps {
 
 export default function AnnouncementWhatsNew({ whatsNew, upcoming }: AnnouncementWhatsNewProps) {
   return (
-    <div className="flex gap-8">
+    <div className="flex flex-col sm:flex-row gap-4 sm:gap-8">
       <div className="flex-1">
         <h3 className="text-sm font-semibold text-zinc-700 mb-2">What's New</h3>
         <ul className="flex flex-col gap-1.5">

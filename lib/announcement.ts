@@ -29,15 +29,16 @@ export interface AnnouncementContent {
 export const ANNOUNCEMENT: AnnouncementContent = {
   title: "Welcome to Trail Overlay",
   description:
-    "Upload GPX rides from your GPS device, trim segments into reusable trails, tag difficulty and direction, and organize trails into networks.",
+    "Trail Overlay aims to solve my biggest pain point while planning mountain bike rides. Tools like Strava and Ride with GPS are missing details that help me decide which trails to ride, and I end up spending a lot of time cross-referencing other sources like Trailforks. Trail Overlay is a Chrome extension that surfaces this information directly on the Strava route builder map (Ride with GPS planned), so you can spend less time planning and more time riding.",
   whatsNew: [
-    "Sync rides directly from Strava alongside GPX/ZIP uploads.",
-    "Trail lines now appear inside Strava route builder via the Chrome extension."
+    "Create and edit trails directly on the map with our new drawing tools.",
+    "Trail details now appear inside Strava route builder via the Chrome extension. (experimental)"
   ],
   upcoming: [
-    "Public trail sharing and discovery.",
-    "Elevation profile viewer when trimming segments.",
-    "Mobile-friendly layout."
+    "Photo upload so you can see what your routing yourself to",
+    "Refined trail editing tools",
+    "Mobile-friendly layout",
+    "Ride with GPS support"
   ],
   bio: {
     name: "Harry Gordenstein",

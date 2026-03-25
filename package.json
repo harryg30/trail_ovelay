@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@aws-sdk/rds-signer": "^3.1017.0",
+    "@vercel/functions": "^3.4.3",
     "axios": "^1.13.6",
     "gpxparser": "^3.0.8",
     "jose": "^6.2.2",

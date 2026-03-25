@@ -1,43 +1,79 @@
 import { readFileSync, readdirSync } from 'fs'
-import { createRequire } from 'module'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { Signer } from '@aws-sdk/rds-signer'
+import { Pool } from 'pg'
 
-const require = createRequire(import.meta.url)
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// Read DATABASE_URL from .env.local
+// Load .env.local
 const envPath = resolve(__dirname, '../.env.local')
-const envContents = readFileSync(envPath, 'utf8')
-const dbUrlMatch = envContents.match(/^DATABASE_URL=(.+)$/m)
-if (!dbUrlMatch) {
-  console.error('DATABASE_URL not found in .env.local')
-  process.exit(1)
+for (const line of readFileSync(envPath, 'utf8').split('\n')) {
+  const match = line.match(/^([^#=]+)=["']?(.+?)["']?\s*$/)
+  if (match) process.env[match[1].trim()] = match[2].trim()
 }
-const DATABASE_URL = dbUrlMatch[1].trim()
 
-const { Pool } = require('pg')
-const pool = new Pool({ connectionString: DATABASE_URL })
+// Uses local AWS credentials (~/.aws/credentials or AWS_* env vars)
+const signer = new Signer({
+  hostname: process.env.TRAIL_DB_PGHOST,
+  port: Number(process.env.TRAIL_DB_PGPORT),
+  username: process.env.TRAIL_DB_PGUSER,
+  region: process.env.TRAIL_DB_AWS_REGION,
+})
+
+const pool = new Pool({
+  host: process.env.TRAIL_DB_PGHOST,
+  user: process.env.TRAIL_DB_PGUSER,
+  database: process.env.TRAIL_DB_PGDATABASE || 'postgres',
+  password: () => signer.getAuthToken(),
+  port: Number(process.env.TRAIL_DB_PGPORT),
+  ssl: { rejectUnauthorized: false },
+})
 
 const migrationsDir = resolve(__dirname, '../migrations')
 const files = readdirSync(migrationsDir)
   .filter(f => f.endsWith('.sql'))
   .sort()
 
-console.log(`Running ${files.length} migration(s) against ${DATABASE_URL}\n`)
+console.log(`Running ${files.length} migration(s)\n`)
 
-for (const file of files) {
-  const sql = readFileSync(resolve(migrationsDir, file), 'utf8')
-  process.stdout.write(`  ${file} ... `)
-  try {
-    await pool.query(sql)
-    console.log('OK')
-  } catch (err) {
-    console.log('FAILED')
-    console.error(`  Error: ${err.message}`)
-    process.exit(1)
+const client = await pool.connect()
+try {
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS _migrations (
+      filename TEXT PRIMARY KEY,
+      applied_at TIMESTAMPTZ DEFAULT now()
+    )
+  `)
+
+  for (const file of files) {
+    const { rows } = await client.query(
+      'SELECT 1 FROM _migrations WHERE filename = $1',
+      [file]
+    )
+    if (rows.length > 0) {
+      console.log(`  skip  ${file}`)
+      continue
+    }
+
+    const sql = readFileSync(resolve(migrationsDir, file), 'utf8')
+    process.stdout.write(`  apply ${file} ... `)
+    await client.query('BEGIN')
+    try {
+      await client.query(sql)
+      await client.query('INSERT INTO _migrations (filename) VALUES ($1)', [file])
+      await client.query('COMMIT')
+      console.log('OK')
+    } catch (err) {
+      await client.query('ROLLBACK')
+      console.log('FAILED')
+      console.error(`  Error: ${err.message}`)
+      process.exit(1)
+    }
   }
+} finally {
+  client.release()
+  await pool.end()
 }
 
-await pool.end()
 console.log('\nAll migrations complete.')

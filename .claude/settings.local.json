@@ -27,7 +27,8 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:api.github.com)",
       "Bash(npx tsc:*)",
-      "Bash(find /c/Users/gorde/Documents/GitHub/trail_ovelay/node_modules/next/dist/docs -name *.md)"
+      "Bash(find /c/Users/gorde/Documents/GitHub/trail_ovelay/node_modules/next/dist/docs -name *.md)",
+      "Bash(npm install:*)"
     ]
   }
 }

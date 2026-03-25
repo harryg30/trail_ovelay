@@ -12,13 +12,13 @@ export default function AnnouncementBio({
   onClose
 }: AnnouncementBioProps) {
   return (
-    <div className='flex gap-6 h-full'>
+    <div className='flex flex-col sm:flex-row gap-4 sm:gap-6'>
       {/* Photo */}
       {bio.profilePic && (
         <img
           src={bio.profilePic}
           alt={bio.name}
-          className='w-28 h-28 rounded-xl object-cover shrink-0 self-start'
+          className='w-16 h-16 sm:w-28 sm:h-28 rounded-xl object-cover shrink-0 self-start'
         />
       )}
 
