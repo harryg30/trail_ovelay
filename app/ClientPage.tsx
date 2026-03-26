@@ -138,17 +138,12 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     setAveragedRideCount(result?.rideCount ?? 0)
   }, [trimSegment, rides, corridorRadiusKm, outputSpacingKm])
 
-  const { corridorRidesAvailable, corridorRidesTotal } = useMemo(() => {
-    if (!trimSegment) return { corridorRidesAvailable: 0, corridorRidesTotal: 0 }
-    let available = 0, total = 0
-    for (const r of rides) {
-      if (r.id === trimSegment.ride.id) continue
-      if (clipPolylineToCorridor(r.polyline, trimSegment.polyline, corridorRadiusKm).length < 5) continue
-      total++
-      if (r.stravaActivityId && !highResRideIds.has(r.id)) available++
-    }
-    return { corridorRidesAvailable: available, corridorRidesTotal: total }
-  }, [rides, trimSegment, highResRideIds, corridorRadiusKm])
+  // Cheap check — no clip math, just gates the "Improve from Strava" button
+  const hasUnfetchedStravaRides = useMemo(() =>
+    trimSegment
+      ? rides.some((r) => r.stravaActivityId && !highResRideIds.has(r.id) && r.id !== trimSegment.ride.id)
+      : false
+  , [rides, trimSegment, highResRideIds])
 
   const handleFetchHighRes = useCallback(async (rideId: string) => {
     setFetchingHighResId(rideId)
@@ -404,6 +399,23 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
       if (data.success && data.savedTrails) {
         setTrails((prev) => [...(data.savedTrails ?? []), ...prev])
+
+        if (form.networkId && data.savedTrails.length > 0) {
+          const network = networks.find((n) => n.id === form.networkId)
+          if (network) {
+            const updatedTrailIds = [...network.trailIds, data.savedTrails[0].id]
+            const res2 = await fetch(`/api/networks/${network.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: network.name, trailIds: updatedTrailIds }),
+            })
+            const data2 = await res2.json()
+            if (data2.success && data2.network) {
+              setNetworks((prev) => prev.map((n) => (n.id === data2.network.id ? data2.network : n)))
+            }
+          }
+        }
+
         setMode(null)
         setTrimStart(null)
         setTrimEnd(null)
@@ -412,7 +424,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
       return data.error ?? 'Save failed'
     },
-    [trimSegment]
+    [trimSegment, networks]
   )
 
   const handleNetworkPointAdded = useCallback((latlng: [number, number]) => {
@@ -557,8 +569,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           highResRideIds={highResRideIds}
           onFetchHighRes={handleFetchHighRes}
           fetchingHighResId={fetchingHighResId}
-          corridorRidesAvailable={corridorRidesAvailable}
-          corridorRidesTotal={corridorRidesTotal}
+          hasUnfetchedStravaRides={hasUnfetchedStravaRides}
           onAverageLine={handleAverageLine}
           onFetchHighResForCorridor={handleFetchHighResForCorridor}
           fetchingHighResForCorridor={fetchingHighResForCorridor}

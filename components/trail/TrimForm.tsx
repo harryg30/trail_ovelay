@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import type { TrimSegment, TrimFormState } from '@/lib/types'
+import { useState, useEffect, useRef } from 'react'
+import type { TrimSegment, TrimFormState, Network } from '@/lib/types'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
 
 export function TrimForm({
@@ -9,11 +9,13 @@ export function TrimForm({
   onSave,
   onCancel,
   disabled,
+  networks,
 }: {
   trimSegment: TrimSegment | null
   onSave: (form: TrimFormState) => Promise<string | null>
   onCancel: () => void
   disabled: boolean
+  networks: Network[]
 }) {
   const [form, setForm] = useState<TrimFormState>({
     name: '',
@@ -21,6 +23,9 @@ export function TrimForm({
     direction: 'not_set',
     notes: '',
   })
+  const [networkQuery, setNetworkQuery] = useState('')
+  const [showDropdown, setShowDropdown] = useState(false)
+  const networkInputRef = useRef<HTMLInputElement>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
 
@@ -56,6 +61,61 @@ export function TrimForm({
       </div>
 
       <TrailFormFields form={form} onChange={setForm} disabled={disabled} />
+
+      {/* Network search */}
+      <div className="relative">
+        <label className="block text-xs text-zinc-500 mb-1">Network</label>
+        <div className="flex items-center gap-1">
+          <input
+            ref={networkInputRef}
+            type="text"
+            placeholder="Search networks…"
+            disabled={disabled}
+            value={networkQuery}
+            onChange={(e) => {
+              setNetworkQuery(e.target.value)
+              setShowDropdown(true)
+              if (!e.target.value) setForm((f) => ({ ...f, networkId: undefined }))
+            }}
+            onFocus={() => setShowDropdown(true)}
+            onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
+            className="flex-1 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:border-zinc-400 disabled:opacity-50"
+          />
+          {form.networkId && (
+            <button
+              type="button"
+              onClick={() => { setNetworkQuery(''); setForm((f) => ({ ...f, networkId: undefined })) }}
+              className="text-zinc-400 hover:text-zinc-600 px-1"
+              title="Clear network"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        {showDropdown && networkQuery && (() => {
+          const matches = networks.filter((n) =>
+            n.name.toLowerCase().includes(networkQuery.toLowerCase())
+          )
+          if (!matches.length) return null
+          return (
+            <ul className="absolute z-50 w-full mt-0.5 bg-white border border-zinc-200 rounded shadow-md max-h-36 overflow-y-auto text-xs">
+              {matches.map((n) => (
+                <li
+                  key={n.id}
+                  onMouseDown={() => {
+                    setForm((f) => ({ ...f, networkId: n.id }))
+                    setNetworkQuery(n.name)
+                    setShowDropdown(false)
+                  }}
+                  className={`px-2 py-1.5 cursor-pointer hover:bg-zinc-50 ${form.networkId === n.id ? 'font-medium text-orange-600' : ''}`}
+                >
+                  {n.name}
+                </li>
+              ))}
+            </ul>
+          )
+        })()}
+      </div>
 
       {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { TrimPoint, TrimSegment, TrimFormState } from '@/lib/types'
+import type { TrimPoint, TrimSegment, TrimFormState, Network } from '@/lib/types'
 import { EndpointControls } from '@/components/shared/EndpointControls'
 import { TrimForm } from '@/components/trail/TrimForm'
 
@@ -19,11 +19,11 @@ export function AddTrailContent({
   onCorridorRadiusChange,
   outputSpacingKm,
   onOutputSpacingChange,
-  corridorRidesAvailable,
-  corridorRidesTotal,
+  hasUnfetchedStravaRides,
   onAverageLine,
   onFetchHighResForCorridor,
   fetchingHighResForCorridor,
+  networks,
 }: {
   trimStart: TrimPoint | null
   trimSegment: TrimSegment | null
@@ -38,11 +38,11 @@ export function AddTrailContent({
   onCorridorRadiusChange: (v: number) => void
   outputSpacingKm: number
   onOutputSpacingChange: (v: number) => void
-  corridorRidesAvailable: number
-  corridorRidesTotal: number
+  hasUnfetchedStravaRides: boolean
   onAverageLine: () => void
   onFetchHighResForCorridor: () => Promise<void>
   fetchingHighResForCorridor: boolean
+  networks: Network[]
 }) {
   const [pendingCorridorFetch, setPendingCorridorFetch] = useState(false)
   return (
@@ -90,11 +90,11 @@ export function AddTrailContent({
           <span className="w-8 text-right shrink-0">{Math.round(outputSpacingKm * 1000)}m</span>
         </div>
       )}
-      {trimSegment && corridorRidesAvailable > 0 && (
+      {trimSegment && hasUnfetchedStravaRides && (
         pendingCorridorFetch ? (
           <div className="flex flex-col gap-1.5">
             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
-              Fetches {corridorRidesAvailable} ride{corridorRidesAvailable !== 1 ? 's' : ''} from Strava ({corridorRidesAvailable} API call{corridorRidesAvailable !== 1 ? 's' : ''}, limit 200/day). Data is stored in memory only.
+              Fetches nearby Strava rides (1 API call each, limit 200/day). Data is stored in memory only.
             </p>
             <div className="flex gap-2">
               <button
@@ -120,17 +120,17 @@ export function AddTrailContent({
             onClick={() => setPendingCorridorFetch(true)}
             className="w-full py-1.5 rounded-md border border-blue-200 text-xs text-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {fetchingHighResForCorridor ? 'Fetching from Strava…' : `↑ Improve from Strava (${corridorRidesAvailable} ride${corridorRidesAvailable !== 1 ? 's' : ''})`}
+            {fetchingHighResForCorridor ? 'Fetching from Strava…' : '↑ Improve from Strava'}
           </button>
         )
       )}
-      {trimSegment && !averagedTrimPolyline && corridorRidesTotal >= 2 && (
+      {trimSegment && !averagedTrimPolyline && (
         <button
           type="button"
           onClick={onAverageLine}
           className="w-full py-1.5 rounded-md border border-fuchsia-200 text-xs text-fuchsia-700 hover:bg-fuchsia-50 transition-colors"
         >
-          Average line ({Math.min(corridorRidesTotal, 25)} ride{Math.min(corridorRidesTotal, 25) !== 1 ? 's' : ''})
+          Average line
         </button>
       )}
       {trimSegment && averagedTrimPolyline && (
@@ -163,6 +163,7 @@ export function AddTrailContent({
         onSave={onSaveTrail}
         onCancel={onCancel}
         disabled={!trimSegment}
+        networks={networks}
       />
     </div>
   )

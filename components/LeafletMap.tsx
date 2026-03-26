@@ -67,6 +67,7 @@ export default function LeafletMap({
   const networksLayerRef = useRef<L.LayerGroup | null>(null)
   const drawNetworkLayerRef = useRef<L.LayerGroup | null>(null)
   const averagedTrimLayerRef = useRef<L.LayerGroup | null>(null)
+  const hoverLayerRef = useRef<L.LayerGroup | null>(null)
 
   // Mutable refs — updated in component body so click handlers always read current values
   const trimModeRef = useRef(trimMode)
@@ -110,6 +111,7 @@ export default function LeafletMap({
     trailsLayerRef.current = L.layerGroup().addTo(map)
     trimLayerRef.current = L.layerGroup().addTo(map)
     averagedTrimLayerRef.current = L.layerGroup().addTo(map)
+    hoverLayerRef.current = L.layerGroup().addTo(map)
     selectedTrailLayerRef.current = L.layerGroup().addTo(map)
     refineLayerRef.current = L.layerGroup().addTo(map)
     drawNetworkLayerRef.current = L.layerGroup().addTo(map)
@@ -133,6 +135,7 @@ export default function LeafletMap({
       refineLayerRef.current = null
       networksLayerRef.current = null
       drawNetworkLayerRef.current = null
+      hoverLayerRef.current = null
     }
   }, [])
 
@@ -221,29 +224,61 @@ export default function LeafletMap({
         trail.difficulty === 'pro' ? '#18181b' :
         '#f97316'
 
-      if (editTrailMode) {
-        const hitArea = L.polyline(trail.polyline, {
-          color: trailColor,
-          weight: 20,
-          opacity: 0,
-          interactive: true,
-        })
-        hitArea.on('click', clickHandler)
-        hitArea.addTo(trailsLayerRef.current!)
+      const normalWeight = trail.difficulty === 'pro' ? 4 : 3
+      const hoverWeight = trail.difficulty === 'pro' ? 7 : 6
+
+      const showHoverMarkers = () => {
+        const start = trail.polyline[0]
+        const end = trail.polyline[trail.polyline.length - 1]
+        hoverLayerRef.current?.clearLayers()
+        L.circleMarker(start, { radius: 6, color: '#fff', weight: 2, fillColor: trailColor, fillOpacity: 1, interactive: false })
+          .addTo(hoverLayerRef.current!)
+        L.circleMarker(end, { radius: 6, color: '#fff', weight: 2, fillColor: trailColor, fillOpacity: 1, interactive: false })
+          .addTo(hoverLayerRef.current!)
       }
 
       const pl = L.polyline(trail.polyline, {
         color: trailColor,
-        weight: trail.difficulty === 'pro' ? 4 : 3,
+        weight: normalWeight,
         opacity: 0.9,
-        interactive: !editTrailMode,
+        interactive: false,
         dashArray: trail.difficulty === 'pro' ? '6 3' : undefined,
       })
-      if (!editTrailMode) {
-        pl.on('click', clickHandler)
-      }
-
       pl.addTo(trailsLayerRef.current!)
+
+      // Wide invisible hit area handles all mouse events for this trail
+      const hitArea = L.polyline(trail.polyline, {
+        color: trailColor,
+        weight: 20,
+        opacity: 0,
+        interactive: true,
+      })
+      hitArea.on('click', clickHandler)
+      hitArea.on('mouseover', () => { pl.setStyle({ weight: hoverWeight, opacity: 1 }); showHoverMarkers() })
+      hitArea.on('mouseout', () => { pl.setStyle({ weight: normalWeight, opacity: 0.9 }); hoverLayerRef.current?.clearLayers() })
+      hitArea.addTo(trailsLayerRef.current!)
+
+      // Permanent label at midpoint, rotated to follow the trail
+      const midIdx = Math.floor(trail.polyline.length / 2)
+      const midPoint = trail.polyline[midIdx]
+      const p1 = trail.polyline[Math.max(0, midIdx - 5)]
+      const p2 = trail.polyline[Math.min(trail.polyline.length - 1, midIdx + 5)]
+      const dy = -(p2[0] - p1[0]) // lat increases upward, screen y increases downward
+      const dx = p2[1] - p1[1]
+      let labelAngle = Math.atan2(dy, dx) * 180 / Math.PI
+      if (labelAngle > 90) labelAngle -= 180
+      if (labelAngle < -90) labelAngle += 180
+      const diffIcon =
+        trail.difficulty === 'easy' ? '●' :
+        trail.difficulty === 'intermediate' ? '■' :
+        trail.difficulty === 'hard' ? '◆' :
+        trail.difficulty === 'pro' ? '◆◆' : ''
+      const labelHtml = `<div style="font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;line-height:1.4;transform:rotate(${labelAngle}deg);transform-origin:0 50%;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 4px #fff"><span style="color:${trailColor}">${diffIcon}</span>${diffIcon ? '\u00a0' : ''}${trail.name}</div>`
+      L.marker(midPoint, {
+        icon: L.divIcon({ html: labelHtml, className: '', iconSize: [0, 0], iconAnchor: [0, 0] }),
+        interactive: false,
+        keyboard: false,
+      }).addTo(trailsLayerRef.current!)
     })
   }, [trails, editTrailMode])
 

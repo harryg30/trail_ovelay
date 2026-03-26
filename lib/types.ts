@@ -43,6 +43,7 @@ export interface TrimFormState {
   difficulty: Trail["difficulty"];
   direction: Trail["direction"];
   notes: string;
+  networkId?: string;
 }
 
 export type EditMode = 'add-trail' | 'edit-trail' | 'refine-trail' | 'add-network' | 'edit-network' | null
