@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
-  const { name, message } = await request.json();
+  const { name, email, message } = await request.json();
 
   if (!name?.trim() || !message?.trim()) {
     return NextResponse.json({ error: "Missing fields" }, { status: 400 });
@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
           color: 3447003,
           fields: [
             { name: "From", value: String(name).slice(0, 100), inline: true },
+            ...(email?.trim() ? [{ name: "Email", value: String(email).slice(0, 254), inline: true }] : []),
             { name: "Message", value: String(message).slice(0, 2000) }
           ],
           timestamp: new Date().toISOString()
