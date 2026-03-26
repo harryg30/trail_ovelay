@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Ride, Trail, TrimPoint, TrimSegment, Network, EditMode, RidePhoto } from '@/lib/types'
@@ -83,6 +83,9 @@ export default function LeafletMap({
   const hoverLayerRef = useRef<L.LayerGroup | null>(null)
   const photoMarkersLayerRef = useRef<L.LayerGroup | null>(null)
 
+  const [zoom, setZoom] = useState(5)
+  const LABEL_ZOOM_THRESHOLD = 14
+
   // Mutable refs — updated in component body so click handlers always read current values
   const trimModeRef = useRef(trimMode)
   const editTrailModeRef = useRef(editTrailMode)
@@ -138,6 +141,8 @@ export default function LeafletMap({
     selectedTrailLayerRef.current = L.layerGroup().addTo(map)
     refineLayerRef.current = L.layerGroup().addTo(map)
     drawNetworkLayerRef.current = L.layerGroup().addTo(map)
+
+    map.on('zoomend', () => setZoom(map.getZoom()))
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       if (placingPhotoRef.current) {
@@ -368,29 +373,31 @@ export default function LeafletMap({
       hitArea.on('mouseout', () => { pl.setStyle({ weight: normalWeight, opacity: 0.9 }); hoverLayerRef.current?.clearLayers() })
       hitArea.addTo(trailsLayerRef.current!)
 
-      // Permanent label at midpoint, rotated to follow the trail
-      const midIdx = Math.floor(trail.polyline.length / 2)
-      const midPoint = trail.polyline[midIdx]
-      const p1 = trail.polyline[Math.max(0, midIdx - 5)]
-      const p2 = trail.polyline[Math.min(trail.polyline.length - 1, midIdx + 5)]
-      const dy = -(p2[0] - p1[0]) // lat increases upward, screen y increases downward
-      const dx = p2[1] - p1[1]
-      let labelAngle = Math.atan2(dy, dx) * 180 / Math.PI
-      if (labelAngle > 90) labelAngle -= 180
-      if (labelAngle < -90) labelAngle += 180
-      const diffIcon =
-        trail.difficulty === 'easy' ? '●' :
-        trail.difficulty === 'intermediate' ? '■' :
-        trail.difficulty === 'hard' ? '◆' :
-        trail.difficulty === 'pro' ? '◆◆' : ''
-      const labelHtml = `<div style="font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;line-height:1.4;color:#111;transform:rotate(${labelAngle}deg);transform-origin:0 50%;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff"><span style="color:${trailColor}">${diffIcon}</span>${diffIcon ? '\u00a0' : ''}${trail.name}</div>`
-      L.marker(midPoint, {
-        icon: L.divIcon({ html: labelHtml, className: '', iconSize: [0, 0], iconAnchor: [0, 0] }),
-        interactive: false,
-        keyboard: false,
-      }).addTo(trailsLayerRef.current!)
+      // Permanent label at midpoint, rotated to follow the trail (only when zoomed in)
+      if (zoom >= LABEL_ZOOM_THRESHOLD) {
+        const midIdx = Math.floor(trail.polyline.length / 2)
+        const midPoint = trail.polyline[midIdx]
+        const p1 = trail.polyline[Math.max(0, midIdx - 5)]
+        const p2 = trail.polyline[Math.min(trail.polyline.length - 1, midIdx + 5)]
+        const dy = -(p2[0] - p1[0])
+        const dx = p2[1] - p1[1]
+        let labelAngle = Math.atan2(dy, dx) * 180 / Math.PI
+        if (labelAngle > 90) labelAngle -= 180
+        if (labelAngle < -90) labelAngle += 180
+        const diffIcon =
+          trail.difficulty === 'easy' ? '●' :
+          trail.difficulty === 'intermediate' ? '■' :
+          trail.difficulty === 'hard' ? '◆' :
+          trail.difficulty === 'pro' ? '◆◆' : ''
+        const labelHtml = `<div style="font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;line-height:1.4;color:#111;transform:rotate(${labelAngle}deg);transform-origin:0 50%;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff"><span style="color:${trailColor}">${diffIcon}</span>${diffIcon ? '\u00a0' : ''}${trail.name}</div>`
+        L.marker(midPoint, {
+          icon: L.divIcon({ html: labelHtml, className: '', iconSize: [0, 0], iconAnchor: [0, 0] }),
+          interactive: false,
+          keyboard: false,
+        }).addTo(trailsLayerRef.current!)
+      }
     })
-  }, [trails, editTrailMode, trimMode])
+  }, [trails, editTrailMode, trimMode, zoom])
 
   // Effect 4: cursor — driven by MODE_REGISTRY so new modes get correct cursors automatically
   useEffect(() => {
@@ -547,8 +554,25 @@ export default function LeafletMap({
       })
 
       polygon.addTo(networksLayerRef.current!)
+
+      // Network name label at polygon centroid when zoomed out — click to zoom in
+      if (zoom < LABEL_ZOOM_THRESHOLD) {
+        const centroidLat = network.polygon.reduce((s, p) => s + p[0], 0) / network.polygon.length
+        const centroidLon = network.polygon.reduce((s, p) => s + p[1], 0) / network.polygon.length
+        const networkLabelHtml = `<div style="font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer;color:#1d4ed8;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff">${network.name}</div>`
+        const labelMarker = L.marker([centroidLat, centroidLon], {
+          icon: L.divIcon({ html: networkLabelHtml, className: '', iconSize: [0, 0], iconAnchor: [0, 0] }),
+          interactive: true,
+          keyboard: false,
+        })
+        labelMarker.on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e)
+          mapRef.current!.flyToBounds(L.latLngBounds(network.polygon as L.LatLngExpression[]), { padding: [40, 40], duration: 0.8 })
+        })
+        labelMarker.addTo(networksLayerRef.current!)
+      }
     })
-  }, [networks, hiddenNetworkIds, selectedNetworkId, trimMode])
+  }, [networks, hiddenNetworkIds, selectedNetworkId, trimMode, zoom])
 
   // Effect: draw network polygon preview
   useEffect(() => {
@@ -686,6 +710,9 @@ export default function LeafletMap({
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full" />
+      <div className="absolute bottom-2 right-2 z-1000 bg-white/80 text-xs font-mono px-1.5 py-0.5 rounded pointer-events-none">
+        z{zoom}
+      </div>
 
       {/* Floating tray for no-GPS photos */}
       {trayPhotos.length > 0 && (
