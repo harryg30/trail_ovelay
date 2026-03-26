@@ -20,6 +20,8 @@ export function AddTrailContent({
   outputSpacingKm,
   onOutputSpacingChange,
   corridorRidesAvailable,
+  corridorRidesTotal,
+  onAverageLine,
   onFetchHighResForCorridor,
   fetchingHighResForCorridor,
 }: {
@@ -37,6 +39,8 @@ export function AddTrailContent({
   outputSpacingKm: number
   onOutputSpacingChange: (v: number) => void
   corridorRidesAvailable: number
+  corridorRidesTotal: number
+  onAverageLine: () => void
   onFetchHighResForCorridor: () => Promise<void>
   fetchingHighResForCorridor: boolean
 }) {
@@ -120,19 +124,38 @@ export function AddTrailContent({
           </button>
         )
       )}
+      {trimSegment && !averagedTrimPolyline && corridorRidesTotal >= 2 && (
+        <button
+          type="button"
+          onClick={onAverageLine}
+          className="w-full py-1.5 rounded-md border border-fuchsia-200 text-xs text-fuchsia-700 hover:bg-fuchsia-50 transition-colors"
+        >
+          Average line ({Math.min(corridorRidesTotal, 25)} ride{Math.min(corridorRidesTotal, 25) !== 1 ? 's' : ''})
+        </button>
+      )}
       {trimSegment && averagedTrimPolyline && (
         <div className="flex items-center justify-between px-2.5 py-1.5 rounded-md bg-fuchsia-50 border border-fuchsia-200 text-xs">
           <span className="text-fuchsia-700 font-medium">
             Averaged from {averagedRideCount} ride{averagedRideCount !== 1 ? 's' : ''} · magenta line
           </span>
-          <button
-            type="button"
-            onClick={onClearAveragedTrim}
-            className="ml-2 text-fuchsia-400 hover:text-fuchsia-600 transition-colors"
-            title="Discard averaged line, save raw trim instead"
-          >
-            Discard
-          </button>
+          <div className="flex gap-2 ml-2">
+            <button
+              type="button"
+              onClick={onAverageLine}
+              className="text-fuchsia-400 hover:text-fuchsia-600 transition-colors"
+              title="Re-run averaging"
+            >
+              Re-run
+            </button>
+            <button
+              type="button"
+              onClick={onClearAveragedTrim}
+              className="text-fuchsia-400 hover:text-fuchsia-600 transition-colors"
+              title="Discard averaged line, save raw trim instead"
+            >
+              Discard
+            </button>
+          </div>
         </div>
       )}
       <TrimForm

@@ -14,7 +14,7 @@ export interface AnnouncementBioData {
   title: string;
   positions: BioPosition[];
   project: string;
-  links: { label: string; href: string }[];
+  links: { label: string; href?: string; action?: "contact-modal" }[];
   profilePic?: string;
 }
 
@@ -67,7 +67,7 @@ Built to solve a real problem I have as a mountain biker.`,
     links: [
       { label: "GitHub", href: "https://github.com/harryg30" },
       { label: "LinkedIn", href: "https://linkedin.com/in/harry-gordenstein" },
-      { label: "Contact", href: "https://discord.gg/uqfASaVkVD" }
+      { label: "Contact", action: "contact-modal" as const }
     ],
     profilePic: "/20260219_160511_059_saved~2.jpg"
   }

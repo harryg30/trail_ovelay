@@ -56,6 +56,8 @@ interface LeftDrawerProps {
   onFetchHighRes: (id: string) => Promise<void>
   fetchingHighResId: string | null
   corridorRidesAvailable: number
+  corridorRidesTotal: number
+  onAverageLine: () => void
   onFetchHighResForCorridor: () => Promise<void>
   fetchingHighResForCorridor: boolean
 }
@@ -106,6 +108,8 @@ export default function LeftDrawer({
   onFetchHighRes,
   fetchingHighResId,
   corridorRidesAvailable,
+  corridorRidesTotal,
+  onAverageLine,
   onFetchHighResForCorridor,
   fetchingHighResForCorridor,
 }: LeftDrawerProps) {
@@ -432,6 +436,8 @@ export default function LeftDrawer({
             outputSpacingKm={outputSpacingKm}
             onOutputSpacingChange={onOutputSpacingChange}
             corridorRidesAvailable={corridorRidesAvailable}
+            corridorRidesTotal={corridorRidesTotal}
+            onAverageLine={onAverageLine}
             onFetchHighResForCorridor={onFetchHighResForCorridor}
             fetchingHighResForCorridor={fetchingHighResForCorridor}
           />

@@ -69,11 +69,13 @@ export function generateAveragedTrail(
   rides: Ride[],
   corridorRadiusKm = 0.025,
   minRides = 2,
-  outputSpacingKm = 0.010
+  outputSpacingKm = 0.010,
+  maxRides = 25
 ): { polyline: [number, number][]; rideCount: number } | null {
   // Clip each ride to the corridor and tag points with rideId
   const clipped: { rideId: string; points: [number, number][] }[] = [];
   for (const ride of rides) {
+    if (clipped.length >= maxRides) break;
     const clip = clipPolylineToCorridor(
       ride.polyline,
       trimPolyline,

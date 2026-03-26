@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import LeftDrawer from '@/components/LeftDrawer'
 import AnnouncementModal from '@/components/AnnouncementModal'
@@ -24,6 +24,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [trails, setTrails] = useState<Trail[]>([])
   const [networks, setNetworks] = useState<Network[]>([])
   const [hiddenRideIds, setHiddenRideIds] = useState<Set<string>>(new Set())
+  const ridesLoadedRef = useRef(false)
   const [hiddenNetworkIds, setHiddenNetworkIds] = useState<Set<string>>(new Set())
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showAnnouncement, setShowAnnouncement] = useState(false)
@@ -85,9 +86,18 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     const data = await r.json()
     if (data.success) {
       setRides(data.rides)
-      setHiddenRideIds(new Set(data.rides.map((ride: Ride) => ride.id)))
+      const saved = localStorage.getItem('visible_ride_ids')
+      const visibleIds = saved ? new Set(JSON.parse(saved) as string[]) : new Set<string>()
+      setHiddenRideIds(new Set(data.rides.map((ride: Ride) => ride.id).filter((id: string) => !visibleIds.has(id))))
+      ridesLoadedRef.current = true
     }
   }, [user])
+
+  useEffect(() => {
+    if (!ridesLoadedRef.current) return
+    const visibleIds = rides.filter((r) => !hiddenRideIds.has(r.id)).map((r) => r.id)
+    localStorage.setItem('visible_ride_ids', JSON.stringify(visibleIds))
+  }, [hiddenRideIds, rides])
 
   useEffect(() => {
     loadRides()
@@ -109,30 +119,35 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     }
   }, [rides, trimStart, trimEnd])
 
+  // Clear averaged result when endpoints change
   useEffect(() => {
-    if (!trimSegment) {
-      setAveragedTrimPolyline(null)
-      setAveragedRideCount(0)
-      return
-    }
+    setAveragedTrimPolyline(null)
+    setAveragedRideCount(0)
+  }, [trimSegment])
+
+  const handleClearAveragedTrim = useCallback(() => {
+    setAveragedTrimPolyline(null)
+    setAveragedRideCount(0)
+  }, [])
+
+  const handleAverageLine = useCallback(() => {
+    if (!trimSegment) return
     const otherRides = rides.filter((r) => r.id !== trimSegment.ride.id)
     const result = generateAveragedTrail(trimSegment.polyline, otherRides, corridorRadiusKm, 2, outputSpacingKm)
     setAveragedTrimPolyline(result?.polyline ?? null)
     setAveragedRideCount(result?.rideCount ?? 0)
   }, [trimSegment, rides, corridorRadiusKm, outputSpacingKm])
 
-  const handleClearAveragedTrim = useCallback(() => {
-    setAveragedTrimPolyline(null)
-  }, [])
-
-  const corridorRidesAvailable = useMemo(() => {
-    if (!trimSegment) return 0
-    return rides.filter((r) =>
-      r.stravaActivityId &&
-      !highResRideIds.has(r.id) &&
-      r.id !== trimSegment.ride.id &&
-      clipPolylineToCorridor(r.polyline, trimSegment.polyline, corridorRadiusKm).length >= 5
-    ).length
+  const { corridorRidesAvailable, corridorRidesTotal } = useMemo(() => {
+    if (!trimSegment) return { corridorRidesAvailable: 0, corridorRidesTotal: 0 }
+    let available = 0, total = 0
+    for (const r of rides) {
+      if (r.id === trimSegment.ride.id) continue
+      if (clipPolylineToCorridor(r.polyline, trimSegment.polyline, corridorRadiusKm).length < 5) continue
+      total++
+      if (r.stravaActivityId && !highResRideIds.has(r.id)) available++
+    }
+    return { corridorRidesAvailable: available, corridorRidesTotal: total }
   }, [rides, trimSegment, highResRideIds, corridorRadiusKm])
 
   const handleFetchHighRes = useCallback(async (rideId: string) => {
@@ -193,6 +208,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const handleHideAllRides = useCallback(() => {
     setHiddenRideIds(new Set(rides.map((r) => r.id)))
+    localStorage.setItem('visible_ride_ids', JSON.stringify([]))
   }, [rides])
 
   const handleToggleNetwork = useCallback((id: string) => {
@@ -542,6 +558,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onFetchHighRes={handleFetchHighRes}
           fetchingHighResId={fetchingHighResId}
           corridorRidesAvailable={corridorRidesAvailable}
+          corridorRidesTotal={corridorRidesTotal}
+          onAverageLine={handleAverageLine}
           onFetchHighResForCorridor={handleFetchHighResForCorridor}
           fetchingHighResForCorridor={fetchingHighResForCorridor}
         />

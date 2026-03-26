@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import type { AnnouncementBioData } from "@/lib/announcement";
+import ContactModal from "@/components/ContactModal";
 
 interface AnnouncementBioProps {
   bio: AnnouncementBioData;
@@ -11,7 +13,10 @@ export default function AnnouncementBio({
   bio,
   onClose
 }: AnnouncementBioProps) {
+  const [contactOpen, setContactOpen] = useState(false);
+
   return (
+    <>
     <div className='flex flex-col sm:flex-row gap-4 sm:gap-6'>
       {/* Photo */}
       {bio.profilePic && (
@@ -82,17 +87,27 @@ export default function AnnouncementBio({
 
           {/* Links */}
           <div className='flex flex-wrap gap-x-4 gap-y-1'>
-            {bio.links.map((link) => (
-              <a
-                key={link.href}
-                href={link.href}
-                target='_blank'
-                rel='noopener noreferrer'
-                className='text-xs text-blue-500 hover:text-blue-700 transition-colors'
-              >
-                {link.label}
-              </a>
-            ))}
+            {bio.links.map((link) =>
+              link.action === "contact-modal" ? (
+                <button
+                  key='contact'
+                  onClick={() => setContactOpen(true)}
+                  className='text-xs text-blue-500 hover:text-blue-700 transition-colors'
+                >
+                  {link.label}
+                </button>
+              ) : (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='text-xs text-blue-500 hover:text-blue-700 transition-colors'
+                >
+                  {link.label}
+                </a>
+              )
+            )}
           </div>
         </div>
 
@@ -106,5 +121,7 @@ export default function AnnouncementBio({
         </div>
       </div>
     </div>
+      <ContactModal isOpen={contactOpen} onClose={() => setContactOpen(false)} />
+    </>
   );
 }
