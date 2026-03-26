@@ -21,6 +21,27 @@ export function polylineDistanceKm(points: [number, number][]): number {
     .reduce((sum, p, i) => sum + haversineKm(points[i], p), 0);
 }
 
+export function snapToNearestTrail(
+  point: [number, number],
+  trails: { id: string; polyline: [number, number][] }[],
+  thresholdKm = 0.05
+): { trailId: string; lat: number; lon: number } | null {
+  let bestDist = Infinity
+  let bestResult: { trailId: string; lat: number; lon: number } | null = null
+
+  for (const trail of trails) {
+    for (const [lat, lon] of trail.polyline) {
+      const d = haversineKm(point, [lat, lon])
+      if (d < bestDist) {
+        bestDist = d
+        bestResult = { trailId: trail.id, lat, lon }
+      }
+    }
+  }
+
+  return bestDist <= thresholdKm ? bestResult : null
+}
+
 export function estimatedElevationGainFt(
   ride: Ride,
   startIdx: number,

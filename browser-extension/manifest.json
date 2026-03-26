@@ -8,7 +8,8 @@
   ],
   "host_permissions": [
     "https://www.strava.com/*",
-    "http://localhost:3000/*"
+    "http://localhost:3000/*",
+    "https://trail-overlay.vercel.app/*"
   ],
   "background": {
     "service_worker": "background.js"

@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
-import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network } from '@/lib/types'
+import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network, TrailPhoto } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import AuthButton from '@/components/AuthButton'
 
@@ -39,6 +39,9 @@ interface LeftDrawerProps {
   showHeatmap: boolean
   onToggleHeatmap: () => void
   onOpenAnnouncement: () => void
+  photos: TrailPhoto[]
+  movingPhotoId: string | null
+  onStartMovePin: (photoId: string) => void
 }
 
 export default function LeftDrawer({
@@ -75,6 +78,9 @@ export default function LeftDrawer({
   showHeatmap,
   onToggleHeatmap,
   onOpenAnnouncement,
+  photos,
+  movingPhotoId,
+  onStartMovePin,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -357,6 +363,9 @@ export default function LeftDrawer({
                 <span className="text-zinc-800 truncate pr-2">{trail.name}</span>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-zinc-400 text-xs">{trail.distanceKm.toFixed(1)} km</span>
+                  {(() => { const count = photos.filter(p => p.trailId === trail.id).length; return count > 0 ? (
+                    <span className="text-xs text-zinc-500" title={`${count} photo${count !== 1 ? 's' : ''}`}>📷{count}</span>
+                  ) : null })()}
                   {trail.difficulty !== 'not_set' && (
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                       trail.difficulty === 'easy' ? 'bg-green-100 text-green-700' :
@@ -398,6 +407,38 @@ export default function LeftDrawer({
             onEnterRefineMode={selectedTrail ? onEnterRefineMode : undefined}
           />
         )}
+
+        {editMode === 'edit-trail' && selectedTrail && (() => {
+          const trailPhotos = photos.filter(p => p.trailId === selectedTrail.id)
+          if (trailPhotos.length === 0) return null
+          return (
+            <div className="flex flex-col gap-2">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Photos ({trailPhotos.length})</p>
+              <div className="flex flex-col gap-2">
+                {trailPhotos.map(photo => (
+                  <div key={photo.id} className="flex items-start gap-2 bg-zinc-50 rounded-md p-2">
+                    <img src={photo.blobUrl} alt={photo.caption ?? ''} className="w-16 h-16 object-cover rounded shrink-0" />
+                    <div className="flex flex-col gap-1 min-w-0">
+                      {photo.caption && <p className="text-xs text-zinc-700 truncate">{photo.caption}</p>}
+                      <p className="text-xs text-zinc-400">Score: {photo.score}</p>
+                      <button
+                        type="button"
+                        onClick={() => onStartMovePin(photo.id)}
+                        className={`text-xs px-2 py-1 rounded border transition-colors ${
+                          movingPhotoId === photo.id
+                            ? 'bg-orange-500 text-white border-orange-500'
+                            : 'border-zinc-200 text-zinc-600 hover:bg-zinc-100'
+                        }`}
+                      >
+                        {movingPhotoId === photo.id ? 'Drag marker…' : 'Move pin'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
 
         {editMode === 'refine-trail' && selectedTrail && (
           <div className="flex flex-col gap-3">
@@ -495,6 +536,9 @@ export default function LeftDrawer({
         )}
       </div>
 
+      {/* Extension token */}
+      {user && <ExtensionTokenSection />}
+
       {/* About footer */}
       <div className="mt-auto px-4 py-3 border-t border-zinc-100">
         <button
@@ -505,6 +549,40 @@ export default function LeftDrawer({
           About Trail Overlay
         </button>
       </div>
+    </div>
+  )
+}
+
+function ExtensionTokenSection() {
+  const [token, setToken] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const generate = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/auth/extension-token')
+      const data = await res.json()
+      if (data.token) setToken(data.token)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="px-4 py-4 border-t border-zinc-100 flex flex-col gap-2">
+      <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Extension Token</h2>
+      {token ? (
+        <code className="text-xs break-all bg-zinc-100 rounded p-2 text-zinc-700 select-all">{token}</code>
+      ) : (
+        <button
+          type="button"
+          onClick={generate}
+          disabled={loading}
+          className="w-full py-2 px-3 rounded-md bg-zinc-100 text-zinc-700 text-sm font-medium hover:bg-zinc-200 disabled:opacity-50 transition-colors"
+        >
+          {loading ? 'Generating…' : 'Generate Token'}
+        </button>
+      )}
     </div>
   )
 }

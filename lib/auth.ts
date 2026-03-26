@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers'
+import { type NextRequest } from 'next/server'
 import { queryOne } from '@/lib/db'
 import { SESSION_COOKIE_NAME, decryptSession } from '@/lib/session'
 
@@ -7,6 +8,14 @@ export interface SessionUser {
   name: string
   profilePicture: string | null
   stravaAthleteId: number
+}
+
+export async function getUserIdFromBearerToken(request: NextRequest): Promise<string | null> {
+  const authHeader = request.headers.get('Authorization')
+  if (!authHeader?.startsWith('Bearer ')) return null
+  const token = authHeader.slice(7)
+  const payload = await decryptSession(token)
+  return payload?.userId ?? null
 }
 
 export async function getSessionUserId(): Promise<string | null> {

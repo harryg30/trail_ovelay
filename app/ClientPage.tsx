@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import LeftDrawer from '@/components/LeftDrawer'
 import AnnouncementModal from '@/components/AnnouncementModal'
 import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
-import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, SaveTrailResponse, EditMode, Network } from '@/lib/types'
+import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, SaveTrailResponse, EditMode, Network, TrailPhoto } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import { polylineDistanceKm, estimatedElevationGainFt } from '@/lib/geo-utils'
 
@@ -22,6 +22,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [rides, setRides] = useState<Ride[]>([])
   const [trails, setTrails] = useState<Trail[]>([])
   const [networks, setNetworks] = useState<Network[]>([])
+  const [photos, setPhotos] = useState<TrailPhoto[]>([])
+  const [movingPhotoId, setMovingPhotoId] = useState<string | null>(null)
   const [hiddenRideIds, setHiddenRideIds] = useState<Set<string>>(new Set())
   const [showHeatmap, setShowHeatmap] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
@@ -58,6 +60,15 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       .then((r) => r.json())
       .then((data) => {
         if (data.success) setTrails(data.trails)
+      })
+      .catch(console.error)
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/photos')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.photos) setPhotos(data.photos)
       })
       .catch(console.error)
   }, [])
@@ -414,6 +425,18 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     setEditMode('add-network')
   }, [])
 
+  const handleMovePin = useCallback(async (photoId: string, lat: number, lon: number) => {
+    setMovingPhotoId(null)
+    await fetch(`/api/photos/${photoId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pinLat: lat, pinLon: lon }),
+    })
+    setPhotos((prev) =>
+      prev.map((p) => (p.id === photoId ? { ...p, pinLat: lat, pinLon: lon } : p))
+    )
+  }, [])
+
   const handleCloseAnnouncement = useCallback(() => {
     localStorage.setItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`, 'true')
     setShowAnnouncement(false)
@@ -469,6 +492,9 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           showHeatmap={showHeatmap}
           onToggleHeatmap={handleToggleHeatmap}
           onOpenAnnouncement={handleOpenAnnouncement}
+          photos={photos}
+          movingPhotoId={movingPhotoId}
+          onStartMovePin={setMovingPhotoId}
         />
       </div>
 
@@ -507,6 +533,9 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         selectedNetworkId={selectedNetwork?.id ?? null}
         onNetworkSelected={setSelectedNetwork}
         showHeatmap={showHeatmap}
+        photos={photos}
+        movingPhotoId={movingPhotoId}
+        onPinMoved={handleMovePin}
       />
       <AnnouncementModal isOpen={showAnnouncement} onClose={handleCloseAnnouncement} content={ANNOUNCEMENT} />
     </div>

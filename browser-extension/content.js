@@ -11,6 +11,9 @@ const NETWORK_FILL_LAYER = "network-overlay-fill";
 const NETWORK_BORDER_LAYER = "network-overlay-border";
 const NETWORK_LABEL_LAYER = "network-overlay-label";
 
+const PHOTO_SOURCE_ID = "photo-overlay";
+const PHOTO_LAYER_ID = "photo-overlay-symbols";
+
 const DIFFICULTY_COLORS = {
   easy: "#22c55e",
   intermediate: "#f59e0b",
@@ -45,6 +48,30 @@ function fetchNetworks(apiUrl) {
       if (event.data?.type === "NETWORKS_RESPONSE") {
         window.removeEventListener("message", handler);
         resolve(event.data.networks);
+      }
+    });
+  });
+}
+
+function fetchPhotos(trailId) {
+  return new Promise((resolve) => {
+    window.postMessage({ type: "GET_PHOTOS", trailId: trailId || null }, "*");
+    window.addEventListener("message", function handler(event) {
+      if (event.data?.type === "PHOTOS_RESPONSE") {
+        window.removeEventListener("message", handler);
+        resolve(event.data.photos);
+      }
+    });
+  });
+}
+
+function votePhoto(photoId, value) {
+  return new Promise((resolve) => {
+    window.postMessage({ type: "VOTE_PHOTO", photoId, value }, "*");
+    window.addEventListener("message", function handler(event) {
+      if (event.data?.type === "VOTE_RESPONSE" && event.data.photoId === photoId) {
+        window.removeEventListener("message", handler);
+        resolve(event.data.score);
       }
     });
   });
@@ -385,6 +412,80 @@ function addTrailsToMap(map, trails, networks) {
   console.log("[TrailOverlay] Trails added to map", trails);
 }
 
+function addPhotosToMap(map, photos) {
+  if (!map) return;
+
+  if (map.getLayer(PHOTO_LAYER_ID)) map.removeLayer(PHOTO_LAYER_ID);
+  if (map.getSource(PHOTO_SOURCE_ID)) map.removeSource(PHOTO_SOURCE_ID);
+
+  const withPin = photos.filter(p => p.pinLat != null && p.pinLon != null);
+  if (!withPin.length) return;
+
+  const geojson = {
+    type: "FeatureCollection",
+    features: withPin.map(p => ({
+      type: "Feature",
+      geometry: { type: "Point", coordinates: [p.pinLon, p.pinLat] },
+      properties: {
+        id: p.id,
+        blobUrl: p.blobUrl,
+        caption: p.caption || "",
+        score: p.score,
+      }
+    }))
+  };
+
+  map.addSource(PHOTO_SOURCE_ID, { type: "geojson", data: geojson });
+
+  map.addLayer({
+    id: PHOTO_LAYER_ID,
+    type: "symbol",
+    source: PHOTO_SOURCE_ID,
+    layout: {
+      "text-field": "📷",
+      "text-size": 20,
+      "text-allow-overlap": true,
+      "icon-allow-overlap": true,
+    }
+  });
+
+  map.on("click", PHOTO_LAYER_ID, (e) => {
+    const p = e.features[0].properties;
+    const scoreId = `photo-score-${p.id}`;
+    const html =
+      `<div style="max-width:220px">` +
+      `<img src="${p.blobUrl}" style="width:100%;border-radius:4px;display:block;margin-bottom:6px"/>` +
+      (p.caption ? `<p style="margin:0 0 6px;font-size:12px">${p.caption}</p>` : "") +
+      `<p style="margin:0 0 6px;font-size:11px;color:#666">Score: <span id="${scoreId}">${p.score}</span></p>` +
+      `<div style="display:flex;gap:6px">` +
+      `<button onclick="(function(){` +
+        `window._votePhoto('${p.id}',1,'${scoreId}')` +
+      `})()" style="flex:1;padding:4px;font-size:13px;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#fff">👍</button>` +
+      `<button onclick="(function(){` +
+        `window._votePhoto('${p.id}',-1,'${scoreId}')` +
+      `})()" style="flex:1;padding:4px;font-size:13px;border:1px solid #ccc;border-radius:4px;cursor:pointer;background:#fff">👎</button>` +
+      `</div></div>`;
+
+    if (window.mapboxgl) {
+      new window.mapboxgl.Popup().setLngLat(e.lngLat).setHTML(html).addTo(map);
+    }
+  });
+
+  map.on("mouseenter", PHOTO_LAYER_ID, () => { map.getCanvas().style.cursor = "pointer"; });
+  map.on("mouseleave", PHOTO_LAYER_ID, () => { map.getCanvas().style.cursor = ""; });
+
+  // Expose vote helper so inline onclick can reach it
+  window._votePhoto = async (photoId, value, scoreSpanId) => {
+    const newScore = await votePhoto(photoId, value);
+    if (newScore != null) {
+      const el = document.getElementById(scoreSpanId);
+      if (el) el.textContent = String(newScore);
+    }
+  };
+
+  console.log("[TrailOverlay] Photos added to map:", withPin.length);
+}
+
 // --- TOGGLE HELPERS ---
 
 let overlayEnabled = true; // local cache, synced with storage on load
@@ -427,6 +528,8 @@ function removeLayers(map) {
   if (map.getSource(NETWORK_SOURCE_ID)) map.removeSource(NETWORK_SOURCE_ID);
   if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
   if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+  if (map.getLayer(PHOTO_LAYER_ID)) map.removeLayer(PHOTO_LAYER_ID);
+  if (map.getSource(PHOTO_SOURCE_ID)) map.removeSource(PHOTO_SOURCE_ID);
 }
 
 // Find the <ul> inside Strava's "Map display" section, then wait 500 ms for it to
@@ -488,6 +591,7 @@ async function injectToggle(map, enabled) {
     if (on) {
       addNetworksToMap(map, cachedNetworks);
       addTrailsToMap(map, cachedTrails, cachedNetworks);
+      addPhotosToMap(map, cachedPhotos);
     } else {
       removeLayers(map);
     }
@@ -568,6 +672,7 @@ async function injectToggle(map, enabled) {
 
 let cachedTrails = null;
 let cachedNetworks = null;
+let cachedPhotos = null;
 
 async function main() {
   try {
@@ -575,15 +680,18 @@ async function main() {
     console.log("[TrailOverlay] Using API:", apiUrl);
 
     if (!cachedTrails || !cachedNetworks) {
-      [cachedTrails, cachedNetworks] = await Promise.all([
+      [cachedTrails, cachedNetworks, cachedPhotos] = await Promise.all([
         cachedTrails ?? fetchTrails(apiUrl),
-        cachedNetworks ?? fetchNetworks(apiUrl)
+        cachedNetworks ?? fetchNetworks(apiUrl),
+        cachedPhotos ?? fetchPhotos(null),
       ]);
       console.log(
         "[TrailOverlay] Loaded trails:",
         cachedTrails.length,
         "networks:",
-        cachedNetworks.length
+        cachedNetworks.length,
+        "photos:",
+        cachedPhotos.length
       );
     }
 
@@ -594,6 +702,7 @@ async function main() {
     if (enabled) {
       addNetworksToMap(map, cachedNetworks);
       addTrailsToMap(map, cachedTrails, cachedNetworks);
+      addPhotosToMap(map, cachedPhotos);
       addClickNudge(map);
     }
 
@@ -608,6 +717,7 @@ async function main() {
       if (await getEnabled()) {
         addNetworksToMap(map, cachedNetworks);
         addTrailsToMap(map, cachedTrails, cachedNetworks);
+        addPhotosToMap(map, cachedPhotos);
       }
     });
   } catch (err) {

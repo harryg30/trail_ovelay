@@ -64,3 +64,17 @@ export interface SaveTrailResponse {
   savedTrails?: Trail[];
   error?: string;
 }
+
+export interface TrailPhoto {
+  id: string
+  stravaUniqueId: string
+  rideId: string
+  trailId: string | null
+  blobUrl: string
+  caption: string | null
+  pinLat: number | null
+  pinLon: number | null
+  score: number           // SUM(value) from photo_votes
+  userVote: 1 | -1 | null // null when unauthenticated
+  createdAt: Date
+}

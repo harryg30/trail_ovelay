@@ -1,6 +1,8 @@
+import { put } from '@vercel/blob'
 import { NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getSessionUserId } from '@/lib/auth'
+import { snapToNearestTrail } from '@/lib/geo-utils'
 
 interface StravaActivity {
   id: number
@@ -8,9 +10,17 @@ interface StravaActivity {
   distance: number
   total_elevation_gain: number
   start_date: string
+  total_photo_count: number
   map: {
     summary_polyline: string | null
   }
+}
+
+interface StravaPhoto {
+  unique_id: string
+  urls: Record<string, string>
+  location: [number, number] | null
+  caption: string | null
 }
 
 interface UserTokenRow {
@@ -58,6 +68,86 @@ function decodePolyline(encoded: string): [number, number][] {
   }
 
   return coords
+}
+
+async function syncActivityPhotos(
+  accessToken: string,
+  stravaActivityId: number,
+  rideId: string,
+  userId: string
+): Promise<number> {
+  try {
+    const res = await fetch(
+      `https://www.strava.com/api/v3/activities/${stravaActivityId}/photos?photo_sources=true&size=2048`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    )
+    if (!res.ok) {
+      console.error(`Photos fetch failed for activity ${stravaActivityId}:`, res.status)
+      return 0
+    }
+
+    const stravaPhotos: StravaPhoto[] = await res.json()
+    if (!Array.isArray(stravaPhotos) || stravaPhotos.length === 0) return 0
+
+    // Fetch all trails for snapping
+    const trailRows = await query<{ id: string; polyline: [number, number][] }>(
+      `SELECT id, polyline FROM trails`
+    )
+
+    let count = 0
+    for (const photo of stravaPhotos) {
+      const photoUrl = photo.urls?.['2048']
+      if (!photoUrl) continue
+
+      // Download and re-host in Vercel Blob
+      const imgRes = await fetch(photoUrl)
+      if (!imgRes.ok) continue
+      const blob = await imgRes.blob()
+      const { url: blobUrl } = await put(`strava-photos/${photo.unique_id}.jpg`, blob, {
+        access: 'public',
+      })
+
+      // Auto-snap to nearest trail
+      let trailId: string | null = null
+      let pinLat: number | null = null
+      let pinLon: number | null = null
+      if (photo.location) {
+        const snap = snapToNearestTrail(photo.location, trailRows)
+        if (snap) {
+          trailId = snap.trailId
+          pinLat = snap.lat
+          pinLon = snap.lon
+        } else {
+          pinLat = photo.location[0]
+          pinLon = photo.location[1]
+        }
+      }
+
+      await query(
+        `INSERT INTO trail_photos
+           (strava_unique_id, ride_id, trail_id, blob_url, caption, pin_lat, pin_lon, original_lat, original_lon, uploaded_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         ON CONFLICT (strava_unique_id) DO NOTHING`,
+        [
+          photo.unique_id,
+          rideId,
+          trailId,
+          blobUrl,
+          photo.caption ?? null,
+          pinLat,
+          pinLon,
+          photo.location?.[0] ?? null,
+          photo.location?.[1] ?? null,
+          userId,
+        ]
+      )
+      count++
+    }
+    return count
+  } catch (err) {
+    console.error(`syncActivityPhotos error for activity ${stravaActivityId}:`, err)
+    return 0
+  }
 }
 
 export async function POST(): Promise<Response> {
@@ -108,6 +198,7 @@ export async function POST(): Promise<Response> {
   // Paginate through Strava activities
   let synced = 0
   let skipped = 0
+  let photos = 0
   let page = 1
 
   while (true) {
@@ -157,6 +248,12 @@ export async function POST(): Promise<Response> {
 
       if (result.length > 0) {
         synced++
+        const rideId = result[0].id
+
+        // Fetch photos only for newly inserted rides that have photos
+        if (activity.total_photo_count > 0) {
+          photos += await syncActivityPhotos(accessToken, activity.id, rideId, userId)
+        }
       } else {
         skipped++
       }
@@ -165,5 +262,5 @@ export async function POST(): Promise<Response> {
     page++
   }
 
-  return NextResponse.json({ synced, skipped })
+  return NextResponse.json({ synced, skipped, photos })
 }

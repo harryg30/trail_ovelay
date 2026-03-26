@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Ride, Trail, TrimPoint, TrimSegment, Network } from '@/lib/types'
+import type { Ride, Trail, TrimPoint, TrimSegment, Network, TrailPhoto } from '@/lib/types'
 
 export interface LeafletMapProps {
   rides: Ride[]
@@ -27,6 +27,9 @@ export interface LeafletMapProps {
   selectedNetworkId: string | null
   onNetworkSelected: (network: Network) => void
   showHeatmap: boolean
+  photos: TrailPhoto[]
+  movingPhotoId: string | null
+  onPinMoved: (photoId: string, lat: number, lon: number) => void
 }
 
 export default function LeafletMap({
@@ -51,6 +54,9 @@ export default function LeafletMap({
   selectedNetworkId,
   onNetworkSelected,
   showHeatmap,
+  photos,
+  movingPhotoId,
+  onPinMoved,
 }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -62,6 +68,7 @@ export default function LeafletMap({
   const networksLayerRef = useRef<L.LayerGroup | null>(null)
   const drawNetworkLayerRef = useRef<L.LayerGroup | null>(null)
   const heatmapLayerRef = useRef<L.LayerGroup | null>(null)
+  const photosLayerRef = useRef<L.LayerGroup | null>(null)
 
   // Mutable refs — updated in component body so click handlers always read current values
   const trimModeRef = useRef(trimMode)
@@ -75,7 +82,9 @@ export default function LeafletMap({
   const onNetworkPointAddedRef = useRef(onNetworkPointAdded)
   const onNetworkSelectedRef = useRef(onNetworkSelected)
   const networksRef = useRef(networks)
+  const onPinMovedRef = useRef(onPinMoved)
   trimModeRef.current = trimMode
+  onPinMovedRef.current = onPinMoved
   editTrailModeRef.current = editTrailMode
   onTrimPointSelectedRef.current = onTrimPointSelected
   onTrailSelectedRef.current = onTrailSelected
@@ -113,6 +122,7 @@ export default function LeafletMap({
     selectedTrailLayerRef.current = L.layerGroup().addTo(map)
     refineLayerRef.current = L.layerGroup().addTo(map)
     drawNetworkLayerRef.current = L.layerGroup().addTo(map)
+    photosLayerRef.current = L.layerGroup().addTo(map)
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       if (drawNetworkModeRef.current) {
@@ -133,6 +143,7 @@ export default function LeafletMap({
       networksLayerRef.current = null
       drawNetworkLayerRef.current = null
       heatmapLayerRef.current = null
+      photosLayerRef.current = null
     }
   }, [])
 
@@ -414,6 +425,44 @@ export default function LeafletMap({
 
     mapRef.current?.flyToBounds(L.latLngBounds(trail.polyline), { padding: [60, 60], duration: 0.6 })
   }, [selectedTrailId, trails])
+
+  // Effect: photo markers
+  useEffect(() => {
+    if (!photosLayerRef.current) return
+    photosLayerRef.current.clearLayers()
+
+    const cameraIcon = L.divIcon({
+      className: '',
+      html: '<div style="font-size:18px;line-height:1;cursor:pointer;filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))">📷</div>',
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    })
+
+    photos.forEach((photo) => {
+      if (photo.pinLat == null || photo.pinLon == null) return
+
+      const marker = L.marker([photo.pinLat, photo.pinLon], {
+        icon: cameraIcon,
+        draggable: movingPhotoId === photo.id,
+        zIndexOffset: 500,
+      })
+
+      marker.on('dragend', () => {
+        const { lat, lng } = marker.getLatLng()
+        onPinMovedRef.current(photo.id, lat, lng)
+      })
+
+      marker.bindPopup(
+        `<div style="max-width:200px">` +
+        `<img src="${photo.blobUrl}" style="width:100%;border-radius:4px;display:block;margin-bottom:6px" />` +
+        (photo.caption ? `<p style="margin:0 0 4px;font-size:12px">${photo.caption}</p>` : '') +
+        `<p style="margin:0;font-size:11px;color:#666">Score: ${photo.score}</p>` +
+        `</div>`
+      )
+
+      marker.addTo(photosLayerRef.current!)
+    })
+  }, [photos, movingPhotoId])
 
   return <div ref={containerRef} className="w-full h-full" />
 }
