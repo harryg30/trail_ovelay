@@ -24,12 +24,10 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [trails, setTrails] = useState<Trail[]>([])
   const [networks, setNetworks] = useState<Network[]>([])
   const [hiddenRideIds, setHiddenRideIds] = useState<Set<string>>(new Set())
-  const [showHeatmap, setShowHeatmap] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showAnnouncement, setShowAnnouncement] = useState(false)
 
   useEffect(() => {
-    setShowHeatmap(localStorage.getItem('heatmap_visible') === 'true')
     setShowAnnouncement(localStorage.getItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`) !== 'true')
   }, [])
 
@@ -192,13 +190,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     })
   }, [])
 
-  const handleToggleHeatmap = useCallback(() => {
-    setShowHeatmap((prev) => {
-      const next = !prev
-      localStorage.setItem('heatmap_visible', String(next))
-      return next
-    })
-  }, [])
 
   // Mode transitions now handled by useEditMode — setMode does cleanup automatically
   const handleEditModeChange = setMode
@@ -529,8 +520,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onUpdateNetwork={handleUpdateNetwork}
           onDeleteNetwork={handleDeleteNetwork}
           onStartRedrawNetwork={handleStartRedrawNetwork}
-          showHeatmap={showHeatmap}
-          onToggleHeatmap={handleToggleHeatmap}
           onOpenAnnouncement={handleOpenAnnouncement}
           highResRideIds={highResRideIds}
           onFetchHighRes={handleFetchHighRes}
@@ -578,7 +567,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         editNetworkMode={editNetworkMode}
         selectedNetworkId={selectedNetwork?.id ?? null}
         onNetworkSelected={setSelectedNetwork}
-        showHeatmap={showHeatmap}
       />
       <AnnouncementModal isOpen={showAnnouncement} onClose={handleCloseAnnouncement} content={ANNOUNCEMENT} />
     </div>

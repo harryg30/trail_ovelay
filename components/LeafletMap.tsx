@@ -29,7 +29,6 @@ export interface LeafletMapProps {
   editNetworkMode: boolean
   selectedNetworkId: string | null
   onNetworkSelected: (network: Network) => void
-  showHeatmap: boolean
 }
 
 export default function LeafletMap({
@@ -55,7 +54,6 @@ export default function LeafletMap({
   editNetworkMode,
   selectedNetworkId,
   onNetworkSelected,
-  showHeatmap,
 }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -66,7 +64,6 @@ export default function LeafletMap({
   const refineLayerRef = useRef<L.LayerGroup | null>(null)
   const networksLayerRef = useRef<L.LayerGroup | null>(null)
   const drawNetworkLayerRef = useRef<L.LayerGroup | null>(null)
-  const heatmapLayerRef = useRef<L.LayerGroup | null>(null)
   const averagedTrimLayerRef = useRef<L.LayerGroup | null>(null)
 
   // Mutable refs — updated in component body so click handlers always read current values
@@ -105,13 +102,6 @@ export default function LeafletMap({
       maxZoom: 19,
     }).addTo(map)
 
-    map.createPane('heatmapPane')
-    const heatmapPaneEl = map.getPane('heatmapPane')!
-    heatmapPaneEl.style.zIndex = '300'
-    heatmapPaneEl.style.mixBlendMode = 'screen'
-    heatmapPaneEl.style.pointerEvents = 'none'
-    heatmapLayerRef.current = L.layerGroup().addTo(map)
-
     networksLayerRef.current = L.layerGroup().addTo(map)
     ridesLayerRef.current = L.layerGroup().addTo(map)
     trailsLayerRef.current = L.layerGroup().addTo(map)
@@ -140,7 +130,6 @@ export default function LeafletMap({
       refineLayerRef.current = null
       networksLayerRef.current = null
       drawNetworkLayerRef.current = null
-      heatmapLayerRef.current = null
     }
   }, [])
 
@@ -189,21 +178,6 @@ export default function LeafletMap({
     }
   }, [rides, hiddenRideIds])
 
-  // Effect: heatmap layer
-  useEffect(() => {
-    if (!heatmapLayerRef.current) return
-    heatmapLayerRef.current.clearLayers()
-    if (!showHeatmap || rides.length === 0) return
-    rides.forEach((ride) => {
-      // Outer glow — cool yellow, wide
-      L.polyline(ride.polyline, { color: '#fde68a', weight: 10, opacity: 0.04, pane: 'heatmapPane', interactive: false }).addTo(heatmapLayerRef.current!)
-      // Mid layer — warm orange
-      L.polyline(ride.polyline, { color: '#f97316', weight: 5, opacity: 0.07, pane: 'heatmapPane', interactive: false }).addTo(heatmapLayerRef.current!)
-      // Core — hot red
-      L.polyline(ride.polyline, { color: '#dc2626', weight: 2, opacity: 0.12, pane: 'heatmapPane', interactive: false }).addTo(heatmapLayerRef.current!)
-    })
-  }, [rides, showHeatmap])
-
   // Effect 3: trails layer
   useEffect(() => {
     if (!mapRef.current || !trailsLayerRef.current) return
@@ -211,7 +185,11 @@ export default function LeafletMap({
     trailsLayerRef.current.clearLayers()
 
     trails.forEach((trail) => {
-      const trailPopupContent = `<strong>${trail.name}</strong><br/>${trail.difficulty} · ${trail.distanceKm.toFixed(1)} km`
+      const difficultyLabel = trail.difficulty === 'easy' ? '● Green Circle' :
+        trail.difficulty === 'intermediate' ? '■ Blue Square' :
+        trail.difficulty === 'hard' ? '◆ Black Diamond' :
+        trail.difficulty === 'pro' ? '◆◆ Double Black Diamond' : ''
+      const trailPopupContent = `<strong>${trail.name}</strong><br/>${difficultyLabel ? difficultyLabel + ' · ' : ''}${trail.distanceKm.toFixed(1)} km`
 
       const clickHandler = (e: L.LeafletMouseEvent) => {
         L.DomEvent.stopPropagation(e)
@@ -223,9 +201,16 @@ export default function LeafletMap({
         L.popup().setLatLng(e.latlng).setContent(trailPopupContent).openOn(mapRef.current!)
       }
 
+      const trailColor =
+        trail.difficulty === 'easy' ? '#22c55e' :
+        trail.difficulty === 'intermediate' ? '#3b82f6' :
+        trail.difficulty === 'hard' ? '#18181b' :
+        trail.difficulty === 'pro' ? '#18181b' :
+        '#f97316'
+
       if (editTrailMode) {
         const hitArea = L.polyline(trail.polyline, {
-          color: '#22c55e',
+          color: trailColor,
           weight: 20,
           opacity: 0,
           interactive: true,
@@ -235,10 +220,11 @@ export default function LeafletMap({
       }
 
       const pl = L.polyline(trail.polyline, {
-        color: '#22c55e',
-        weight: 3,
+        color: trailColor,
+        weight: trail.difficulty === 'pro' ? 4 : 3,
         opacity: 0.9,
         interactive: !editTrailMode,
+        dashArray: trail.difficulty === 'pro' ? '6 3' : undefined,
       })
       if (!editTrailMode) {
         pl.on('click', clickHandler)

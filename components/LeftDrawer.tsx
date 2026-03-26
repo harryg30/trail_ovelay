@@ -48,8 +48,6 @@ interface LeftDrawerProps {
   onUpdateNetwork: (name: string, polygon: [number, number][] | null, trailIds: string[]) => Promise<string | null>
   onDeleteNetwork: () => Promise<string | null>
   onStartRedrawNetwork: () => void
-  showHeatmap: boolean
-  onToggleHeatmap: () => void
   onOpenAnnouncement: () => void
   highResRideIds: Set<string>
   onFetchHighRes: (id: string) => Promise<void>
@@ -97,8 +95,6 @@ export default function LeftDrawer({
   onUpdateNetwork,
   onDeleteNetwork,
   onStartRedrawNetwork,
-  showHeatmap,
-  onToggleHeatmap,
   onOpenAnnouncement,
   highResRideIds,
   onFetchHighRes,
@@ -231,20 +227,6 @@ export default function LeftDrawer({
             Rides ({rides.length})
           </h2>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onToggleHeatmap}
-              title={showHeatmap ? 'Hide heatmap' : 'Show heatmap'}
-              className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
-                showHeatmap
-                  ? 'bg-orange-500 text-white'
-                  : 'border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
-              }`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5">
-                <path d="M12.316 3.051a1 1 0 01.633 1.265 4 4 0 00-.382 1.558c0 1.192.59 2.247 1.504 2.895a1 1 0 01-.416 1.791 5 5 0 01-5.343-1.888A7 7 0 003 13.5C3 16.538 5.463 19 8.5 19h3C14.538 19 17 16.538 17 13.5c0-3.316-1.74-6.224-4.362-7.946a1 1 0 01-.322-2.503z" />
-              </svg>
-            </button>
             <select
               value={ridesPageSize}
               onChange={(e) => { const v = Number(e.target.value); setRidesPageSize(v); localStorage.setItem('ridesPageSize', String(v)); setRidesPage(0) }}
@@ -451,10 +433,14 @@ export default function LeftDrawer({
                   {trail.difficulty !== 'not_set' && (
                     <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
                       trail.difficulty === 'easy' ? 'bg-green-100 text-green-700' :
-                      trail.difficulty === 'intermediate' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-red-100 text-red-700'
+                      trail.difficulty === 'intermediate' ? 'bg-blue-100 text-blue-700' :
+                      trail.difficulty === 'hard' ? 'bg-zinc-800 text-white' :
+                      'bg-black text-white'
                     }`}>
-                      {trail.difficulty[0].toUpperCase() + trail.difficulty.slice(1)}
+                      {trail.difficulty === 'easy' ? '● Green Circle' :
+                       trail.difficulty === 'intermediate' ? '■ Blue Square' :
+                       trail.difficulty === 'hard' ? '◆ Black Diamond' :
+                       '◆◆ Double Black'}
                     </span>
                   )}
                   {user && (

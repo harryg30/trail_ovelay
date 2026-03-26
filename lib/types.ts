@@ -12,7 +12,7 @@ export interface Ride {
 export interface Trail {
   id: string;
   name: string;
-  difficulty: "easy" | "intermediate" | "hard" | "not_set";
+  difficulty: "easy" | "intermediate" | "hard" | "pro" | "not_set";
   direction: "one-way" | "out-and-back" | "loop" | "not_set";
   polyline: [number, number][];
   distanceKm: number;

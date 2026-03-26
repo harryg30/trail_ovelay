@@ -49,9 +49,10 @@ export function TrailFormFields({
           disabled={disabled}
         >
           <option value="not_set">Not set</option>
-          <option value="easy">Easy</option>
-          <option value="intermediate">Intermediate</option>
-          <option value="hard">Hard</option>
+          <option value="easy">● Green Circle</option>
+          <option value="intermediate">■ Blue Square</option>
+          <option value="hard">◆ Black Diamond</option>
+          <option value="pro">◆◆ Double Black Diamond</option>
         </select>
       )}
 
