@@ -3,8 +3,9 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Ride, Trail, TrimPoint, TrimSegment, Network, EditMode } from '@/lib/types'
+import type { Ride, Trail, TrimPoint, TrimSegment, Network, EditMode, RidePhoto } from '@/lib/types'
 import { MODE_REGISTRY } from '@/lib/modes'
+import { snapToNearestTrailPoint } from '@/lib/geo-utils'
 
 export interface LeafletMapProps {
   rides: Ride[]
@@ -30,6 +31,12 @@ export interface LeafletMapProps {
   editNetworkMode: boolean
   selectedNetworkId: string | null
   onNetworkSelected: (network: Network) => void
+  ridePhotos: Record<string, RidePhoto[]>
+  photosVisibleRideIds: Set<string>
+  placingPhoto: RidePhoto | null
+  onAcceptPhoto: (photoId: string, trailId: string, trailLat: number, trailLon: number) => Promise<void>
+  onPlacePhoto: (photo: RidePhoto) => void
+  onCancelPlace: () => void
 }
 
 export default function LeafletMap({
@@ -56,6 +63,12 @@ export default function LeafletMap({
   editNetworkMode,
   selectedNetworkId,
   onNetworkSelected,
+  ridePhotos,
+  photosVisibleRideIds,
+  placingPhoto,
+  onAcceptPhoto,
+  onPlacePhoto,
+  onCancelPlace,
 }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -68,6 +81,7 @@ export default function LeafletMap({
   const drawNetworkLayerRef = useRef<L.LayerGroup | null>(null)
   const averagedTrimLayerRef = useRef<L.LayerGroup | null>(null)
   const hoverLayerRef = useRef<L.LayerGroup | null>(null)
+  const photoMarkersLayerRef = useRef<L.LayerGroup | null>(null)
 
   // Mutable refs — updated in component body so click handlers always read current values
   const trimModeRef = useRef(trimMode)
@@ -82,6 +96,14 @@ export default function LeafletMap({
   const onNetworkSelectedRef = useRef(onNetworkSelected)
   const networksRef = useRef(networks)
   const hasFitBoundsRef = useRef(false)
+  const placingPhotoRef = useRef(placingPhoto)
+  const onAcceptPhotoRef = useRef(onAcceptPhoto)
+  const onCancelPlaceRef = useRef(onCancelPlace)
+  const trailsRef = useRef(trails)
+  placingPhotoRef.current = placingPhoto
+  onAcceptPhotoRef.current = onAcceptPhoto
+  onCancelPlaceRef.current = onCancelPlace
+  trailsRef.current = trails
   trimModeRef.current = trimMode
   editTrailModeRef.current = editTrailMode
   onTrimPointSelectedRef.current = onTrimPointSelected
@@ -112,11 +134,66 @@ export default function LeafletMap({
     trimLayerRef.current = L.layerGroup().addTo(map)
     averagedTrimLayerRef.current = L.layerGroup().addTo(map)
     hoverLayerRef.current = L.layerGroup().addTo(map)
+    photoMarkersLayerRef.current = L.layerGroup().addTo(map)
     selectedTrailLayerRef.current = L.layerGroup().addTo(map)
     refineLayerRef.current = L.layerGroup().addTo(map)
     drawNetworkLayerRef.current = L.layerGroup().addTo(map)
 
     map.on('click', (e: L.LeafletMouseEvent) => {
+      if (placingPhotoRef.current) {
+        const { lat, lng } = e.latlng
+        const snap = snapToNearestTrailPoint(lat, lng, trailsRef.current)
+        const pinLat = snap ? snap.lat : lat
+        const pinLon = snap ? snap.lon : lng
+        const trailName = snap ? snap.trail.name : null
+
+        const photo = placingPhotoRef.current
+        const popupContent = document.createElement('div')
+        popupContent.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:160px'
+        if (photo.thumbnailUrl || photo.blobUrl) {
+          const img = document.createElement('img')
+          img.src = photo.thumbnailUrl || photo.blobUrl
+          img.style.cssText = 'width:160px;height:120px;object-fit:cover;border-radius:4px'
+          popupContent.appendChild(img)
+        }
+        const label = document.createElement('p')
+        label.style.cssText = 'font-size:12px;color:#52525b;margin:0'
+        label.textContent = snap
+          ? `Snap to: ${trailName}`
+          : 'No trail nearby — pin at this location'
+        popupContent.appendChild(label)
+        const btnRow = document.createElement('div')
+        btnRow.style.cssText = 'display:flex;gap:6px'
+        const acceptBtn = document.createElement('button')
+        acceptBtn.textContent = snap ? 'Accept' : 'Pin here'
+        acceptBtn.style.cssText = 'flex:1;padding:4px 8px;background:#f59e0b;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer'
+        const cancelBtn = document.createElement('button')
+        cancelBtn.textContent = 'Cancel'
+        cancelBtn.style.cssText = 'padding:4px 8px;border:1px solid #d4d4d8;border-radius:4px;font-size:12px;cursor:pointer;background:#fff'
+        btnRow.appendChild(acceptBtn)
+        btnRow.appendChild(cancelBtn)
+        popupContent.appendChild(btnRow)
+
+        const popup = L.popup({ closeButton: false })
+          .setLatLng([pinLat, pinLon])
+          .setContent(popupContent)
+          .openOn(map)
+
+        acceptBtn.onclick = () => {
+          popup.close()
+          onAcceptPhotoRef.current(
+            photo.id,
+            snap?.trail.id ?? '',
+            pinLat,
+            pinLon
+          )
+        }
+        cancelBtn.onclick = () => {
+          popup.close()
+          onCancelPlaceRef.current()
+        }
+        return
+      }
       if (drawNetworkModeRef.current) {
         onNetworkPointAddedRef.current([e.latlng.lat, e.latlng.lng])
       }
@@ -136,6 +213,7 @@ export default function LeafletMap({
       networksLayerRef.current = null
       drawNetworkLayerRef.current = null
       hoverLayerRef.current = null
+      photoMarkersLayerRef.current = null
     }
   }, [])
 
@@ -159,33 +237,64 @@ export default function LeafletMap({
 
     rides.filter((r) => !hiddenRideIds.has(r.id)).forEach((ride) => {
       const ridePopupContent = `<strong>${ride.name}</strong><br/>${(ride.distance / 1000).toFixed(1)} km`
-      const pl = L.polyline(ride.polyline, {
+
+      // Visible line — not interactive so the wide hit area beneath handles all events
+      L.polyline(ride.polyline, {
         color: '#3b82f6',
         weight: 3,
         dashArray: '8, 6',
         opacity: 0.85,
+        interactive: false,
+      }).addTo(ridesLayerRef.current!)
+
+      // Wide invisible hit area — much easier to click than the 3px line
+      const hitArea = L.polyline(ride.polyline, {
+        color: '#3b82f6',
+        weight: 20,
+        opacity: 0,
+        interactive: true,
       })
 
-      pl.on('click', (e: L.LeafletMouseEvent) => {
+      const findClosestIdx = (latlng: L.LatLng) => {
+        let minDist = Infinity
+        let closestIdx = 0
+        ride.polyline.forEach(([lat, lng], i) => {
+          const d = latlng.distanceTo(L.latLng(lat, lng))
+          if (d < minDist) { minDist = d; closestIdx = i }
+        })
+        return closestIdx
+      }
+
+      hitArea.on('mousemove', (e: L.LeafletMouseEvent) => {
+        if (!trimModeRef.current) return
+        const snapPt = ride.polyline[findClosestIdx(e.latlng)]
+        hoverLayerRef.current?.clearLayers()
+        L.circleMarker(snapPt, {
+          radius: 7,
+          color: '#f97316',
+          fillColor: '#fff',
+          fillOpacity: 1,
+          weight: 3,
+          interactive: false,
+        }).addTo(hoverLayerRef.current!)
+      })
+
+      hitArea.on('mouseout', () => {
+        if (trimModeRef.current) hoverLayerRef.current?.clearLayers()
+      })
+
+      hitArea.on('click', (e: L.LeafletMouseEvent) => {
         L.DomEvent.stopPropagation(e)
         if (trimModeRef.current) {
-          let minDist = Infinity
-          let closestIdx = 0
-          ride.polyline.forEach(([lat, lng], i) => {
-            const d = e.latlng.distanceTo(L.latLng(lat, lng))
-            if (d < minDist) {
-              minDist = d
-              closestIdx = i
-            }
-          })
-          onTrimPointSelectedRef.current(ride.id, closestIdx)
+          hoverLayerRef.current?.clearLayers()
+          onTrimPointSelectedRef.current(ride.id, findClosestIdx(e.latlng))
           return
         }
         if (editTrailModeRef.current) return
         L.popup().setLatLng(e.latlng).setContent(ridePopupContent).openOn(mapRef.current!)
       })
 
-      pl.addTo(ridesLayerRef.current!)
+      hitArea.addTo(ridesLayerRef.current!)
     })
 
     const allPoints = rides.filter((r) => !hiddenRideIds.has(r.id)).flatMap((r) => r.polyline)
@@ -247,11 +356,12 @@ export default function LeafletMap({
       pl.addTo(trailsLayerRef.current!)
 
       // Wide invisible hit area handles all mouse events for this trail
+      // Non-interactive in trim mode so clicks fall through to ride lines beneath
       const hitArea = L.polyline(trail.polyline, {
         color: trailColor,
         weight: 20,
         opacity: 0,
-        interactive: true,
+        interactive: !trimMode,
       })
       hitArea.on('click', clickHandler)
       hitArea.on('mouseover', () => { pl.setStyle({ weight: hoverWeight, opacity: 1 }); showHoverMarkers() })
@@ -273,14 +383,14 @@ export default function LeafletMap({
         trail.difficulty === 'intermediate' ? '■' :
         trail.difficulty === 'hard' ? '◆' :
         trail.difficulty === 'pro' ? '◆◆' : ''
-      const labelHtml = `<div style="font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;line-height:1.4;transform:rotate(${labelAngle}deg);transform-origin:0 50%;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 4px #fff"><span style="color:${trailColor}">${diffIcon}</span>${diffIcon ? '\u00a0' : ''}${trail.name}</div>`
+      const labelHtml = `<div style="font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;line-height:1.4;transform:rotate(${labelAngle}deg);transform-origin:0 50%;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff"><span style="color:${trailColor}">${diffIcon}</span>${diffIcon ? '\u00a0' : ''}${trail.name}</div>`
       L.marker(midPoint, {
         icon: L.divIcon({ html: labelHtml, className: '', iconSize: [0, 0], iconAnchor: [0, 0] }),
         interactive: false,
         keyboard: false,
       }).addTo(trailsLayerRef.current!)
     })
-  }, [trails, editTrailMode])
+  }, [trails, editTrailMode, trimMode])
 
   // Effect 4: cursor — driven by MODE_REGISTRY so new modes get correct cursors automatically
   useEffect(() => {
@@ -426,6 +536,7 @@ export default function LeafletMap({
         fillColor: '#3b82f6',
         fillOpacity: isSelected ? 0.25 : 0.1,
         opacity: isSelected ? 1 : 0.7,
+        interactive: !trimMode,
       })
 
       polygon.on('click', (e: L.LeafletMouseEvent) => {
@@ -437,7 +548,7 @@ export default function LeafletMap({
 
       polygon.addTo(networksLayerRef.current!)
     })
-  }, [networks, hiddenNetworkIds, selectedNetworkId])
+  }, [networks, hiddenNetworkIds, selectedNetworkId, trimMode])
 
   // Effect: draw network polygon preview
   useEffect(() => {
@@ -497,5 +608,125 @@ export default function LeafletMap({
     mapRef.current?.flyToBounds(L.latLngBounds(trail.polyline), { padding: [60, 60], duration: 0.6 })
   }, [selectedTrailId, trails])
 
-  return <div ref={containerRef} className="w-full h-full" />
+  // Effect 10: photo markers
+  useEffect(() => {
+    if (!photoMarkersLayerRef.current) return
+
+    photoMarkersLayerRef.current.clearLayers()
+
+    for (const [rideId, photos] of Object.entries(ridePhotos)) {
+      if (!photosVisibleRideIds.has(rideId)) continue
+
+      for (const photo of photos) {
+        // Accepted photos render at their snapped trail position
+        const displayLat = photo.accepted && photo.trailLat != null ? photo.trailLat : photo.lat
+        const displayLon = photo.accepted && photo.trailLon != null ? photo.trailLon : photo.lon
+
+        if (displayLat == null || displayLon == null) continue
+
+        const thumbSrc = photo.thumbnailUrl || photo.blobUrl
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="width:36px;height:36px;border-radius:4px;border:2px solid ${photo.accepted ? '#f59e0b' : '#fff'};box-shadow:0 1px 4px rgba(0,0,0,.4);overflow:hidden;background:#d4d4d8">
+            <img src="${thumbSrc}" style="width:100%;height:100%;object-fit:cover" />
+          </div>`,
+          iconSize: [36, 36],
+          iconAnchor: [18, 18],
+        })
+
+        const marker = L.marker([displayLat, displayLon], { icon })
+
+        if (!photo.accepted) {
+          const popupContent = document.createElement('div')
+          popupContent.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:160px'
+          const img = document.createElement('img')
+          img.src = thumbSrc
+          img.style.cssText = 'width:160px;height:120px;object-fit:cover;border-radius:4px'
+          popupContent.appendChild(img)
+          const btnRow = document.createElement('div')
+          btnRow.style.cssText = 'display:flex;gap:6px'
+          const acceptBtn = document.createElement('button')
+          acceptBtn.textContent = 'Accept — pin to trail'
+          acceptBtn.style.cssText = 'flex:1;padding:4px 8px;background:#f59e0b;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer'
+          const dismissBtn = document.createElement('button')
+          dismissBtn.textContent = 'Dismiss'
+          dismissBtn.style.cssText = 'padding:4px 8px;border:1px solid #d4d4d8;border-radius:4px;font-size:12px;cursor:pointer;background:#fff'
+          btnRow.appendChild(acceptBtn)
+          btnRow.appendChild(dismissBtn)
+          popupContent.appendChild(btnRow)
+          marker.bindPopup(popupContent)
+
+          acceptBtn.onclick = () => {
+            marker.closePopup()
+            const snap = snapToNearestTrailPoint(displayLat, displayLon, trailsRef.current)
+            if (snap) {
+              onAcceptPhotoRef.current(photo.id, snap.trail.id, snap.lat, snap.lon)
+            } else {
+              // No trail nearby: accept at current GPS position without trail association
+              onAcceptPhotoRef.current(photo.id, '', displayLat, displayLon)
+            }
+          }
+          dismissBtn.onclick = () => marker.closePopup()
+        }
+
+        marker.addTo(photoMarkersLayerRef.current!)
+      }
+    }
+  }, [ridePhotos, photosVisibleRideIds])
+
+  // Collect no-GPS unaccepted photos for the floating tray
+  const trayPhotos: RidePhoto[] = []
+  for (const [rideId, photos] of Object.entries(ridePhotos)) {
+    if (!photosVisibleRideIds.has(rideId)) continue
+    for (const photo of photos) {
+      if (!photo.accepted && photo.lat == null) trayPhotos.push(photo)
+    }
+  }
+
+  return (
+    <div className="relative w-full h-full">
+      <div ref={containerRef} className="w-full h-full" />
+
+      {/* Floating tray for no-GPS photos */}
+      {trayPhotos.length > 0 && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-1000 bg-white rounded-lg shadow-lg border border-zinc-200 p-2 flex flex-col gap-2 max-w-xs w-full">
+          {placingPhoto ? (
+            <div className="flex items-center justify-between gap-2 px-1">
+              <p className="text-xs text-amber-700 font-medium">Click on the map to place this photo</p>
+              <button
+                type="button"
+                onClick={onCancelPlace}
+                className="text-xs text-zinc-500 hover:text-zinc-700 shrink-0"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-zinc-500 px-1">Photos without location — click to place on map</p>
+          )}
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {trayPhotos.map((photo) => (
+              <button
+                key={photo.id}
+                type="button"
+                onClick={() => onPlacePhoto(photo)}
+                title="Click to place on map"
+                className={`shrink-0 w-16 h-16 rounded overflow-hidden border-2 transition-all ${
+                  placingPhoto?.id === photo.id
+                    ? 'border-amber-500 ring-2 ring-amber-300'
+                    : 'border-transparent hover:border-amber-400'
+                }`}
+              >
+                <img
+                  src={photo.thumbnailUrl || photo.blobUrl}
+                  className="w-full h-full object-cover"
+                  alt=""
+                />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

@@ -1,4 +1,4 @@
-import type { Ride } from "@/lib/types";
+import type { Ride, Trail } from "@/lib/types";
 
 // Minimum distance in km from a point to any segment of a polyline
 export function pointToPolylineDistanceKm(
@@ -161,6 +161,28 @@ export function polylineDistanceKm(points: [number, number][]): number {
   return points
     .slice(1)
     .reduce((sum, p, i) => sum + haversineKm(points[i], p), 0);
+}
+
+export function snapToNearestTrailPoint(
+  lat: number,
+  lon: number,
+  trails: Trail[],
+  maxDistanceKm = 0.1
+): { trail: Trail; lat: number; lon: number; index: number } | null {
+  let best: { trail: Trail; lat: number; lon: number; index: number; dist: number } | null = null
+
+  for (const trail of trails) {
+    for (let i = 0; i < trail.polyline.length; i++) {
+      const pt = trail.polyline[i]
+      const d = haversineKm([lat, lon], pt)
+      if (d < maxDistanceKm && (best === null || d < best.dist)) {
+        best = { trail, lat: pt[0], lon: pt[1], index: i, dist: d }
+      }
+    }
+  }
+
+  if (!best) return null
+  return { trail: best.trail, lat: best.lat, lon: best.lon, index: best.index }
 }
 
 export function estimatedElevationGainFt(

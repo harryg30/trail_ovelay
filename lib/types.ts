@@ -56,6 +56,20 @@ export interface Network {
   createdAt: Date;
 }
 
+export interface RidePhoto {
+  id: string;
+  rideId: string;
+  blobUrl: string;
+  thumbnailUrl?: string;
+  lat?: number;
+  lon?: number;
+  takenAt?: Date;
+  trailId?: string;
+  trailLat?: number;
+  trailLon?: number;
+  accepted: boolean;
+}
+
 export interface SaveTrailRequest {
   trails: Omit<Trail, "id" | "createdAt" | "uploadedByEmail">[];
 }

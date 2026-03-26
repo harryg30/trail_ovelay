@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
-import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network } from '@/lib/types'
+import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network, RidePhoto } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import AuthButton from '@/components/AuthButton'
 import { AddTrailContent } from '@/components/trail/AddTrailContent'
@@ -59,6 +59,10 @@ interface LeftDrawerProps {
   onAverageLine: () => void
   onFetchHighResForCorridor: () => Promise<void>
   fetchingHighResForCorridor: boolean
+  ridePhotos: Record<string, RidePhoto[]>
+  photosVisibleRideIds: Set<string>
+  fetchingPhotosId: string | null
+  onFetchAndTogglePhotos: (rideId: string) => Promise<void>
 }
 
 export default function LeftDrawer({
@@ -110,6 +114,10 @@ export default function LeftDrawer({
   onAverageLine,
   onFetchHighResForCorridor,
   fetchingHighResForCorridor,
+  ridePhotos,
+  photosVisibleRideIds,
+  fetchingPhotosId,
+  onFetchAndTogglePhotos,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -288,6 +296,10 @@ export default function LeftDrawer({
                     const isHighRes = highResRideIds.has(ride.id)
                     const isFetching = fetchingHighResId === ride.id
                     const isPending = pendingHighResRideId === ride.id
+                    const isFetchingPhotos = fetchingPhotosId === ride.id
+                    const photos = ridePhotos[ride.id]
+                    const photosLoaded = photos !== undefined
+                    const photosVisible = photosVisibleRideIds.has(ride.id)
                     return (
                       <li key={ride.id} className="flex flex-col rounded-md bg-zinc-50">
                         <div className={`flex items-center justify-between py-2 px-3 text-sm ${hidden ? 'opacity-50' : ''}`}>
@@ -317,6 +329,30 @@ export default function LeftDrawer({
                                     <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
                                     <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
                                   </svg>
+                                )}
+                              </button>
+                            )}
+                            {ride.stravaActivityId && (
+                              <button
+                                type="button"
+                                onClick={() => onFetchAndTogglePhotos(ride.id)}
+                                disabled={isFetchingPhotos}
+                                title={photosVisible ? 'Hide photos' : photosLoaded ? 'Show photos' : 'Fetch photos from Strava'}
+                                className="relative text-zinc-400 hover:text-amber-500 transition-colors disabled:opacity-40 disabled:cursor-default"
+                              >
+                                {isFetchingPhotos ? (
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364l-2.121 2.121M8.757 15.243l-2.121 2.121M18.364 18.364l-2.121-2.121M8.757 8.757L6.636 6.636" />
+                                  </svg>
+                                ) : (
+                                  <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 ${photosVisible ? 'text-amber-500' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M1 8a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 018.07 3h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0016.07 6H17a2 2 0 012 2v7a2 2 0 01-2 2H3a2 2 0 01-2-2V8zm13.5 3a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM10 14a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                                {photosLoaded && photos.length > 0 && (
+                                  <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-[9px] leading-none rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
+                                    {photos.length > 9 ? '9+' : photos.length}
+                                  </span>
                                 )}
                               </button>
                             )}

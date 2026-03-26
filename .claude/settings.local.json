@@ -31,7 +31,8 @@
       "Bash(npm install:*)",
       "Bash(git add:*)",
       "Bash(find c:/Users/gorde/Documents/GitHub/trail_ovelay/app/api/rides -type d -name [id])",
-      "Bash(node -e \"console.log\\(require\\(''crypto''\\).randomBytes\\(32\\).toString\\(''hex''\\)\\)\")"
+      "Bash(node -e \"console.log\\(require\\(''crypto''\\).randomBytes\\(32\\).toString\\(''hex''\\)\\)\")",
+      "Bash(cat c:/Users/gorde/Documents/GitHub/trail_ovelay/migrations/*.sql)"
     ]
   }
 }

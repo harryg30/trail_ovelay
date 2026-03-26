@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import LeftDrawer from '@/components/LeftDrawer'
 import AnnouncementModal from '@/components/AnnouncementModal'
 import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
-import type { Ride, Trail, Network, TrimSegment, TrimFormState, SaveTrailResponse } from '@/lib/types'
+import type { Ride, Trail, Network, TrimSegment, TrimFormState, SaveTrailResponse, RidePhoto } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import { polylineDistanceKm, estimatedElevationGainFt, generateAveragedTrail, clipPolylineToCorridor } from '@/lib/geo-utils'
 import { useEditMode } from '@/hooks/useEditMode'
@@ -61,6 +61,10 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [highResRideIds, setHighResRideIds] = useState<Set<string>>(new Set())
   const [fetchingHighResId, setFetchingHighResId] = useState<string | null>(null)
   const [fetchingHighResForCorridor, setFetchingHighResForCorridor] = useState(false)
+  const [ridePhotos, setRidePhotos] = useState<Record<string, RidePhoto[]>>({})
+  const [photosVisibleRideIds, setPhotosVisibleRideIds] = useState<Set<string>>(new Set())
+  const [fetchingPhotosId, setFetchingPhotosId] = useState<string | null>(null)
+  const [placingPhoto, setPlacingPhoto] = useState<RidePhoto | null>(null)
 
   useEffect(() => {
     fetch('/api/trails')
@@ -503,6 +507,66 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     setMode('add-network')
   }, [])
 
+  const handleFetchAndTogglePhotos = useCallback(async (rideId: string) => {
+    const isVisible = photosVisibleRideIds.has(rideId)
+    // If already loaded, just toggle visibility
+    if (ridePhotos[rideId]) {
+      setPhotosVisibleRideIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(rideId)) next.delete(rideId)
+        else next.add(rideId)
+        return next
+      })
+      return
+    }
+    // Fetch from Strava, then show
+    setFetchingPhotosId(rideId)
+    try {
+      const res = await fetch(`/api/rides/${rideId}/photos`)
+      const data = await res.json()
+      if (data.photos) {
+        setRidePhotos((prev) => ({ ...prev, [rideId]: data.photos }))
+        if (!isVisible) {
+          setPhotosVisibleRideIds((prev) => new Set([...prev, rideId]))
+        }
+      }
+    } finally {
+      setFetchingPhotosId(null)
+    }
+  }, [ridePhotos, photosVisibleRideIds])
+
+  const handleAcceptPhoto = useCallback(async (
+    photoId: string,
+    trailId: string,
+    trailLat: number,
+    trailLon: number
+  ) => {
+    const res = await fetch(`/api/photos/${photoId}/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trailId, trailLat, trailLon }),
+    })
+    const data = await res.json()
+    if (data.photo) {
+      setRidePhotos((prev) => {
+        const rideId = data.photo.rideId
+        const updated = (prev[rideId] ?? []).map((p: RidePhoto) =>
+          p.id === data.photo.id ? data.photo : p
+        )
+        return { ...prev, [rideId]: updated }
+      })
+      setPlacingPhoto(null)
+    }
+  }, [])
+
+  const handlePlacePhoto = useCallback((photo: RidePhoto) => {
+    setPlacingPhoto(photo)
+  }, [])
+
+  const handleCancelPlace = useCallback(() => {
+    setPlacingPhoto(null)
+  }, [])
+
   const handleCloseAnnouncement = useCallback(() => {
     localStorage.setItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`, 'true')
     setShowAnnouncement(false)
@@ -573,6 +637,10 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onAverageLine={handleAverageLine}
           onFetchHighResForCorridor={handleFetchHighResForCorridor}
           fetchingHighResForCorridor={fetchingHighResForCorridor}
+          ridePhotos={ridePhotos}
+          photosVisibleRideIds={photosVisibleRideIds}
+          fetchingPhotosId={fetchingPhotosId}
+          onFetchAndTogglePhotos={handleFetchAndTogglePhotos}
         />
       </div>
 
@@ -614,6 +682,12 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         editNetworkMode={editNetworkMode}
         selectedNetworkId={selectedNetwork?.id ?? null}
         onNetworkSelected={setSelectedNetwork}
+        ridePhotos={ridePhotos}
+        photosVisibleRideIds={photosVisibleRideIds}
+        placingPhoto={placingPhoto}
+        onAcceptPhoto={handleAcceptPhoto}
+        onPlacePhoto={handlePlacePhoto}
+        onCancelPlace={handleCancelPlace}
       />
       <AnnouncementModal isOpen={showAnnouncement} onClose={handleCloseAnnouncement} content={ANNOUNCEMENT} />
     </div>
