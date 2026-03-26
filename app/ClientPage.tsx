@@ -24,15 +24,14 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [trails, setTrails] = useState<Trail[]>([])
   const [networks, setNetworks] = useState<Network[]>([])
   const [hiddenRideIds, setHiddenRideIds] = useState<Set<string>>(new Set())
-  const [showHeatmap, setShowHeatmap] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return localStorage.getItem('heatmap_visible') === 'true'
-  })
+  const [showHeatmap, setShowHeatmap] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [showAnnouncement, setShowAnnouncement] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return localStorage.getItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`) !== 'true'
-  })
+  const [showAnnouncement, setShowAnnouncement] = useState(false)
+
+  useEffect(() => {
+    setShowHeatmap(localStorage.getItem('heatmap_visible') === 'true')
+    setShowAnnouncement(localStorage.getItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`) !== 'true')
+  }, [])
 
   // Edit state — mode transitions and mode-scoped state managed by useEditMode
   const {

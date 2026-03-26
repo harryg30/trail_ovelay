@@ -62,7 +62,7 @@ export const ANNOUNCEMENT: AnnouncementContent = {
         skills: ["React", "Java", "Apache Spark"]
       }
     ],
-    project: `full-stack Next.js, Strava OAuth, PostgreSQL, and a Chrome extension
+    project: `full-stack Next.js, Strava OAuth, AWS hosted PostgreSQL, and a Chrome extension
 Built to solve a real problem I have as a mountain biker.`,
     links: [
       { label: "GitHub", href: "https://github.com/harryg30" },

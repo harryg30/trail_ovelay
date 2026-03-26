@@ -30,7 +30,8 @@
       "Bash(find /c/Users/gorde/Documents/GitHub/trail_ovelay/node_modules/next/dist/docs -name *.md)",
       "Bash(npm install:*)",
       "Bash(git add:*)",
-      "Bash(find c:/Users/gorde/Documents/GitHub/trail_ovelay/app/api/rides -type d -name [id])"
+      "Bash(find c:/Users/gorde/Documents/GitHub/trail_ovelay/app/api/rides -type d -name [id])",
+      "Bash(node -e \"console.log\\(require\\(''crypto''\\).randomBytes\\(32\\).toString\\(''hex''\\)\\)\")"
     ]
   }
 }

@@ -8,9 +8,12 @@ const signer = new Signer({
   port: Number(process.env.TRAIL_DB_PGPORT),
   username: process.env.TRAIL_DB_PGUSER!,
   region: process.env.TRAIL_DB_AWS_REGION!,
-  credentials: awsCredentialsProvider({
-    roleArn: process.env.TRAIL_DB_AWS_ROLE_ARN!,
-    clientConfig: { region: process.env.TRAIL_DB_AWS_REGION! },
+  // On Vercel: use OIDC federation. Locally: fall back to ~/.aws/credentials
+  ...(process.env.VERCEL && {
+    credentials: awsCredentialsProvider({
+      roleArn: process.env.TRAIL_DB_AWS_ROLE_ARN!,
+      clientConfig: { region: process.env.TRAIL_DB_AWS_REGION! },
+    }),
   }),
 });
 

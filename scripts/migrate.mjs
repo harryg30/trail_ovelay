@@ -2,23 +2,27 @@ import { readFileSync, readdirSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { Signer } from '@aws-sdk/rds-signer'
+import { awsCredentialsProvider } from '@vercel/functions/oidc'
 import { Pool } from 'pg'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// Load .env.local
+// Load .env.local (includes VERCEL_OIDC_TOKEN for local dev)
 const envPath = resolve(__dirname, '../.env.local')
 for (const line of readFileSync(envPath, 'utf8').split('\n')) {
   const match = line.match(/^([^#=]+)=["']?(.+?)["']?\s*$/)
   if (match) process.env[match[1].trim()] = match[2].trim()
 }
 
-// Uses local AWS credentials (~/.aws/credentials or AWS_* env vars)
 const signer = new Signer({
   hostname: process.env.TRAIL_DB_PGHOST,
   port: Number(process.env.TRAIL_DB_PGPORT),
   username: process.env.TRAIL_DB_PGUSER,
   region: process.env.TRAIL_DB_AWS_REGION,
+  credentials: awsCredentialsProvider({
+    roleArn: process.env.TRAIL_DB_AWS_ROLE_ARN,
+    clientConfig: { region: process.env.TRAIL_DB_AWS_REGION },
+  }),
 })
 
 const pool = new Pool({
