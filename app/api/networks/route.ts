@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getSessionUserId } from '@/lib/auth'
 import type { Network } from '@/lib/types'
+import { rowToNetwork, type NetworkRow } from '@/lib/api/mappers'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -11,24 +12,6 @@ const CORS_HEADERS = {
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: CORS_HEADERS })
-}
-
-type NetworkRow = {
-  id: string
-  name: string
-  polygon: [number, number][]
-  created_at: string
-  trail_ids: string[] | null
-}
-
-function rowToNetwork(row: NetworkRow): Network {
-  return {
-    id: row.id,
-    name: row.name,
-    polygon: row.polygon,
-    trailIds: row.trail_ids ?? [],
-    createdAt: new Date(row.created_at),
-  }
 }
 
 export async function GET() {

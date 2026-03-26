@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import LeftDrawer from '@/components/LeftDrawer'
 import AnnouncementModal from '@/components/AnnouncementModal'
 import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
-import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, SaveTrailResponse, EditMode, Network } from '@/lib/types'
+import type { Ride, Trail, Network, TrimSegment, TrimFormState, SaveTrailResponse } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
-import { polylineDistanceKm, estimatedElevationGainFt } from '@/lib/geo-utils'
+import { polylineDistanceKm, estimatedElevationGainFt, generateAveragedTrail, clipPolylineToCorridor } from '@/lib/geo-utils'
+import { useEditMode } from '@/hooks/useEditMode'
 
 const LeafletMap = dynamic(() => import('@/components/LeafletMap'), {
   ssr: false,
@@ -33,25 +34,34 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     return localStorage.getItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`) !== 'true'
   })
 
-  // Edit state
-  const [editMode, setEditMode] = useState<EditMode>(null)
+  // Edit state — mode transitions and mode-scoped state managed by useEditMode
+  const {
+    editMode,
+    setMode,
+    trimStart, setTrimStart,
+    trimEnd, setTrimEnd,
+    trimEndRef,
+    selectedTrail, setSelectedTrail,
+    refinedPolyline, setRefinedPolyline,
+    savingRefined, setSavingRefined,
+    refineError, setRefineError,
+    selectedNetwork, setSelectedNetwork,
+    drawNetworkPoints, setDrawNetworkPoints,
+  } = useEditMode()
+
   const trimMode = editMode === 'add-trail'
   const editTrailMode = editMode === 'edit-trail'
   const refineMode = editMode === 'refine-trail'
   const drawNetworkMode = editMode === 'add-network'
   const editNetworkMode = editMode === 'edit-network'
-  const [trimStart, setTrimStart] = useState<TrimPoint | null>(null)
-  const [trimEnd, setTrimEnd] = useState<TrimPoint | null>(null)
-  const [selectedTrail, setSelectedTrail] = useState<Trail | null>(null)
-  const [refinedPolyline, setRefinedPolyline] = useState<[number, number][] | null>(null)
-  const [savingRefined, setSavingRefined] = useState(false)
-  const [refineError, setRefineError] = useState<string | null>(null)
-  const [selectedNetwork, setSelectedNetwork] = useState<Network | null>(null)
-  const [drawNetworkPoints, setDrawNetworkPoints] = useState<[number, number][]>([])
 
-  // Stable ref to read trimEnd inside setTrimStart updater
-  const trimEndRef = useRef<TrimPoint | null>(null)
-  trimEndRef.current = trimEnd
+  const [averagedTrimPolyline, setAveragedTrimPolyline] = useState<[number, number][] | null>(null)
+  const [averagedRideCount, setAveragedRideCount] = useState(0)
+  const [corridorRadiusKm, setCorridorRadiusKm] = useState(0.025)
+  const [outputSpacingKm, setOutputSpacingKm] = useState(0.010)
+  const [highResRideIds, setHighResRideIds] = useState<Set<string>>(new Set())
+  const [fetchingHighResId, setFetchingHighResId] = useState<string | null>(null)
+  const [fetchingHighResForCorridor, setFetchingHighResForCorridor] = useState(false)
 
   useEffect(() => {
     fetch('/api/trails')
@@ -101,6 +111,70 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     }
   }, [rides, trimStart, trimEnd])
 
+  useEffect(() => {
+    if (!trimSegment) {
+      setAveragedTrimPolyline(null)
+      setAveragedRideCount(0)
+      return
+    }
+    const otherRides = rides.filter((r) => r.id !== trimSegment.ride.id)
+    const result = generateAveragedTrail(trimSegment.polyline, otherRides, corridorRadiusKm, 2, outputSpacingKm)
+    setAveragedTrimPolyline(result?.polyline ?? null)
+    setAveragedRideCount(result?.rideCount ?? 0)
+  }, [trimSegment, rides, corridorRadiusKm, outputSpacingKm])
+
+  const handleClearAveragedTrim = useCallback(() => {
+    setAveragedTrimPolyline(null)
+  }, [])
+
+  const corridorRidesAvailable = useMemo(() => {
+    if (!trimSegment) return 0
+    return rides.filter((r) =>
+      r.stravaActivityId &&
+      !highResRideIds.has(r.id) &&
+      r.id !== trimSegment.ride.id &&
+      clipPolylineToCorridor(r.polyline, trimSegment.polyline, corridorRadiusKm).length >= 5
+    ).length
+  }, [rides, trimSegment, highResRideIds, corridorRadiusKm])
+
+  const handleFetchHighRes = useCallback(async (rideId: string) => {
+    setFetchingHighResId(rideId)
+    try {
+      const res = await fetch(`/api/rides/${rideId}/highres`)
+      const data = await res.json()
+      if (data.polyline) {
+        setRides((prev) => prev.map((r) =>
+          r.id === rideId ? { ...r, polyline: data.polyline, pointCount: data.polyline.length } : r
+        ))
+        setHighResRideIds((prev) => new Set([...prev, rideId]))
+      }
+    } finally {
+      setFetchingHighResId(null)
+    }
+  }, [])
+
+  const handleFetchHighResForCorridor = useCallback(async () => {
+    if (!trimSegment) return
+    setFetchingHighResForCorridor(true)
+    const eligible = rides.filter((r) =>
+      r.stravaActivityId &&
+      !highResRideIds.has(r.id) &&
+      r.id !== trimSegment.ride.id &&
+      clipPolylineToCorridor(r.polyline, trimSegment.polyline, corridorRadiusKm).length >= 5
+    )
+    for (const ride of eligible) {
+      const res = await fetch(`/api/rides/${ride.id}/highres`)
+      const data = await res.json()
+      if (data.polyline) {
+        setRides((prev) => prev.map((r) =>
+          r.id === ride.id ? { ...r, polyline: data.polyline, pointCount: data.polyline.length } : r
+        ))
+        setHighResRideIds((prev) => new Set([...prev, ride.id]))
+      }
+    }
+    setFetchingHighResForCorridor(false)
+  }, [rides, trimSegment, highResRideIds, corridorRadiusKm])
+
   const handleRidesUploaded = (newRides: Ride[]) => {
     setRides((prev) => [...prev, ...newRides])
     setHiddenRideIds((prev) => {
@@ -127,27 +201,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     })
   }, [])
 
-  const handleEditModeChange = useCallback((mode: EditMode) => {
-    setEditMode(mode)
-    if (mode !== 'add-trail') {
-      setTrimStart(null)
-      setTrimEnd(null)
-    }
-    if (mode !== 'edit-trail' && mode !== 'refine-trail') {
-      setSelectedTrail(null)
-    }
-    if (mode !== 'refine-trail') {
-      setRefinedPolyline(null)
-      setRefineError(null)
-    }
-    if (mode !== 'add-network' && mode !== 'edit-network') {
-      setSelectedNetwork(null)
-      setDrawNetworkPoints([])
-    }
-    if (mode !== 'add-network') {
-      setDrawNetworkPoints([])
-    }
-  }, [])
+  // Mode transitions now handled by useEditMode — setMode does cleanup automatically
+  const handleEditModeChange = setMode
 
   const handleTrailSelected = useCallback((trail: Trail) => {
     setSelectedTrail(trail)
@@ -157,7 +212,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     if (!selectedTrail) return
     setRefinedPolyline([...selectedTrail.polyline])
     setRefineError(null)
-    setEditMode('refine-trail')
+    setMode('refine-trail')
   }, [selectedTrail])
 
   const handlePolylineRefined = useCallback((polyline: [number, number][]) => {
@@ -188,7 +243,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         setTrails((prev) => prev.map((t) => (t.id === data.trail.id ? data.trail : t)))
         setSelectedTrail(data.trail)
         setRefinedPolyline(null)
-        setEditMode('edit-trail')
+        setMode('edit-trail')
       } else {
         setRefineError(data.error ?? 'Save failed')
       }
@@ -313,10 +368,12 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
               difficulty: form.difficulty,
               direction: form.direction,
               notes: form.notes || undefined,
-              polyline: trimSegment.polyline,
-              distanceKm: trimSegment.distanceKm,
+              polyline: averagedTrimPolyline ?? trimSegment.polyline,
+              distanceKm: averagedTrimPolyline
+                ? polylineDistanceKm(averagedTrimPolyline)
+                : trimSegment.distanceKm,
               elevationGainFt: trimSegment.elevationGainFt,
-              source: 'trim',
+              source: averagedTrimPolyline ? 'averaged' : 'trim',
               sourceRideId: trimSegment.ride.id,
             },
           ],
@@ -327,7 +384,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
       if (data.success && data.savedTrails) {
         setTrails((prev) => [...(data.savedTrails ?? []), ...prev])
-        setEditMode(null)
+        setMode(null)
         setTrimStart(null)
         setTrimEnd(null)
         return null
@@ -353,7 +410,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         const data = await res.json()
         if (data.success && data.network) {
           setNetworks((prev) => [data.network, ...prev])
-          setEditMode(null)
+          setMode(null)
           setDrawNetworkPoints([])
           return null
         }
@@ -380,7 +437,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         if (data.success && data.network) {
           setNetworks((prev) => prev.map((n) => (n.id === data.network.id ? data.network : n)))
           setSelectedNetwork(null)
-          setEditMode(null)
+          setMode(null)
           setDrawNetworkPoints([])
           return null
         }
@@ -400,7 +457,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       if (data.success) {
         setNetworks((prev) => prev.filter((n) => n.id !== selectedNetwork.id))
         setSelectedNetwork(null)
-        setEditMode(null)
+        setMode(null)
         return null
       }
       return data.error ?? 'Delete failed'
@@ -411,7 +468,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const handleStartRedrawNetwork = useCallback(() => {
     setDrawNetworkPoints([])
-    setEditMode('add-network')
+    setMode('add-network')
   }, [])
 
   const handleCloseAnnouncement = useCallback(() => {
@@ -450,6 +507,13 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onSaveTrail={handleSaveTrail}
           onStepTrimPoint={handleStepTrimPoint}
           onClearTrimPoint={handleClearTrimPoint}
+          averagedTrimPolyline={averagedTrimPolyline}
+          averagedRideCount={averagedRideCount}
+          onClearAveragedTrim={handleClearAveragedTrim}
+          corridorRadiusKm={corridorRadiusKm}
+          onCorridorRadiusChange={setCorridorRadiusKm}
+          outputSpacingKm={outputSpacingKm}
+          onOutputSpacingChange={setOutputSpacingKm}
           selectedTrail={selectedTrail}
           onSelectTrail={setSelectedTrail}
           onUpdateTrail={handleUpdateTrail}
@@ -469,6 +533,12 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           showHeatmap={showHeatmap}
           onToggleHeatmap={handleToggleHeatmap}
           onOpenAnnouncement={handleOpenAnnouncement}
+          highResRideIds={highResRideIds}
+          onFetchHighRes={handleFetchHighRes}
+          fetchingHighResId={fetchingHighResId}
+          corridorRidesAvailable={corridorRidesAvailable}
+          onFetchHighResForCorridor={handleFetchHighResForCorridor}
+          fetchingHighResForCorridor={fetchingHighResForCorridor}
         />
       </div>
 
@@ -485,13 +555,16 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         </button>
       )}
 
+
       <LeafletMap
         rides={rides}
         hiddenRideIds={hiddenRideIds}
         trails={trails}
+        editMode={editMode}
         trimMode={trimMode}
         trimStart={trimStart}
         trimSegment={trimSegment}
+        averagedTrimPolyline={averagedTrimPolyline}
         onTrimPointSelected={handleTrimPointSelected}
         editTrailMode={editTrailMode}
         selectedTrailId={selectedTrail?.id ?? null}

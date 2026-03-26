@@ -1,39 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queryOne, query } from '@/lib/db'
 import { getSessionUserId } from '@/lib/auth'
-import type { Trail } from '@/lib/types'
-
-type TrailRow = {
-  id: string
-  name: string
-  difficulty: Trail['difficulty']
-  direction: Trail['direction']
-  polyline: [number, number][]
-  distance_km: number
-  elevation_gain_ft: number
-  notes: string | null
-  source: string
-  source_ride_id: string | null
-  uploaded_by_email: string | null
-  created_at: string
-}
-
-function rowToTrail(row: TrailRow): Trail {
-  return {
-    id: row.id,
-    name: row.name,
-    difficulty: row.difficulty,
-    direction: row.direction,
-    polyline: row.polyline,
-    distanceKm: row.distance_km,
-    elevationGainFt: row.elevation_gain_ft,
-    notes: row.notes ?? undefined,
-    source: row.source,
-    sourceRideId: row.source_ride_id ?? undefined,
-    uploadedByEmail: row.uploaded_by_email ?? undefined,
-    createdAt: new Date(row.created_at),
-  }
-}
+import { rowToTrail, type TrailRow } from '@/lib/api/mappers'
 
 export async function PATCH(
   request: NextRequest,

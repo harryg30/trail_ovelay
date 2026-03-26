@@ -3,15 +3,18 @@
 import { useEffect, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Ride, Trail, TrimPoint, TrimSegment, Network } from '@/lib/types'
+import type { Ride, Trail, TrimPoint, TrimSegment, Network, EditMode } from '@/lib/types'
+import { MODE_REGISTRY } from '@/lib/modes'
 
 export interface LeafletMapProps {
   rides: Ride[]
   hiddenRideIds: Set<string>
   trails: Trail[]
+  editMode: EditMode
   trimMode: boolean
   trimStart: TrimPoint | null
   trimSegment: TrimSegment | null
+  averagedTrimPolyline: [number, number][] | null
   onTrimPointSelected: (rideId: string, index: number) => void
   editTrailMode: boolean
   selectedTrailId: string | null
@@ -33,9 +36,11 @@ export default function LeafletMap({
   rides,
   hiddenRideIds,
   trails,
+  editMode,
   trimMode,
   trimStart,
   trimSegment,
+  averagedTrimPolyline,
   onTrimPointSelected,
   editTrailMode,
   selectedTrailId,
@@ -62,6 +67,7 @@ export default function LeafletMap({
   const networksLayerRef = useRef<L.LayerGroup | null>(null)
   const drawNetworkLayerRef = useRef<L.LayerGroup | null>(null)
   const heatmapLayerRef = useRef<L.LayerGroup | null>(null)
+  const averagedTrimLayerRef = useRef<L.LayerGroup | null>(null)
 
   // Mutable refs — updated in component body so click handlers always read current values
   const trimModeRef = useRef(trimMode)
@@ -110,6 +116,7 @@ export default function LeafletMap({
     ridesLayerRef.current = L.layerGroup().addTo(map)
     trailsLayerRef.current = L.layerGroup().addTo(map)
     trimLayerRef.current = L.layerGroup().addTo(map)
+    averagedTrimLayerRef.current = L.layerGroup().addTo(map)
     selectedTrailLayerRef.current = L.layerGroup().addTo(map)
     refineLayerRef.current = L.layerGroup().addTo(map)
     drawNetworkLayerRef.current = L.layerGroup().addTo(map)
@@ -128,6 +135,7 @@ export default function LeafletMap({
       ridesLayerRef.current = null
       trailsLayerRef.current = null
       trimLayerRef.current = null
+      averagedTrimLayerRef.current = null
       selectedTrailLayerRef.current = null
       refineLayerRef.current = null
       networksLayerRef.current = null
@@ -204,13 +212,8 @@ export default function LeafletMap({
 
     trails.forEach((trail) => {
       const trailPopupContent = `<strong>${trail.name}</strong><br/>${trail.difficulty} · ${trail.distanceKm.toFixed(1)} km`
-      const pl = L.polyline(trail.polyline, {
-        color: '#22c55e',
-        weight: 3,
-        opacity: 0.9,
-      })
 
-      pl.on('click', (e: L.LeafletMouseEvent) => {
+      const clickHandler = (e: L.LeafletMouseEvent) => {
         L.DomEvent.stopPropagation(e)
         if (editTrailModeRef.current) {
           onTrailSelectedRef.current(trail)
@@ -218,18 +221,39 @@ export default function LeafletMap({
         }
         if (trimModeRef.current) return
         L.popup().setLatLng(e.latlng).setContent(trailPopupContent).openOn(mapRef.current!)
+      }
+
+      if (editTrailMode) {
+        const hitArea = L.polyline(trail.polyline, {
+          color: '#22c55e',
+          weight: 20,
+          opacity: 0,
+          interactive: true,
+        })
+        hitArea.on('click', clickHandler)
+        hitArea.addTo(trailsLayerRef.current!)
+      }
+
+      const pl = L.polyline(trail.polyline, {
+        color: '#22c55e',
+        weight: 3,
+        opacity: 0.9,
+        interactive: !editTrailMode,
       })
+      if (!editTrailMode) {
+        pl.on('click', clickHandler)
+      }
 
       pl.addTo(trailsLayerRef.current!)
     })
-  }, [trails])
+  }, [trails, editTrailMode])
 
-  // Effect 4: cursor
+  // Effect 4: cursor — driven by MODE_REGISTRY so new modes get correct cursors automatically
   useEffect(() => {
     if (!mapRef.current) return
-    const cursor = trimMode || drawNetworkMode ? 'crosshair' : editTrailMode || editNetworkMode ? 'pointer' : ''
+    const cursor = editMode ? (MODE_REGISTRY[editMode]?.cursor ?? '') : ''
     mapRef.current.getContainer().style.cursor = cursor
-  }, [trimMode, editTrailMode, drawNetworkMode, editNetworkMode])
+  }, [editMode])
 
   // Effect 5: start marker (before second point is selected)
   useEffect(() => {
@@ -287,6 +311,30 @@ export default function LeafletMap({
       .bindTooltip('End')
       .addTo(trimLayerRef.current)
   }, [trimSegment])
+
+  // Effect 6b: averaged trim candidate
+  useEffect(() => {
+    if (!averagedTrimLayerRef.current) return
+    averagedTrimLayerRef.current.clearLayers()
+    if (!averagedTrimPolyline || averagedTrimPolyline.length < 2) return
+
+    L.polyline(averagedTrimPolyline, {
+      color: '#d946ef',
+      weight: 4,
+      dashArray: '10, 6',
+      opacity: 0.9,
+    }).addTo(averagedTrimLayerRef.current)
+
+    for (const pt of averagedTrimPolyline) {
+      L.circleMarker(pt, {
+        radius: 2,
+        color: '#d946ef',
+        fillColor: '#d946ef',
+        fillOpacity: 1,
+        weight: 0,
+      }).addTo(averagedTrimLayerRef.current)
+    }
+  }, [averagedTrimPolyline])
 
   // Effect 7: refine mode — draggable nodes
   useEffect(() => {
@@ -346,13 +394,12 @@ export default function LeafletMap({
       })
 
       polygon.on('click', (e: L.LeafletMouseEvent) => {
-        L.DomEvent.stopPropagation(e)
         if (editNetworkModeRef.current) {
+          L.DomEvent.stopPropagation(e)
           onNetworkSelectedRef.current(network)
         }
       })
 
-      polygon.bindTooltip(network.name, { permanent: false, sticky: true })
       polygon.addTo(networksLayerRef.current!)
     })
   }, [networks, selectedNetworkId])

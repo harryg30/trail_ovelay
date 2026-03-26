@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
 import { getSessionUserId } from '@/lib/auth'
 import type { Network } from '@/lib/types'
+import { rowToNetwork } from '@/lib/api/mappers'
 
 export async function PATCH(
   request: NextRequest,
@@ -62,13 +63,7 @@ export async function PATCH(
       trailIds = rows.map((r) => r.trail_id)
     }
 
-    const network: Network = {
-      id: networkRow.id,
-      name: networkRow.name,
-      polygon: networkRow.polygon,
-      trailIds,
-      createdAt: new Date(networkRow.created_at),
-    }
+    const network: Network = rowToNetwork({ ...networkRow, trail_ids: trailIds })
 
     return NextResponse.json({ success: true, network })
   } catch (error) {

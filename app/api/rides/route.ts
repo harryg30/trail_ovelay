@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { getSessionUserId } from '@/lib/auth'
-import type { Ride } from '@/lib/types'
+import { rowToRide } from '@/lib/api/mappers'
 
 export async function GET() {
   const userId = await getSessionUserId()
@@ -10,35 +10,19 @@ export async function GET() {
   }
 
   try {
-    const rows = await query<{
-      id: string
-      name: string
-      distance: number
-      elevation: number
-      polyline: [number, number][]
-      point_count: number
-      timestamp: string | null
-    }>(
-      `SELECT id, name, distance, elevation, polyline, point_count, timestamp
+    const rows = await query(
+      `SELECT id, name, distance, elevation, polyline, point_count, timestamp, strava_activity_id
        FROM rides
        WHERE user_id = $1
        ORDER BY COALESCE(timestamp, created_at) DESC`,
       [userId]
     )
 
-    const rides: Ride[] = rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      distance: row.distance,
-      elevation: row.elevation,
-      polyline: row.polyline,
-      pointCount: row.point_count,
-      timestamp: row.timestamp ? new Date(row.timestamp) : new Date(0),
-    }))
+    const rides = rows.map(rowToRide)
 
     return NextResponse.json({ success: true, rides })
   } catch (error) {
     console.error('GET /api/rides error:', error)
-    return NextResponse.json({ success: true, rides: [] })
+    return NextResponse.json({ success: false, error: 'Failed to load rides' }, { status: 500 })
   }
 }

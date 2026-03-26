@@ -1,0 +1,81 @@
+import type { Trail, Network, Ride } from '@/lib/types'
+
+// ─── Trail ────────────────────────────────────────────────────────────────────
+
+export type TrailRow = {
+  id: string
+  name: string
+  difficulty: Trail['difficulty']
+  direction: Trail['direction']
+  polyline: [number, number][]
+  distance_km: number
+  elevation_gain_ft: number
+  notes: string | null
+  source: string
+  source_ride_id: string | null
+  uploaded_by_email: string | null
+  created_at: string
+}
+
+export function rowToTrail(row: TrailRow): Trail {
+  return {
+    id: row.id,
+    name: row.name,
+    difficulty: row.difficulty,
+    direction: row.direction,
+    polyline: row.polyline,
+    distanceKm: row.distance_km,
+    elevationGainFt: row.elevation_gain_ft,
+    notes: row.notes ?? undefined,
+    source: row.source,
+    sourceRideId: row.source_ride_id ?? undefined,
+    uploadedByEmail: row.uploaded_by_email ?? undefined,
+    createdAt: new Date(row.created_at),
+  }
+}
+
+// ─── Network ──────────────────────────────────────────────────────────────────
+
+export type NetworkRow = {
+  id: string
+  name: string
+  polygon: [number, number][]
+  created_at: string
+  trail_ids: string[] | null
+}
+
+export function rowToNetwork(row: NetworkRow): Network {
+  return {
+    id: row.id,
+    name: row.name,
+    polygon: row.polygon,
+    trailIds: row.trail_ids ?? [],
+    createdAt: new Date(row.created_at),
+  }
+}
+
+// ─── Ride ─────────────────────────────────────────────────────────────────────
+
+export type RideRow = {
+  id: string
+  name: string
+  distance: number
+  elevation: number
+  polyline: [number, number][]
+  point_count: number
+  timestamp: string | null
+  strava_activity_id: number | null
+}
+
+export function rowToRide(row: RideRow): Ride {
+  return {
+    id: row.id,
+    name: row.name,
+    distance: row.distance,
+    elevation: row.elevation,
+    polyline: row.polyline,
+    pointCount: row.point_count,
+    timestamp: row.timestamp ? new Date(row.timestamp) : new Date(0),
+    stravaActivityId: row.strava_activity_id ?? undefined,
+  }
+}
