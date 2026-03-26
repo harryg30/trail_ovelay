@@ -84,7 +84,7 @@ export default function LeafletMap({
   const photoMarkersLayerRef = useRef<L.LayerGroup | null>(null)
 
   const [zoom, setZoom] = useState(5)
-  const LABEL_ZOOM_THRESHOLD = 14
+  const LABEL_ZOOM_THRESHOLD = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 14 : 15
 
   // Mutable refs — updated in component body so click handlers always read current values
   const trimModeRef = useRef(trimMode)
