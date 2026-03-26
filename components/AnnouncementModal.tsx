@@ -48,7 +48,7 @@ export default function AnnouncementModal({
             <h2 className='text-lg font-semibold text-zinc-900 mb-1'>
               {content.title}
             </h2>
-            <p className='text-sm text-zinc-600 leading-relaxed'>
+            <p className='text-sm text-zinc-600 leading-relaxed whitespace-pre-wrap'>
               {content.description}
             </p>
           </div>

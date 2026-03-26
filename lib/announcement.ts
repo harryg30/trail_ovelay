@@ -28,8 +28,8 @@ export interface AnnouncementContent {
 
 export const ANNOUNCEMENT: AnnouncementContent = {
   title: "Welcome to Trail Overlay",
-  description:
-    "Trail Overlay aims to solve my biggest pain point while planning mountain bike rides. Tools like Strava and Ride with GPS are missing details that help me decide which trails to ride, and I end up spending a lot of time cross-referencing other sources like Trailforks. Trail Overlay is a Chrome extension that surfaces this information directly on the Strava route builder map (Ride with GPS planned), so you can spend less time planning and more time riding.",
+  description: `Trail Overlay aims to solve my biggest pain point while planning mountain bike rides. Tools like Strava and Ride with GPS are missing details that help me decide which trails to ride, and I end up spending a lot of time cross-referencing other sources like Trailforks. 
+Trail Overlay is website that gathers user generated trail information and a Chrome extension that surfaces this information directly on the Strava route builder map (Ride with GPS planned), so you can spend less time planning and more time riding.`,
   whatsNew: [
     "Create and edit trails directly on the map with our new drawing tools.",
     "Trail details now appear inside Strava route builder via the Chrome extension. (experimental)"
