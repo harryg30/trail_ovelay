@@ -1,4 +1,4 @@
-export const ANNOUNCEMENT_VERSION = "2026-03-25";
+export const ANNOUNCEMENT_VERSION = "2026-03-26";
 
 export interface BioPosition {
   role: string;
@@ -67,6 +67,7 @@ Built to solve a real problem I have as a mountain biker.`,
     links: [
       { label: "GitHub", href: "https://github.com/harryg30" },
       { label: "LinkedIn", href: "https://linkedin.com/in/harry-gordenstein" },
+      { label: "Strava", href: "https://www.strava.com/athletes/25847893" },
       { label: "Contact", action: "contact-modal" as const }
     ],
     profilePic: "/20260219_160511_059_saved~2.jpg"
