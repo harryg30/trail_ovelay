@@ -24,6 +24,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [trails, setTrails] = useState<Trail[]>([])
   const [networks, setNetworks] = useState<Network[]>([])
   const [hiddenRideIds, setHiddenRideIds] = useState<Set<string>>(new Set())
+  const [hiddenNetworkIds, setHiddenNetworkIds] = useState<Set<string>>(new Set())
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showAnnouncement, setShowAnnouncement] = useState(false)
 
@@ -183,6 +184,19 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const handleToggleRide = useCallback((id: string) => {
     setHiddenRideIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const handleHideAllRides = useCallback(() => {
+    setHiddenRideIds(new Set(rides.map((r) => r.id)))
+  }, [rides])
+
+  const handleToggleNetwork = useCallback((id: string) => {
+    setHiddenNetworkIds((prev) => {
       const next = new Set(prev)
       if (next.has(id)) next.delete(id)
       else next.add(id)
@@ -488,6 +502,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           trails={trails}
           hiddenRideIds={hiddenRideIds}
           onToggleRide={handleToggleRide}
+          onHideAllRides={handleHideAllRides}
           onRidesUploaded={handleRidesUploaded}
           onSyncComplete={loadRides}
           editMode={editMode}
@@ -513,6 +528,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           savingRefined={savingRefined}
           refineError={refineError}
           networks={networks}
+          hiddenNetworkIds={hiddenNetworkIds}
+          onToggleNetwork={handleToggleNetwork}
           selectedNetwork={selectedNetwork}
           drawNetworkPoints={drawNetworkPoints}
           onSelectNetwork={setSelectedNetwork}
@@ -561,6 +578,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         refinePolyline={refineMode ? (refinedPolyline ?? selectedTrail?.polyline ?? null) : null}
         onPolylineRefined={handlePolylineRefined}
         networks={networks}
+        hiddenNetworkIds={hiddenNetworkIds}
         drawNetworkMode={drawNetworkMode}
         drawNetworkPoints={drawNetworkPoints}
         onNetworkPointAdded={handleNetworkPointAdded}

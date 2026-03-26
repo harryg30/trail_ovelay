@@ -16,6 +16,7 @@ interface LeftDrawerProps {
   trails: Trail[]
   hiddenRideIds: Set<string>
   onToggleRide: (id: string) => void
+  onHideAllRides: () => void
   onRidesUploaded: (rides: Ride[]) => void
   onSyncComplete: () => Promise<void>
   editMode: EditMode
@@ -43,6 +44,8 @@ interface LeftDrawerProps {
   networks: Network[]
   selectedNetwork: Network | null
   drawNetworkPoints: [number, number][]
+  hiddenNetworkIds: Set<string>
+  onToggleNetwork: (id: string) => void
   onSelectNetwork: (network: Network | null) => void
   onSaveNetwork: (name: string, polygon: [number, number][], trailIds: string[]) => Promise<string | null>
   onUpdateNetwork: (name: string, polygon: [number, number][] | null, trailIds: string[]) => Promise<string | null>
@@ -63,6 +66,7 @@ export default function LeftDrawer({
   trails,
   hiddenRideIds,
   onToggleRide,
+  onHideAllRides,
   onRidesUploaded,
   onSyncComplete,
   editMode,
@@ -90,6 +94,8 @@ export default function LeftDrawer({
   networks,
   selectedNetwork,
   drawNetworkPoints,
+  hiddenNetworkIds,
+  onToggleNetwork,
   onSelectNetwork,
   onSaveNetwork,
   onUpdateNetwork,
@@ -227,6 +233,16 @@ export default function LeftDrawer({
             Rides ({rides.length})
           </h2>
           <div className="flex items-center gap-2">
+            {rides.some(r => !hiddenRideIds.has(r.id)) && (
+              <button
+                type="button"
+                onClick={onHideAllRides}
+                className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+                title="Hide all rides"
+              >
+                Hide all
+              </button>
+            )}
             <select
               value={ridesPageSize}
               onChange={(e) => { const v = Number(e.target.value); setRidesPageSize(v); localStorage.setItem('ridesPageSize', String(v)); setRidesPage(0) }}
@@ -241,9 +257,14 @@ export default function LeftDrawer({
         {rides.length === 0 ? (
           <p className="text-xs text-zinc-400">No rides uploaded yet.</p>
         ) : (() => {
-          const filteredRides = ridesQuery.trim()
+          const filteredRides = (ridesQuery.trim()
             ? rides.filter(r => r.name.toLowerCase().includes(ridesQuery.toLowerCase()))
             : rides
+          ).slice().sort((a, b) => {
+            const aVisible = !hiddenRideIds.has(a.id)
+            const bVisible = !hiddenRideIds.has(b.id)
+            return aVisible === bVisible ? 0 : aVisible ? -1 : 1
+          })
           const totalPages = Math.max(1, Math.ceil(filteredRides.length / ridesPageSize))
           const safePage = Math.min(ridesPage, totalPages - 1)
           const pagedRides = filteredRides.slice(safePage * ridesPageSize, (safePage + 1) * ridesPageSize)
@@ -561,6 +582,8 @@ export default function LeftDrawer({
                 network={network}
                 trails={trails}
                 isSelected={selectedNetwork?.id === network.id && editMode === 'edit-network'}
+                isHidden={hiddenNetworkIds.has(network.id)}
+                onToggleVisibility={() => onToggleNetwork(network.id)}
                 onEdit={() => {
                   onSelectNetwork(network)
                   onEditModeChange('edit-network')

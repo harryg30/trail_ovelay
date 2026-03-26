@@ -23,6 +23,7 @@ export interface LeafletMapProps {
   refinePolyline: [number, number][] | null
   onPolylineRefined: (polyline: [number, number][]) => void
   networks: Network[]
+  hiddenNetworkIds: Set<string>
   drawNetworkMode: boolean
   drawNetworkPoints: [number, number][]
   onNetworkPointAdded: (latlng: [number, number]) => void
@@ -48,6 +49,7 @@ export default function LeafletMap({
   refinePolyline,
   onPolylineRefined,
   networks,
+  hiddenNetworkIds,
   drawNetworkMode,
   drawNetworkPoints,
   onNetworkPointAdded,
@@ -78,6 +80,7 @@ export default function LeafletMap({
   const onNetworkPointAddedRef = useRef(onNetworkPointAdded)
   const onNetworkSelectedRef = useRef(onNetworkSelected)
   const networksRef = useRef(networks)
+  const hasFitBoundsRef = useRef(false)
   trimModeRef.current = trimMode
   editTrailModeRef.current = editTrailMode
   onTrimPointSelectedRef.current = onTrimPointSelected
@@ -133,7 +136,17 @@ export default function LeafletMap({
     }
   }, [])
 
-  // Effect 2: rides layer
+  // Effect 2: initial fit-to-bounds — fires once when trails first load
+  useEffect(() => {
+    if (!mapRef.current || hasFitBoundsRef.current || trails.length === 0) return
+    const allPoints = trails.flatMap((t) => t.polyline)
+    if (allPoints.length === 0) return
+    const bounds = L.latLngBounds(allPoints)
+    mapRef.current.flyToBounds(bounds, { padding: [40, 40], maxZoom: 15, duration: 1.2 })
+    hasFitBoundsRef.current = true
+  }, [trails])
+
+  // Effect 3: rides layer
   useEffect(() => {
     if (!mapRef.current || !ridesLayerRef.current) return
 
@@ -178,7 +191,7 @@ export default function LeafletMap({
     }
   }, [rides, hiddenRideIds])
 
-  // Effect 3: trails layer
+  // Effect 4: trails layer
   useEffect(() => {
     if (!mapRef.current || !trailsLayerRef.current) return
 
@@ -369,6 +382,7 @@ export default function LeafletMap({
     networksLayerRef.current.clearLayers()
 
     networks.forEach((network) => {
+      if (hiddenNetworkIds.has(network.id)) return
       if (network.polygon.length < 3) return
       const isSelected = network.id === selectedNetworkId
       const polygon = L.polygon(network.polygon as L.LatLngExpression[], {
@@ -388,7 +402,7 @@ export default function LeafletMap({
 
       polygon.addTo(networksLayerRef.current!)
     })
-  }, [networks, selectedNetworkId])
+  }, [networks, hiddenNetworkIds, selectedNetworkId])
 
   // Effect: draw network polygon preview
   useEffect(() => {

@@ -128,5 +128,11 @@ export async function GET(
   }
 
   const polyline = decodePolyline(encoded)
+
+  await query(
+    `UPDATE rides SET polyline = $1, point_count = $2 WHERE id = $3 AND user_id = $4`,
+    [JSON.stringify(polyline), polyline.length, rideId, userId]
+  )
+
   return NextResponse.json({ polyline })
 }
