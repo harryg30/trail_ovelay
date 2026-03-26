@@ -383,7 +383,7 @@ export default function LeafletMap({
         trail.difficulty === 'intermediate' ? '■' :
         trail.difficulty === 'hard' ? '◆' :
         trail.difficulty === 'pro' ? '◆◆' : ''
-      const labelHtml = `<div style="font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;line-height:1.4;transform:rotate(${labelAngle}deg);transform-origin:0 50%;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff"><span style="color:${trailColor}">${diffIcon}</span>${diffIcon ? '\u00a0' : ''}${trail.name}</div>`
+      const labelHtml = `<div style="font-size:11px;font-weight:700;white-space:nowrap;pointer-events:none;line-height:1.4;color:#111;transform:rotate(${labelAngle}deg);transform-origin:0 50%;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff"><span style="color:${trailColor}">${diffIcon}</span>${diffIcon ? '\u00a0' : ''}${trail.name}</div>`
       L.marker(midPoint, {
         icon: L.divIcon({ html: labelHtml, className: '', iconSize: [0, 0], iconAnchor: [0, 0] }),
         interactive: false,
