@@ -13,6 +13,8 @@ export interface EditModeState {
   refineError: string | null
   selectedNetwork: Network | null
   drawNetworkPoints: [number, number][]
+  drawTrailPoints: [number, number][]
+  drawTrailFinished: boolean
 }
 
 export const initialModeState: EditModeState = {
@@ -24,6 +26,8 @@ export const initialModeState: EditModeState = {
   refineError: null,
   selectedNetwork: null,
   drawNetworkPoints: [],
+  drawTrailPoints: [],
+  drawTrailFinished: false,
 }
 
 /**

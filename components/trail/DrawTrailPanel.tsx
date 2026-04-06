@@ -1,25 +1,28 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import type { TrimSegment, TrimFormState, Network } from '@/lib/types'
+import { useState } from 'react'
+import type { TrimFormState, Network } from '@/lib/types'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
+import { polylineDistanceKm } from '@/lib/geo-utils'
 
-export function TrimForm({
-  trimSegment,
+export function DrawTrailPanel({
+  drawPoints,
+  finished,
+  onFinish,
+  onUndo,
   onSave,
   onCancel,
-  disabled,
   networks,
   canPublish,
-  defaultName,
 }: {
-  trimSegment: TrimSegment | null
+  drawPoints: [number, number][]
+  finished: boolean
+  onFinish: () => void
+  onUndo: () => void
   onSave: (form: TrimFormState, publishOnSave: boolean) => Promise<string | null>
   onCancel: () => void
-  disabled: boolean
   networks: Network[]
   canPublish?: boolean
-  defaultName?: string
 }) {
   const [form, setForm] = useState<TrimFormState>({
     name: '',
@@ -29,26 +32,15 @@ export function TrimForm({
   })
   const [networkQuery, setNetworkQuery] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
-  const networkInputRef = useRef<HTMLInputElement>(null)
+  const [publishOnSave, setPublishOnSave] = useState(!!canPublish)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const [publishOnSave, setPublishOnSave] = useState(!!canPublish)
 
-  // Reset form name when segment is set or changes
-  useEffect(() => {
-    if (defaultName) {
-      setForm((prev) => ({ ...prev, name: defaultName }))
-      setSaveError(null)
-      return
-    }
-    if (!trimSegment) return
-    setForm((prev) => ({ ...prev, name: trimSegment.ride.name + ' Trail' }))
-    setSaveError(null)
-  }, [trimSegment, defaultName])
+  const distanceKm = drawPoints.length >= 2 ? polylineDistanceKm(drawPoints) : 0
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (disabled || !trimSegment || !form.name.trim()) return
+    if (saving || !form.name.trim() || drawPoints.length < 2) return
     setSaving(true)
     setSaveError(null)
     const err = await onSave(form, publishOnSave)
@@ -56,31 +48,63 @@ export function TrimForm({
     setSaving(false)
   }
 
+  if (!finished) {
+    return (
+      <div className="flex flex-col gap-3">
+        <p className="text-xs text-zinc-500">
+          Click on the map to plot trail points.
+        </p>
+        <div className="flex items-center justify-between text-xs text-zinc-400">
+          <span>{drawPoints.length} point{drawPoints.length !== 1 ? 's' : ''} placed</span>
+          {distanceKm > 0 && <span>{distanceKm.toFixed(2)} km</span>}
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={drawPoints.length < 2}
+            onClick={onFinish}
+            className="flex-1 py-2 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Finish Drawing
+          </button>
+          <button
+            type="button"
+            disabled={drawPoints.length === 0}
+            onClick={onUndo}
+            className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 transition-colors"
+            title="Undo last point"
+          >
+            ↩
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <form onSubmit={handleSubmit} className={`flex flex-col gap-3${disabled ? ' opacity-50' : ''}`}>
-      {/* Read-only stats */}
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <div className="flex gap-3 text-xs text-zinc-500">
-        {trimSegment ? (
-          <>
-            <span>{trimSegment.distanceKm.toFixed(2)} km</span>
-            <span>~{Math.round(trimSegment.elevationGainFt)} ft gain</span>
-          </>
-        ) : (
-          <span>— km &nbsp; — ft gain</span>
-        )}
+        <span>{distanceKm.toFixed(2)} km</span>
+        <span>{drawPoints.length} points</span>
       </div>
 
-      <TrailFormFields form={form} onChange={setForm} disabled={disabled} />
+      <TrailFormFields form={form} onChange={setForm} disabled={saving} />
 
       {/* Network search */}
       <div className="relative">
         <label className="block text-xs text-zinc-500 mb-1">Network</label>
         <div className="flex items-center gap-1">
           <input
-            ref={networkInputRef}
             type="text"
             placeholder="Search networks…"
-            disabled={disabled}
+            disabled={saving}
             value={networkQuery}
             onChange={(e) => {
               setNetworkQuery(e.target.value)
@@ -129,23 +153,21 @@ export function TrimForm({
 
       {saveError && <p className="text-xs text-red-500">{saveError}</p>}
 
-      <div className="flex items-center gap-2">
-        <div className="flex gap-2 flex-1">
-          <button
-            type="submit"
-            disabled={disabled || saving || !form.name.trim()}
-            className="flex-1 py-2 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {saving ? 'Saving...' : 'Save Trail'}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          disabled={saving || !form.name.trim()}
+          className="flex-1 py-2 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {saving ? 'Saving...' : 'Save Trail'}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
+        >
+          Cancel
+        </button>
       </div>
       {canPublish && (
         <label className="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer select-none">

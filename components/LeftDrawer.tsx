@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState, useEffect } from 'react'
-import type { Ride, Trail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network, RidePhoto } from '@/lib/types'
+import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network, RidePhoto } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import AuthButton from '@/components/AuthButton'
 import { AddTrailContent } from '@/components/trail/AddTrailContent'
@@ -9,6 +9,8 @@ import { EditTrailContent } from '@/components/trail/EditTrailContent'
 import { NetworkRow } from '@/components/network/NetworkRow'
 import { DrawNetworkContent } from '@/components/network/DrawNetworkContent'
 import { EditNetworkContent } from '@/components/network/EditNetworkContent'
+import { DrawTrailPanel } from '@/components/trail/DrawTrailPanel'
+import { DraftsList } from '@/components/trail/DraftsList'
 
 interface LeftDrawerProps {
   user: SessionUser | null
@@ -23,7 +25,7 @@ interface LeftDrawerProps {
   onEditModeChange: (mode: EditMode) => void
   trimStart: TrimPoint | null
   trimSegment: TrimSegment | null
-  onSaveTrail: (form: TrimFormState) => Promise<string | null>
+  onSaveTrail: (form: TrimFormState, publishOnSave: boolean) => Promise<string | null>
   onStepTrimPoint: (which: 'start' | 'end', delta: number) => void
   onClearTrimPoint: (which: 'start' | 'end') => void
   averagedTrimPolyline: [number, number][] | null
@@ -63,6 +65,14 @@ interface LeftDrawerProps {
   photosVisibleRideIds: Set<string>
   fetchingPhotosId: string | null
   onFetchAndTogglePhotos: (rideId: string) => Promise<void>
+  draftTrails: DraftTrail[]
+  onPublishDraft: (localId: string) => Promise<string | null>
+  onDeleteDraft: (localId: string) => void
+  drawTrailPoints: [number, number][]
+  drawTrailFinished: boolean
+  onDrawTrailFinish: () => void
+  onDrawTrailUndo: () => void
+  onSaveDrawnTrail: (form: TrimFormState, publishOnSave: boolean) => Promise<string | null>
 }
 
 export default function LeftDrawer({
@@ -118,6 +128,14 @@ export default function LeftDrawer({
   photosVisibleRideIds,
   fetchingPhotosId,
   onFetchAndTogglePhotos,
+  draftTrails,
+  onPublishDraft,
+  onDeleteDraft,
+  drawTrailPoints,
+  drawTrailFinished,
+  onDrawTrailFinish,
+  onDrawTrailUndo,
+  onSaveDrawnTrail,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -438,11 +456,29 @@ export default function LeftDrawer({
           <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
             Trails ({trails.length})
           </h2>
-          {user && (
+          <div className="flex items-center gap-1">
+            {/* Draw trail — available to all users */}
+            <button
+              type="button"
+              onClick={() => handleModeClick('draw-trail')}
+              title={editMode === 'draw-trail' ? 'Cancel draw' : 'Draw a trail'}
+              className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
+                editMode === 'draw-trail'
+                  ? 'bg-orange-500 text-white'
+                  : 'border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
+              }`}
+            >
+              {editMode === 'draw-trail' ? '×' : (
+                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                </svg>
+              )}
+            </button>
+            {/* Trim trail — available to all users */}
             <button
               type="button"
               onClick={() => handleModeClick('add-trail')}
-              title={editMode === 'add-trail' ? 'Cancel' : 'Add new trail'}
+              title={editMode === 'add-trail' ? 'Cancel' : 'Trim trail from ride'}
               className={`w-6 h-6 flex items-center justify-center rounded text-base font-light transition-colors ${
                 editMode === 'add-trail'
                   ? 'bg-orange-500 text-white'
@@ -451,8 +487,40 @@ export default function LeftDrawer({
             >
               {editMode === 'add-trail' ? '×' : '+'}
             </button>
-          )}
+            {user && (
+              <button
+                type="button"
+                onClick={() => handleModeClick('edit-trail')}
+                title={editMode === 'edit-trail' ? 'Cancel edit' : 'Edit a trail'}
+                className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
+                  editMode === 'edit-trail'
+                    ? 'bg-orange-500 text-white'
+                    : 'border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
+                }`}
+              >
+                {editMode === 'edit-trail' ? '×' : (
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
+                    <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
+                  </svg>
+                )}
+              </button>
+            )}
+          </div>
         </div>
+
+        {editMode === 'draw-trail' && (
+          <DrawTrailPanel
+            drawPoints={drawTrailPoints}
+            finished={drawTrailFinished}
+            onFinish={onDrawTrailFinish}
+            onUndo={onDrawTrailUndo}
+            onSave={onSaveDrawnTrail}
+            onCancel={() => onEditModeChange(null)}
+            networks={networks}
+            canPublish={!!user}
+          />
+        )}
 
         {editMode === 'add-trail' && (
           <AddTrailContent
@@ -474,6 +542,7 @@ export default function LeftDrawer({
             onFetchHighResForCorridor={onFetchHighResForCorridor}
             fetchingHighResForCorridor={fetchingHighResForCorridor}
             networks={networks}
+            canPublish={!!user}
           />
         )}
 
@@ -565,6 +634,21 @@ export default function LeftDrawer({
           </div>
         )}
       </div>
+
+      {/* Drafts section */}
+      {draftTrails.length > 0 && (
+        <div className="px-4 py-4 border-t border-zinc-100 flex flex-col gap-2">
+          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+            Drafts ({draftTrails.length})
+          </h2>
+          <DraftsList
+            drafts={draftTrails}
+            canPublish={!!user}
+            onPublish={onPublishDraft}
+            onDelete={onDeleteDraft}
+          />
+        </div>
+      )}
 
       {/* Networks section */}
       <div className="px-4 py-4 border-t border-zinc-100 flex flex-col gap-2">

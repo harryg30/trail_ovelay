@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: trail_overlay
+      POSTGRES_USER: trail_user
+      POSTGRES_PASSWORD: localdevpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - trail_db_data:/var/lib/postgresql/data
+
+volumes:
+  trail_db_data:

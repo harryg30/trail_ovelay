@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Ride, Trail, TrimPoint, TrimSegment, Network, EditMode, RidePhoto } from '@/lib/types'
+import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, Network, EditMode, RidePhoto } from '@/lib/types'
 import { MODE_REGISTRY } from '@/lib/modes'
 import { snapToNearestTrailPoint } from '@/lib/geo-utils'
 
@@ -37,6 +37,10 @@ export interface LeafletMapProps {
   onAcceptPhoto: (photoId: string, trailId: string, trailLat: number, trailLon: number) => Promise<void>
   onPlacePhoto: (photo: RidePhoto) => void
   onCancelPlace: () => void
+  draftTrails: DraftTrail[]
+  drawTrailMode: boolean
+  drawTrailPoints: [number, number][]
+  onDrawTrailPointAdded: (latlng: [number, number]) => void
 }
 
 export default function LeafletMap({
@@ -69,6 +73,10 @@ export default function LeafletMap({
   onAcceptPhoto,
   onPlacePhoto,
   onCancelPlace,
+  draftTrails,
+  drawTrailMode,
+  drawTrailPoints,
+  onDrawTrailPointAdded,
 }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -82,6 +90,8 @@ export default function LeafletMap({
   const averagedTrimLayerRef = useRef<L.LayerGroup | null>(null)
   const hoverLayerRef = useRef<L.LayerGroup | null>(null)
   const photoMarkersLayerRef = useRef<L.LayerGroup | null>(null)
+  const draftTrailsLayerRef = useRef<L.LayerGroup | null>(null)
+  const drawTrailLayerRef = useRef<L.LayerGroup | null>(null)
 
   const [zoom, setZoom] = useState(5)
   const LABEL_ZOOM_THRESHOLD = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 14 : 15
@@ -98,6 +108,8 @@ export default function LeafletMap({
   const onNetworkPointAddedRef = useRef(onNetworkPointAdded)
   const onNetworkSelectedRef = useRef(onNetworkSelected)
   const networksRef = useRef(networks)
+  const drawTrailModeRef = useRef(drawTrailMode)
+  const onDrawTrailPointAddedRef = useRef(onDrawTrailPointAdded)
   const hasFitBoundsRef = useRef(false)
   const placingPhotoRef = useRef(placingPhoto)
   const onAcceptPhotoRef = useRef(onAcceptPhoto)
@@ -118,6 +130,8 @@ export default function LeafletMap({
   onNetworkPointAddedRef.current = onNetworkPointAdded
   onNetworkSelectedRef.current = onNetworkSelected
   networksRef.current = networks
+  drawTrailModeRef.current = drawTrailMode
+  onDrawTrailPointAddedRef.current = onDrawTrailPointAdded
 
   // Effect 1: map init
   useEffect(() => {
@@ -141,6 +155,8 @@ export default function LeafletMap({
     selectedTrailLayerRef.current = L.layerGroup().addTo(map)
     refineLayerRef.current = L.layerGroup().addTo(map)
     drawNetworkLayerRef.current = L.layerGroup().addTo(map)
+    draftTrailsLayerRef.current = L.layerGroup().addTo(map)
+    drawTrailLayerRef.current = L.layerGroup().addTo(map)
 
     map.on('zoomend', () => setZoom(map.getZoom()))
 
@@ -199,6 +215,10 @@ export default function LeafletMap({
         }
         return
       }
+      if (drawTrailModeRef.current) {
+        onDrawTrailPointAddedRef.current([e.latlng.lat, e.latlng.lng])
+        return
+      }
       if (drawNetworkModeRef.current) {
         onNetworkPointAddedRef.current([e.latlng.lat, e.latlng.lng])
       }
@@ -219,6 +239,8 @@ export default function LeafletMap({
       drawNetworkLayerRef.current = null
       hoverLayerRef.current = null
       photoMarkersLayerRef.current = null
+      draftTrailsLayerRef.current = null
+      drawTrailLayerRef.current = null
     }
   }, [])
 
@@ -611,6 +633,58 @@ export default function LeafletMap({
       }).addTo(drawNetworkLayerRef.current!)
     }
   }, [drawNetworkMode, drawNetworkPoints])
+
+  // Effect: draft trails — dashed lines, same difficulty colors, not interactive in edit modes
+  useEffect(() => {
+    if (!draftTrailsLayerRef.current) return
+    draftTrailsLayerRef.current.clearLayers()
+
+    draftTrails.forEach((draft) => {
+      const trailColor =
+        draft.difficulty === 'easy' ? '#22c55e' :
+        draft.difficulty === 'intermediate' ? '#3b82f6' :
+        draft.difficulty === 'hard' ? '#18181b' :
+        draft.difficulty === 'pro' ? '#18181b' :
+        '#f97316'
+
+      L.polyline(draft.polyline, {
+        color: trailColor,
+        weight: 3,
+        opacity: 0.65,
+        dashArray: '6, 4',
+        interactive: false,
+      })
+        .bindTooltip(`Draft: ${draft.name}`, { sticky: true })
+        .addTo(draftTrailsLayerRef.current!)
+    })
+  }, [draftTrails])
+
+  // Effect: draw trail preview — live polyline + node markers as user plots
+  useEffect(() => {
+    if (!drawTrailLayerRef.current) return
+    drawTrailLayerRef.current.clearLayers()
+    if (!drawTrailMode || drawTrailPoints.length === 0) return
+
+    const nodeIcon = L.divIcon({
+      className: '',
+      html: '<div style="width:8px;height:8px;background:#f97316;border:2px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.5)"></div>',
+      iconSize: [8, 8],
+      iconAnchor: [4, 4],
+    })
+
+    drawTrailPoints.forEach((pt) => {
+      L.marker(pt as L.LatLngExpression, { icon: nodeIcon, interactive: false }).addTo(drawTrailLayerRef.current!)
+    })
+
+    if (drawTrailPoints.length >= 2) {
+      L.polyline(drawTrailPoints as L.LatLngExpression[], {
+        color: '#f97316',
+        weight: 3,
+        opacity: 0.85,
+        interactive: false,
+      }).addTo(drawTrailLayerRef.current!)
+    }
+  }, [drawTrailMode, drawTrailPoints])
 
   // Effect 9: selected trail highlight
   useEffect(() => {

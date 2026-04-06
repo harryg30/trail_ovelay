@@ -10,6 +10,7 @@ export function AddTrailContent({
   trimSegment,
   onSaveTrail,
   onCancel,
+  canPublish,
   onStepTrimPoint,
   onClearTrimPoint,
   averagedTrimPolyline,
@@ -27,7 +28,8 @@ export function AddTrailContent({
 }: {
   trimStart: TrimPoint | null
   trimSegment: TrimSegment | null
-  onSaveTrail: (form: TrimFormState) => Promise<string | null>
+  onSaveTrail: (form: TrimFormState, publishOnSave: boolean) => Promise<string | null>
+  canPublish?: boolean
   onCancel: () => void
   onStepTrimPoint: (which: 'start' | 'end', delta: number) => void
   onClearTrimPoint: (which: 'start' | 'end') => void
@@ -164,6 +166,7 @@ export function AddTrailContent({
         onCancel={onCancel}
         disabled={!trimSegment}
         networks={networks}
+        canPublish={canPublish}
       />
     </div>
   )

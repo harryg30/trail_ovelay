@@ -46,7 +46,23 @@ export interface TrimFormState {
   networkId?: string;
 }
 
-export type EditMode = 'add-trail' | 'edit-trail' | 'refine-trail' | 'add-network' | 'edit-network' | null
+export type EditMode = 'add-trail' | 'edit-trail' | 'refine-trail' | 'add-network' | 'edit-network' | 'draw-trail' | null
+
+export interface DraftTrail {
+  localId: string
+  isDraft: true
+  name: string
+  difficulty: Trail["difficulty"]
+  direction: Trail["direction"]
+  polyline: [number, number][]
+  distanceKm: number
+  elevationGainFt: number
+  notes?: string
+  source: string
+  sourceRideId?: string
+  networkId?: string
+  createdAt: string
+}
 
 export interface Network {
   id: string;

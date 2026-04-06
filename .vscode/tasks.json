@@ -2,9 +2,43 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Apply Postgres Migrations",
+      "label": "Migrate Local DB",
       "type": "shell",
-      "command": "source .env.local && export PGPASSWORD=\"$(echo \"$DATABASE_URL\" | cut -d: -f3 | cut -d@ -f1)\" && for f in migrations/*.sql; do echo \"Applying $f...\"; '/c/Program Files/PostgreSQL/16/bin/psql' -U postgres -h localhost -p 5432 -d traildb -f \"$f\"; done",
+      "command": "node scripts/migrate-local.mjs",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+          "args": ["-c"]
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Setup Local DB",
+      "type": "shell",
+      "command": "docker-compose up -d && sleep 3 && node scripts/migrate-local.mjs",
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "shell": {
+          "executable": "C:\\Program Files\\Git\\bin\\bash.exe",
+          "args": ["-c"]
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Sync Prod → Local",
+      "type": "shell",
+      "command": "source .env.local && echo \"Fetching $PROD_APP_URL/api/dev/dump...\" && curl -f --show-error -H \"x-dev-dump-secret: $DEV_DUMP_SECRET\" \"$PROD_APP_URL/api/dev/dump\" -o /tmp/seed-data.json && node scripts/seed-local.mjs /tmp/seed-data.json",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {

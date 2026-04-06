@@ -5,6 +5,7 @@ import { editTrailMode } from './edit-trail'
 import { refineTrailMode } from './refine-trail'
 import { addNetworkMode } from './add-network'
 import { editNetworkMode } from './edit-network'
+import { drawTrailMode } from './draw-trail'
 
 export type { ModeDescriptor, EditModeState } from './types'
 export { initialModeState } from './types'
@@ -24,4 +25,5 @@ export const MODE_REGISTRY: Record<NonNullable<EditMode>, ModeDescriptor> = {
   'refine-trail': refineTrailMode,
   'add-network': addNetworkMode,
   'edit-network': editNetworkMode,
+  'draw-trail': drawTrailMode,
 }

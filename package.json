@@ -9,7 +9,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "docker:up": "docker-compose up -d",
+    "db:migrate": "node scripts/migrate-local.mjs",
+    "db:migrate:prod": "node scripts/migrate.mjs",
+    "db:seed": "node scripts/seed-local.mjs"
   },
   "dependencies": {
     "@aws-sdk/rds-signer": "^3.1017.0",

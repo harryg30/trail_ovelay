@@ -21,9 +21,11 @@ const pool = new Pool({
   host: process.env.TRAIL_DB_PGHOST,
   user: process.env.TRAIL_DB_PGUSER,
   database: process.env.TRAIL_DB_PGDATABASE || "postgres",
-  password: () => signer.getAuthToken(),
+  password: process.env.TRAIL_DB_PGPASSWORD
+    ? process.env.TRAIL_DB_PGPASSWORD
+    : () => signer.getAuthToken(),
   port: Number(process.env.TRAIL_DB_PGPORT),
-  ssl: { rejectUnauthorized: false },
+  ssl: process.env.TRAIL_DB_PGPASSWORD ? false : { rejectUnauthorized: false },
   max: 20,
 });
 

@@ -5,10 +5,11 @@ import dynamic from 'next/dynamic'
 import LeftDrawer from '@/components/LeftDrawer'
 import AnnouncementModal from '@/components/AnnouncementModal'
 import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
-import type { Ride, Trail, Network, TrimSegment, TrimFormState, SaveTrailResponse, RidePhoto } from '@/lib/types'
+import type { Ride, Trail, Network, TrimSegment, TrimFormState, SaveTrailResponse, RidePhoto, DraftTrail } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import { polylineDistanceKm, estimatedElevationGainFt, generateAveragedTrail, clipPolylineToCorridor } from '@/lib/geo-utils'
 import { useEditMode } from '@/hooks/useEditMode'
+import { loadDemoRides } from '@/lib/demo-rides'
 
 const LeafletMap = dynamic(() => import('@/components/LeafletMap'), {
   ssr: false,
@@ -19,10 +20,17 @@ const LeafletMap = dynamic(() => import('@/components/LeafletMap'), {
   ),
 })
 
+const DRAFTS_STORAGE_KEY = 'draft_trails'
+
+function persistDrafts(drafts: DraftTrail[]) {
+  localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts))
+}
+
 export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [rides, setRides] = useState<Ride[]>([])
   const [trails, setTrails] = useState<Trail[]>([])
   const [networks, setNetworks] = useState<Network[]>([])
+  const [draftTrails, setDraftTrails] = useState<DraftTrail[]>([])
   const [hiddenRideIds, setHiddenRideIds] = useState<Set<string>>(new Set())
   const ridesLoadedRef = useRef(false)
   const [hiddenNetworkIds, setHiddenNetworkIds] = useState<Set<string>>(new Set())
@@ -31,6 +39,22 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   useEffect(() => {
     setShowAnnouncement(localStorage.getItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`) !== 'true')
+  }, [])
+
+  // Load demo rides for unauthenticated users
+  useEffect(() => {
+    if (user) return
+    loadDemoRides().then((demos) => {
+      if (demos.length > 0) setRides(demos)
+    }).catch(console.error)
+  }, [user])
+
+  // Hydrate draft trails from localStorage
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(DRAFTS_STORAGE_KEY)
+      if (stored) setDraftTrails(JSON.parse(stored) as DraftTrail[])
+    } catch { /* ignore malformed storage */ }
   }, [])
 
   // Edit state — mode transitions and mode-scoped state managed by useEditMode
@@ -46,6 +70,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     refineError, setRefineError,
     selectedNetwork, setSelectedNetwork,
     drawNetworkPoints, setDrawNetworkPoints,
+    drawTrailPoints, setDrawTrailPoints,
+    drawTrailFinished, setDrawTrailFinished,
   } = useEditMode()
 
   const trimMode = editMode === 'add-trail'
@@ -53,6 +79,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const refineMode = editMode === 'refine-trail'
   const drawNetworkMode = editMode === 'add-network'
   const editNetworkMode = editMode === 'edit-network'
+  const drawTrailMode = editMode === 'draw-trail'
 
   const [averagedTrimPolyline, setAveragedTrimPolyline] = useState<[number, number][] | null>(null)
   const [averagedRideCount, setAveragedRideCount] = useState(0)
@@ -132,6 +159,79 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const handleClearAveragedTrim = useCallback(() => {
     setAveragedTrimPolyline(null)
     setAveragedRideCount(0)
+  }, [])
+
+  const handleSaveDraft = useCallback((
+    polyline: [number, number][],
+    form: TrimFormState,
+    source: string,
+    sourceRideId?: string,
+  ) => {
+    const draft: DraftTrail = {
+      localId: 'draft_' + crypto.randomUUID(),
+      isDraft: true,
+      name: form.name,
+      difficulty: form.difficulty,
+      direction: form.direction,
+      notes: form.notes || undefined,
+      polyline,
+      distanceKm: polylineDistanceKm(polyline),
+      elevationGainFt: 0,
+      source,
+      sourceRideId,
+      networkId: form.networkId,
+      createdAt: new Date().toISOString(),
+    }
+    setDraftTrails((prev) => {
+      const next = [draft, ...prev]
+      persistDrafts(next)
+      return next
+    })
+  }, [])
+
+  const handlePublishDraft = useCallback(async (localId: string): Promise<string | null> => {
+    const draft = draftTrails.find((d) => d.localId === localId)
+    if (!draft) return 'Draft not found'
+    try {
+      const res = await fetch('/api/trails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trails: [{
+            name: draft.name,
+            difficulty: draft.difficulty,
+            direction: draft.direction,
+            notes: draft.notes,
+            polyline: draft.polyline,
+            distanceKm: draft.distanceKm,
+            elevationGainFt: draft.elevationGainFt,
+            source: draft.source,
+            sourceRideId: draft.sourceRideId,
+          }],
+        }),
+      })
+      const data: SaveTrailResponse = await res.json()
+      if (data.success && data.savedTrails) {
+        setTrails((prev) => [...(data.savedTrails ?? []), ...prev])
+        setDraftTrails((prev) => {
+          const next = prev.filter((d) => d.localId !== localId)
+          persistDrafts(next)
+          return next
+        })
+        return null
+      }
+      return data.error ?? 'Publish failed'
+    } catch {
+      return 'Network error'
+    }
+  }, [draftTrails])
+
+  const handleDeleteDraft = useCallback((localId: string) => {
+    setDraftTrails((prev) => {
+      const next = prev.filter((d) => d.localId !== localId)
+      persistDrafts(next)
+      return next
+    })
   }, [])
 
   const handleAverageLine = useCallback(() => {
@@ -374,8 +474,19 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   }, [])
 
   const handleSaveTrail = useCallback(
-    async (form: TrimFormState): Promise<string | null> => {
+    async (form: TrimFormState, publishOnSave: boolean): Promise<string | null> => {
       if (!trimSegment) return 'No segment selected'
+
+      const polyline = averagedTrimPolyline ?? trimSegment.polyline
+      const source = averagedTrimPolyline ? 'averaged' : 'trim'
+
+      if (!publishOnSave || !user) {
+        handleSaveDraft(polyline, form, source, trimSegment.ride.id)
+        setMode(null)
+        setTrimStart(null)
+        setTrimEnd(null)
+        return null
+      }
 
       const res = await fetch('/api/trails', {
         method: 'POST',
@@ -387,12 +498,12 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
               difficulty: form.difficulty,
               direction: form.direction,
               notes: form.notes || undefined,
-              polyline: averagedTrimPolyline ?? trimSegment.polyline,
+              polyline,
               distanceKm: averagedTrimPolyline
                 ? polylineDistanceKm(averagedTrimPolyline)
                 : trimSegment.distanceKm,
               elevationGainFt: trimSegment.elevationGainFt,
-              source: averagedTrimPolyline ? 'averaged' : 'trim',
+              source,
               sourceRideId: trimSegment.ride.id,
             },
           ],
@@ -428,8 +539,58 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
       return data.error ?? 'Save failed'
     },
-    [trimSegment, networks]
+    [trimSegment, networks, user, handleSaveDraft]
   )
+
+  const handleSaveDrawnTrail = useCallback(
+    async (form: TrimFormState, publishOnSave: boolean): Promise<string | null> => {
+      if (drawTrailPoints.length < 2) return 'Draw at least 2 points'
+      const polyline = drawTrailPoints
+
+      if (!publishOnSave || !user) {
+        handleSaveDraft(polyline, form, 'draw')
+        setMode(null)
+        return null
+      }
+
+      const res = await fetch('/api/trails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trails: [{
+            name: form.name,
+            difficulty: form.difficulty,
+            direction: form.direction,
+            notes: form.notes || undefined,
+            polyline,
+            distanceKm: polylineDistanceKm(polyline),
+            elevationGainFt: 0,
+            source: 'draw',
+          }],
+        }),
+      })
+      const data: SaveTrailResponse = await res.json()
+      if (data.success && data.savedTrails) {
+        setTrails((prev) => [...(data.savedTrails ?? []), ...prev])
+        setMode(null)
+        return null
+      }
+      return data.error ?? 'Save failed'
+    },
+    [drawTrailPoints, user, handleSaveDraft]
+  )
+
+  const handleDrawTrailPointAdded = useCallback((latlng: [number, number]) => {
+    setDrawTrailPoints((prev) => [...prev, latlng])
+  }, [])
+
+  const handleDrawTrailUndo = useCallback(() => {
+    setDrawTrailPoints((prev) => prev.slice(0, -1))
+  }, [])
+
+  const handleDrawTrailFinish = useCallback(() => {
+    if (drawTrailPoints.length >= 2) setDrawTrailFinished(true)
+  }, [drawTrailPoints])
 
   const handleNetworkPointAdded = useCallback((latlng: [number, number]) => {
     setDrawNetworkPoints((prev) => [...prev, latlng])
@@ -641,6 +802,14 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           photosVisibleRideIds={photosVisibleRideIds}
           fetchingPhotosId={fetchingPhotosId}
           onFetchAndTogglePhotos={handleFetchAndTogglePhotos}
+          draftTrails={draftTrails}
+          onPublishDraft={handlePublishDraft}
+          onDeleteDraft={handleDeleteDraft}
+          drawTrailPoints={drawTrailPoints}
+          drawTrailFinished={drawTrailFinished}
+          onDrawTrailFinish={handleDrawTrailFinish}
+          onDrawTrailUndo={handleDrawTrailUndo}
+          onSaveDrawnTrail={handleSaveDrawnTrail}
         />
       </div>
 
@@ -662,6 +831,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         rides={rides}
         hiddenRideIds={hiddenRideIds}
         trails={trails}
+        draftTrails={draftTrails}
         editMode={editMode}
         trimMode={trimMode}
         trimStart={trimStart}
@@ -688,6 +858,9 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         onAcceptPhoto={handleAcceptPhoto}
         onPlacePhoto={handlePlacePhoto}
         onCancelPlace={handleCancelPlace}
+        drawTrailMode={drawTrailMode}
+        drawTrailPoints={drawTrailPoints}
+        onDrawTrailPointAdded={handleDrawTrailPointAdded}
       />
       <AnnouncementModal isOpen={showAnnouncement} onClose={handleCloseAnnouncement} content={ANNOUNCEMENT} />
     </div>

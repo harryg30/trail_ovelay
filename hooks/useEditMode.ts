@@ -33,6 +33,10 @@ export function useEditMode() {
   const [selectedNetwork, setSelectedNetwork] = useState<Network | null>(null)
   const [drawNetworkPoints, setDrawNetworkPoints] = useState<[number, number][]>([])
 
+  // Draw trail state (draw-trail)
+  const [drawTrailPoints, setDrawTrailPoints] = useState<[number, number][]>([])
+  const [drawTrailFinished, setDrawTrailFinished] = useState(false)
+
   /**
    * Transition to a new mode, clearing any state that doesn't carry over.
    * Use this instead of calling setEditMode directly.
@@ -58,6 +62,10 @@ export function useEditMode() {
     if (mode !== 'add-network') {
       setDrawNetworkPoints([])
     }
+    if (mode !== 'draw-trail') {
+      setDrawTrailPoints([])
+      setDrawTrailFinished(false)
+    }
   }, [])
 
   return {
@@ -75,5 +83,8 @@ export function useEditMode() {
 
     selectedNetwork, setSelectedNetwork,
     drawNetworkPoints, setDrawNetworkPoints,
+
+    drawTrailPoints, setDrawTrailPoints,
+    drawTrailFinished, setDrawTrailFinished,
   }
 }
