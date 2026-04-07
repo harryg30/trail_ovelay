@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@aws-sdk/rds-signer": "^3.1017.0",
+    "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.3.1",
     "@vercel/functions": "^3.4.3",
     "axios": "^1.13.6",
