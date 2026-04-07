@@ -2,7 +2,7 @@ import latestPayload from "@/announcements/latest.json";
 
 export interface AnnouncementItem {
   /** Short label; optional when `summary` alone is enough */
-  title: string;
+  title?: string;
   summary: string;
   /** Optional link (welcome modal usually omits — roadmap link is in the modal body) */
   notionUrl?: string;
