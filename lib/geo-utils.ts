@@ -2,13 +2,98 @@ import type { Ride, Trail } from "@/lib/types";
 
 export type MapBounds = { north: number; south: number; east: number; west: number }
 
-export function polylineInBounds(
-  polyline: [number, number][],
+function pointInBounds([lat, lng]: [number, number], bounds: MapBounds): boolean {
+  return (
+    lat <= bounds.north &&
+    lat >= bounds.south &&
+    lng <= bounds.east &&
+    lng >= bounds.west
+  )
+}
+
+function orientation(a: [number, number], b: [number, number], c: [number, number]): number {
+  return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+}
+
+function onSegment(a: [number, number], b: [number, number], p: [number, number]): boolean {
+  return (
+    Math.min(a[0], b[0]) <= p[0] &&
+    p[0] <= Math.max(a[0], b[0]) &&
+    Math.min(a[1], b[1]) <= p[1] &&
+    p[1] <= Math.max(a[1], b[1])
+  )
+}
+
+function segmentsIntersect(
+  a1: [number, number],
+  a2: [number, number],
+  b1: [number, number],
+  b2: [number, number]
+): boolean {
+  const o1 = orientation(a1, a2, b1)
+  const o2 = orientation(a1, a2, b2)
+  const o3 = orientation(b1, b2, a1)
+  const o4 = orientation(b1, b2, a2)
+  const eps = 1e-12
+
+  if ((o1 > 0 && o2 < 0 || o1 < 0 && o2 > 0) && (o3 > 0 && o4 < 0 || o3 < 0 && o4 > 0)) {
+    return true
+  }
+  if (Math.abs(o1) <= eps && onSegment(a1, a2, b1)) return true
+  if (Math.abs(o2) <= eps && onSegment(a1, a2, b2)) return true
+  if (Math.abs(o3) <= eps && onSegment(b1, b2, a1)) return true
+  if (Math.abs(o4) <= eps && onSegment(b1, b2, a2)) return true
+  return false
+}
+
+function segmentIntersectsBounds(
+  start: [number, number],
+  end: [number, number],
   bounds: MapBounds
 ): boolean {
-  return polyline.some(
-    ([lat, lng]) => lat <= bounds.north && lat >= bounds.south && lng <= bounds.east && lng >= bounds.west
+  if (pointInBounds(start, bounds) || pointInBounds(end, bounds)) return true
+
+  const nw: [number, number] = [bounds.north, bounds.west]
+  const ne: [number, number] = [bounds.north, bounds.east]
+  const sw: [number, number] = [bounds.south, bounds.west]
+  const se: [number, number] = [bounds.south, bounds.east]
+
+  return (
+    segmentsIntersect(start, end, nw, ne) ||
+    segmentsIntersect(start, end, ne, se) ||
+    segmentsIntersect(start, end, se, sw) ||
+    segmentsIntersect(start, end, sw, nw)
   )
+}
+
+/** True if any vertex lies in bounds or any segment crosses the map rectangle. */
+export function polylineInBounds(polyline: [number, number][], bounds: MapBounds): boolean {
+  if (polyline.length === 0) return false
+  if (polyline.some((point) => pointInBounds(point, bounds))) return true
+
+  let minLat = Infinity
+  let maxLat = -Infinity
+  let minLng = Infinity
+  let maxLng = -Infinity
+  for (const [lat, lng] of polyline) {
+    if (lat < minLat) minLat = lat
+    if (lat > maxLat) maxLat = lat
+    if (lng < minLng) minLng = lng
+    if (lng > maxLng) maxLng = lng
+  }
+
+  const bboxOverlaps =
+    maxLat >= bounds.south &&
+    minLat <= bounds.north &&
+    maxLng >= bounds.west &&
+    minLng <= bounds.east
+  if (!bboxOverlaps) return false
+  if (polyline.length === 1) return false
+
+  for (let i = 0; i < polyline.length - 1; i++) {
+    if (segmentIntersectsBounds(polyline[i], polyline[i + 1], bounds)) return true
+  }
+  return false
 }
 
 // Minimum distance in km from a point to any segment of a polyline

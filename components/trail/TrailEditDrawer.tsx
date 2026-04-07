@@ -121,6 +121,7 @@ export function TrailEditDrawer({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (saving || !form.name.trim()) return
+    if (variant === 'edit' && refinedPolyline === null) return
     if (variant === 'draw' && displayPoints.length < 2) {
       setSaveError('Draw at least 2 points on the map')
       return

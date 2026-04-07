@@ -203,6 +203,7 @@ export default function LeafletMap({
 
     map.on('zoomend', () => { setZoom(map.getZoom()); fireBoundsChange() })
     map.on('moveend', fireBoundsChange)
+    fireBoundsChange()
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       if (placingPhotoRef.current) {
@@ -752,11 +753,26 @@ export default function LeafletMap({
       iconAnchor: [4, 4],
     })
 
-    drawTrailPoints.forEach((pt, i) => {
+    // Mutable copy so pencil drag can update the live polyline (matches refine-mode behavior).
+    const pts: [number, number][] = drawTrailPoints.map(([lat, lng]) => [lat, lng])
+
+    const previewPolyline =
+      pts.length >= 2
+        ? L.polyline(pts as L.LatLngExpression[], {
+            color: '#f97316',
+            weight: 3,
+            opacity: 0.85,
+            interactive: false,
+          }).addTo(drawTrailLayerRef.current!)
+        : null
+
+    pts.forEach((pt, i) => {
       const marker = L.marker(pt as L.LatLngExpression, {
         icon: nodeIcon,
-        interactive: tool === 'eraser',
+        // Must stay interactive in pencil mode or Leaflet will not deliver drag events.
+        interactive: true,
         draggable: tool === 'pencil',
+        zIndexOffset: 1000,
       })
       if (tool === 'eraser') {
         marker.on('click', (e: L.LeafletMouseEvent) => {
@@ -765,6 +781,11 @@ export default function LeafletMap({
         })
       }
       if (tool === 'pencil') {
+        marker.on('drag', () => {
+          const { lat, lng } = marker.getLatLng()
+          pts[i] = [lat, lng]
+          if (previewPolyline) previewPolyline.setLatLngs(pts as L.LatLngExpression[])
+        })
         marker.on('dragend', () => {
           const { lat, lng } = marker.getLatLng()
           onDrawTrailPointMovedRef.current(i, [lat, lng])
@@ -773,25 +794,16 @@ export default function LeafletMap({
       marker.addTo(drawTrailLayerRef.current!)
     })
 
-    if (drawTrailPoints.length >= 2) {
-      L.polyline(drawTrailPoints as L.LatLngExpression[], {
-        color: '#f97316',
-        weight: 3,
-        opacity: 0.85,
-        interactive: false,
-      }).addTo(drawTrailLayerRef.current!)
-    }
-
-    if (tool === 'pencil' && drawTrailPoints.length >= 2) {
+    if (tool === 'pencil' && pts.length >= 2) {
       const midIcon = L.divIcon({
         className: '',
         html: '<div style="width:10px;height:10px;background:#fff;border:2px solid #f97316;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>',
         iconSize: [10, 10],
         iconAnchor: [5, 5],
       })
-      for (let i = 0; i < drawTrailPoints.length - 1; i++) {
-        const a = drawTrailPoints[i]
-        const b = drawTrailPoints[i + 1]
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i]
+        const b = pts[i + 1]
         const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
         const marker = L.marker(mid as L.LatLngExpression, { icon: midIcon, interactive: true })
         marker.on('click', (e: L.LeafletMouseEvent) => {

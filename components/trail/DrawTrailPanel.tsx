@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import type { TrimFormState, Network } from '@/lib/types'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
 import { polylineDistanceKm } from '@/lib/geo-utils'
@@ -37,6 +37,8 @@ export function DrawTrailPanel({
   const [publishOnSave, setPublishOnSave] = useState(!!canPublish)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const formRef = useRef(form)
+  formRef.current = form
 
   // Restore form from autosave (survives Strava OAuth redirect)
   useEffect(() => {
@@ -52,11 +54,13 @@ export function DrawTrailPanel({
   // Persist form to localStorage on page navigation
   useEffect(() => {
     const handler = () => {
-      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(form))
+      try {
+        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(formRef.current))
+      } catch { /* ignore quota / private mode */ }
     }
     window.addEventListener('pagehide', handler)
     return () => window.removeEventListener('pagehide', handler)
-  }, [form])
+  }, [])
 
   const distanceKm = drawPoints.length >= 2 ? polylineDistanceKm(drawPoints) : 0
 

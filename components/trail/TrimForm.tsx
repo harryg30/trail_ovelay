@@ -35,6 +35,8 @@ export function TrimForm({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [publishOnSave, setPublishOnSave] = useState(!!canPublish)
+  const formRef = useRef(form)
+  formRef.current = form
 
   // Restore form from autosave (survives Strava OAuth redirect)
   useEffect(() => {
@@ -50,16 +52,18 @@ export function TrimForm({
   // Persist form to localStorage on page navigation (beforeunload unreliable on mobile)
   useEffect(() => {
     const handler = () => {
-      localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(form))
+      try {
+        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(formRef.current))
+      } catch { /* ignore quota / private mode */ }
     }
     window.addEventListener('pagehide', handler)
     return () => window.removeEventListener('pagehide', handler)
-  }, [form])
+  }, [])
 
   // Auto-set name when segment changes, but don't overwrite if user has already entered one
   useEffect(() => {
     if (defaultName) {
-      setForm((prev) => ({ ...prev, name: defaultName }))
+      setForm((prev) => (prev.name ? prev : { ...prev, name: defaultName }))
       setSaveError(null)
       return
     }
