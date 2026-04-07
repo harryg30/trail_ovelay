@@ -27,7 +27,8 @@ app/
     health/
 components/
   LeafletMap.tsx        # Interactive map; trail/ride/network rendering; trimming UI
-  LeftDrawer.tsx        # Sidebar: upload, ride list, trail list, trim form, network list
+  LeftDrawer.tsx        # Sidebar: upload, rides, trails (foldered), networks; TrailEditDrawer for draw/edit trail
+  trail/TrailEditDrawer.tsx  # Shared drawer form: pencil/eraser, undo/redo/clear, TrailFormFields, draw vs edit save
   AuthButton.tsx
 lib/
   db.ts                 # pg pool; query() / queryOne()
@@ -56,7 +57,7 @@ Trail         { id, name, difficulty, direction, polyline, distanceKm, elevation
 Network       { id, name, polygon: [lat,lon][], trailIds, createdAt }
 TrimSegment   { ride, startIndex, endIndex, polyline, distanceKm, elevationGainFt }
 SessionUser   { id, name, profilePicture, stravaAthleteId }
-EditMode      = 'add-trail' | 'edit-trail' | 'refine-trail' | 'add-network' | 'edit-network' | null
+EditMode      = 'add-trail' | 'edit-trail' | 'refine-trail' | 'add-network' | 'edit-network' | 'draw-trail' | null
 difficulty    = 'easy' | 'intermediate' | 'hard' | 'not_set'
 direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 ```
@@ -79,7 +80,22 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 - GPX parsed server-side on upload; polylines stored as JSONB
 - Browser extension injects into `strava.com/maps/create/*`, fetches trails from API
 
+## Trail draw / edit UX (left drawer)
+- **Draw trail** (`editMode === 'draw-trail'`): `TrailEditDrawer` variant `draw` in `LeftDrawer` — tools, history (draw undo/redo), network search, publish checkbox; map interaction via `trailEditTool` (`pencil` | `eraser`).
+- **Edit existing trail** (`editMode === 'edit-trail'` + `selectedTrail`): same drawer variant `edit` — metadata + geometry in one save (`PATCH` trail with polyline + recomputed `distanceKm` from `ClientPage`). No separate “refine” step in the sidebar (`refine-trail` may still exist in `EditMode` union / mode registry for map descriptor compatibility; primary flow is unified under `edit-trail`).
+- **Focused session**: while drawing or editing a selected trail, `LeftDrawer` hides the trails folder list (for draw), drafts, networks list, and rides list so the editor has room; picker hint shown when `edit-trail` with no selection. Drawer width target ~392px (`max-w-[392px] sm:w-[392px]`).
+- **Map flags** (see `ClientPage`): trail pick on map when `edit-trail` without selection; geometry edit when `edit-trail` + `selectedTrail` + `refinedPolyline !== null`. `useEditMode` clears `refinedPolyline` / refine history when leaving `edit-trail`; seeds `refinedPolyline` from `selectedTrail.polyline` when trail id changes.
+- **Geo helpers**: `lib/geo-edit.ts` (and updates to `lib/geo-utils.ts`) support interactive polyline editing used by the map.
+
+## Branching / PR hygiene
+- **`feature/trail-drawer-redesign`**: Web app drawer + trail edit work; based on `main`.
+- **`extension/browser-extension-updates`**: Chrome extension–only commits; keep extension changes off the drawer feature branch so PRs stay reviewable.
+
+## Agent / environment quirks
+- Some environments wrap `git commit` with `commit --trailer …`, which **Git 2.28** rejects (`unknown option 'trailer'`). If that happens, create the commit with `git write-tree`, `git commit-tree <tree> -p <parent>` (message on stdin), then `git update-ref HEAD <new>`.
+
 ## Recent Work (from git log)
+- Left drawer unified trail draw/edit (`TrailEditDrawer`), single save for metadata + geometry when editing
 - Browser extension showing trail lines on Strava
 - Initial extension scaffold
 - Save trails feature

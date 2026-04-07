@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 import type { EditMode, TrimPoint, Trail, Network } from '@/lib/types'
+import type { TrailEditTool } from '@/lib/modes/types'
 
 /**
  * Owns all mode-scoped state and the setMode transition function.
@@ -28,6 +29,8 @@ export function useEditMode() {
   const [refinedPolyline, setRefinedPolyline] = useState<[number, number][] | null>(null)
   const [savingRefined, setSavingRefined] = useState(false)
   const [refineError, setRefineError] = useState<string | null>(null)
+  const [refineTrailHistoryPast, setRefineTrailHistoryPast] = useState<[number, number][][]>([])
+  const [refineTrailHistoryFuture, setRefineTrailHistoryFuture] = useState<[number, number][][]>([])
 
   // Network state (add-network, edit-network)
   const [selectedNetwork, setSelectedNetwork] = useState<Network | null>(null)
@@ -36,6 +39,11 @@ export function useEditMode() {
   // Draw trail state (draw-trail)
   const [drawTrailPoints, setDrawTrailPoints] = useState<[number, number][]>([])
   const [drawTrailFinished, setDrawTrailFinished] = useState(false)
+  const [drawTrailHistoryPast, setDrawTrailHistoryPast] = useState<[number, number][][]>([])
+  const [drawTrailHistoryFuture, setDrawTrailHistoryFuture] = useState<[number, number][][]>([])
+
+  // Shared tool state for draw-trail + refine-trail
+  const [trailEditTool, setTrailEditTool] = useState<TrailEditTool>('pencil')
 
   /**
    * Transition to a new mode, clearing any state that doesn't carry over.
@@ -48,12 +56,14 @@ export function useEditMode() {
       setTrimStart(null)
       setTrimEnd(null)
     }
-    if (mode !== 'edit-trail' && mode !== 'refine-trail') {
+    if (mode !== 'edit-trail') {
       setSelectedTrail(null)
     }
-    if (mode !== 'refine-trail') {
+    if (mode !== 'edit-trail') {
       setRefinedPolyline(null)
       setRefineError(null)
+      setRefineTrailHistoryPast([])
+      setRefineTrailHistoryFuture([])
     }
     if (mode !== 'add-network' && mode !== 'edit-network') {
       setSelectedNetwork(null)
@@ -65,6 +75,12 @@ export function useEditMode() {
     if (mode !== 'draw-trail') {
       setDrawTrailPoints([])
       setDrawTrailFinished(false)
+      setDrawTrailHistoryPast([])
+      setDrawTrailHistoryFuture([])
+    }
+
+    if (mode !== 'draw-trail' && mode !== 'edit-trail') {
+      setTrailEditTool('pencil')
     }
   }, [])
 
@@ -80,11 +96,17 @@ export function useEditMode() {
     refinedPolyline, setRefinedPolyline,
     savingRefined, setSavingRefined,
     refineError, setRefineError,
+    refineTrailHistoryPast, setRefineTrailHistoryPast,
+    refineTrailHistoryFuture, setRefineTrailHistoryFuture,
 
     selectedNetwork, setSelectedNetwork,
     drawNetworkPoints, setDrawNetworkPoints,
 
     drawTrailPoints, setDrawTrailPoints,
     drawTrailFinished, setDrawTrailFinished,
+    drawTrailHistoryPast, setDrawTrailHistoryPast,
+    drawTrailHistoryFuture, setDrawTrailHistoryFuture,
+
+    trailEditTool, setTrailEditTool,
   }
 }

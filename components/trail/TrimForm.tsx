@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import type { TrimSegment, TrimFormState, Network } from '@/lib/types'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
 
+const AUTOSAVE_KEY = 'trim_form_autosave'
+
 export function TrimForm({
   trimSegment,
   onSave,
@@ -33,16 +35,43 @@ export function TrimForm({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [publishOnSave, setPublishOnSave] = useState(!!canPublish)
+  const formRef = useRef(form)
+  formRef.current = form
 
-  // Reset form name when segment is set or changes
+  // Restore form from autosave (survives Strava OAuth redirect)
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(AUTOSAVE_KEY)
+      if (saved) {
+        setForm(JSON.parse(saved) as TrimFormState)
+        localStorage.removeItem(AUTOSAVE_KEY)
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  // Persist form to localStorage on page navigation (beforeunload unreliable on mobile)
+  useEffect(() => {
+    const handler = () => {
+      try {
+        localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(formRef.current))
+      } catch { /* ignore quota / private mode */ }
+    }
+    window.addEventListener('pagehide', handler)
+    return () => window.removeEventListener('pagehide', handler)
+  }, [])
+
+  // Auto-set name when segment changes, but don't overwrite if user has already entered one
   useEffect(() => {
     if (defaultName) {
-      setForm((prev) => ({ ...prev, name: defaultName }))
+      setForm((prev) => (prev.name ? prev : { ...prev, name: defaultName }))
       setSaveError(null)
       return
     }
     if (!trimSegment) return
-    setForm((prev) => ({ ...prev, name: trimSegment.ride.name + ' Trail' }))
+    setForm((prev) => {
+      if (prev.name) return prev
+      return { ...prev, name: trimSegment.ride.name + ' Trail' }
+    })
     setSaveError(null)
   }, [trimSegment, defaultName])
 
@@ -52,7 +81,11 @@ export function TrimForm({
     setSaving(true)
     setSaveError(null)
     const err = await onSave(form, publishOnSave)
-    if (err) setSaveError(err)
+    if (err) {
+      setSaveError(err)
+    } else {
+      localStorage.removeItem(AUTOSAVE_KEY)
+    }
     setSaving(false)
   }
 
