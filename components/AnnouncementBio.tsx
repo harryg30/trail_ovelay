@@ -92,15 +92,16 @@ export default function AnnouncementBio({
               {bio.links.map((link) =>
                 link.action === "contact-modal" ? (
                   <button
-                    key='contact'
+                    key={link.label}
+                    type='button'
                     onClick={() => setContactOpen(true)}
                     className='text-xs text-blue-500 hover:text-blue-700 transition-colors'
                   >
                     {link.label}
                   </button>
-                ) : (
+                ) : link.href ? (
                   <a
-                    key={link.href}
+                    key={link.label}
                     href={link.href}
                     target='_blank'
                     rel='noopener noreferrer'
@@ -108,7 +109,7 @@ export default function AnnouncementBio({
                   >
                     {link.label}
                   </a>
-                )
+                ) : null
               )}
             </div>
           </div>

@@ -1,0 +1,36 @@
+{
+  "updatedAt": "2026-04-07T00:00:00.000Z",
+  "headline": "Welcome to Trail Overlay",
+  "whatsNew": [
+    {
+      "title": "",
+      "summary": "Create and edit trails directly on the map with our new drawing tools."
+    },
+    {
+      "title": "",
+      "summary": "Trail details now appear inside Strava route builder via the Chrome extension. (experimental)"
+    }
+  ],
+  "upcoming": [
+    {
+      "title": "",
+      "status": "Planned",
+      "summary": "Photo upload so you can see what your routing yourself to"
+    },
+    {
+      "title": "",
+      "status": "Planned",
+      "summary": "Refined trail editing tools"
+    },
+    {
+      "title": "",
+      "status": "Planned",
+      "summary": "Mobile-friendly layout"
+    },
+    {
+      "title": "",
+      "status": "Planned",
+      "summary": "Ride with GPS support"
+    }
+  ]
+}

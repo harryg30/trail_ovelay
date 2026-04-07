@@ -56,6 +56,19 @@ export default function AnnouncementModal({
             whatsNew={content.whatsNew}
             upcoming={content.upcoming}
           />
+          <div className='flex flex-col gap-2'>
+            <p className='text-sm text-zinc-600 leading-relaxed'>
+              {content.roadmap.description}
+            </p>
+            <a
+              href={content.roadmap.href}
+              target='_blank'
+              rel='noopener noreferrer'
+              className='text-xs text-blue-500 hover:text-blue-700 transition-colors w-fit'
+            >
+              {content.roadmap.linkLabel}
+            </a>
+          </div>
           <hr className='border-zinc-200' />
           <AnnouncementBio bio={content.bio} onClose={onClose} />
         </div>
