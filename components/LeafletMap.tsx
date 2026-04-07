@@ -5,6 +5,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, Network, EditMode, RidePhoto } from '@/lib/types'
 import { MODE_REGISTRY } from '@/lib/modes'
+import type { TrailEditTool } from '@/lib/modes/types'
 import { snapToNearestTrailPoint } from '@/lib/geo-utils'
 
 export interface LeafletMapProps {
@@ -41,6 +42,13 @@ export interface LeafletMapProps {
   drawTrailMode: boolean
   drawTrailPoints: [number, number][]
   onDrawTrailPointAdded: (latlng: [number, number]) => void
+  onDrawTrailPointRemoved: (index: number) => void
+  onDrawTrailInsertAfter: (indexBefore: number, latlng: [number, number]) => void
+  onDrawTrailPointMoved: (index: number, latlng: [number, number]) => void
+  trailEditTool: TrailEditTool
+  onRefinePointRemoved: (index: number) => void
+  onRefineInsertAfter: (indexBefore: number, latlng: [number, number]) => void
+  onBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void
 }
 
 export default function LeafletMap({
@@ -77,6 +85,13 @@ export default function LeafletMap({
   drawTrailMode,
   drawTrailPoints,
   onDrawTrailPointAdded,
+  onDrawTrailPointRemoved,
+  onDrawTrailInsertAfter,
+  onDrawTrailPointMoved,
+  trailEditTool,
+  onRefinePointRemoved,
+  onRefineInsertAfter,
+  onBoundsChange,
 }: LeafletMapProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -110,7 +125,15 @@ export default function LeafletMap({
   const networksRef = useRef(networks)
   const drawTrailModeRef = useRef(drawTrailMode)
   const onDrawTrailPointAddedRef = useRef(onDrawTrailPointAdded)
+  const onDrawTrailPointRemovedRef = useRef(onDrawTrailPointRemoved)
+  const onDrawTrailInsertAfterRef = useRef(onDrawTrailInsertAfter)
+  const onDrawTrailPointMovedRef = useRef(onDrawTrailPointMoved)
+  const trailEditToolRef = useRef<TrailEditTool>(trailEditTool)
+  const onRefinePointRemovedRef = useRef(onRefinePointRemoved)
+  const onRefineInsertAfterRef = useRef(onRefineInsertAfter)
   const hasFitBoundsRef = useRef(false)
+  const onBoundsChangeRef = useRef(onBoundsChange)
+  onBoundsChangeRef.current = onBoundsChange
   const placingPhotoRef = useRef(placingPhoto)
   const onAcceptPhotoRef = useRef(onAcceptPhoto)
   const onCancelPlaceRef = useRef(onCancelPlace)
@@ -132,12 +155,22 @@ export default function LeafletMap({
   networksRef.current = networks
   drawTrailModeRef.current = drawTrailMode
   onDrawTrailPointAddedRef.current = onDrawTrailPointAdded
+  onDrawTrailPointRemovedRef.current = onDrawTrailPointRemoved
+  onDrawTrailInsertAfterRef.current = onDrawTrailInsertAfter
+  onDrawTrailPointMovedRef.current = onDrawTrailPointMoved
+  trailEditToolRef.current = trailEditTool
+  onRefinePointRemovedRef.current = onRefinePointRemoved
+  onRefineInsertAfterRef.current = onRefineInsertAfter
 
   // Effect 1: map init
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return
 
     const map = L.map(containerRef.current).setView([39.8283, -98.5795], 5)
+
+    // Panes to ensure stable layer ordering (networks always below everything else).
+    const networksPane = map.createPane('networksPane')
+    networksPane.style.zIndex = '200'
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution:
@@ -158,7 +191,18 @@ export default function LeafletMap({
     draftTrailsLayerRef.current = L.layerGroup().addTo(map)
     drawTrailLayerRef.current = L.layerGroup().addTo(map)
 
-    map.on('zoomend', () => setZoom(map.getZoom()))
+    const fireBoundsChange = () => {
+      const b = map.getBounds()
+      onBoundsChangeRef.current?.({
+        north: b.getNorth(),
+        south: b.getSouth(),
+        east: b.getEast(),
+        west: b.getWest(),
+      })
+    }
+
+    map.on('zoomend', () => { setZoom(map.getZoom()); fireBoundsChange() })
+    map.on('moveend', fireBoundsChange)
 
     map.on('click', (e: L.LeafletMouseEvent) => {
       if (placingPhotoRef.current) {
@@ -216,7 +260,9 @@ export default function LeafletMap({
         return
       }
       if (drawTrailModeRef.current) {
-        onDrawTrailPointAddedRef.current([e.latlng.lat, e.latlng.lng])
+        if (trailEditToolRef.current === 'pencil') {
+          onDrawTrailPointAddedRef.current([e.latlng.lat, e.latlng.lng])
+        }
         return
       }
       if (drawNetworkModeRef.current) {
@@ -515,6 +561,8 @@ export default function LeafletMap({
     refineLayerRef.current.clearLayers()
     if (!refineMode || !refinePolyline || refinePolyline.length < 2) return
 
+    const tool = trailEditTool
+
     // Working copy mutated during drag
     const pts: [number, number][] = refinePolyline.map(([lat, lng]) => [lat, lng])
 
@@ -533,22 +581,49 @@ export default function LeafletMap({
 
     pts.forEach((pt, i) => {
       const marker = L.marker(pt as L.LatLngExpression, {
-        draggable: true,
+        draggable: tool === 'pencil',
         icon: nodeIcon,
         zIndexOffset: 1000,
       }).addTo(refineLayerRef.current!)
 
-      marker.on('drag', () => {
-        const { lat, lng } = marker.getLatLng()
-        pts[i] = [lat, lng]
-        pl.setLatLngs(pts as L.LatLngExpression[])
-      })
+      if (tool === 'pencil') {
+        marker.on('drag', () => {
+          const { lat, lng } = marker.getLatLng()
+          pts[i] = [lat, lng]
+          pl.setLatLngs(pts as L.LatLngExpression[])
+        })
 
-      marker.on('dragend', () => {
-        onPolylineRefinedRef.current([...pts])
-      })
+        marker.on('dragend', () => {
+          onPolylineRefinedRef.current([...pts])
+        })
+      } else {
+        marker.on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e)
+          onRefinePointRemovedRef.current(i)
+        })
+      }
     })
-  }, [refineMode, refinePolyline])
+
+    if (tool === 'pencil' && pts.length >= 2) {
+      const midIcon = L.divIcon({
+        className: '',
+        html: '<div style="width:10px;height:10px;background:#fff;border:2px solid #f97316;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>',
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+      })
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i]
+        const b = pts[i + 1]
+        const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+        const marker = L.marker(mid as L.LatLngExpression, { icon: midIcon, interactive: true })
+        marker.on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e)
+          onRefineInsertAfterRef.current(i, mid)
+        })
+        marker.addTo(refineLayerRef.current!)
+      }
+    }
+  }, [refineMode, refinePolyline, trailEditTool])
 
   // Effect 8: networks layer
   useEffect(() => {
@@ -559,13 +634,15 @@ export default function LeafletMap({
       if (hiddenNetworkIds.has(network.id)) return
       if (network.polygon.length < 3) return
       const isSelected = network.id === selectedNetworkId
+      const interactive = !trimMode && !editTrailMode && !placingPhoto
       const polygon = L.polygon(network.polygon as L.LatLngExpression[], {
         color: '#3b82f6',
         weight: isSelected ? 3 : 2,
         fillColor: '#3b82f6',
         fillOpacity: isSelected ? 0.25 : 0.1,
         opacity: isSelected ? 1 : 0.7,
-        interactive: !trimMode,
+        interactive,
+        pane: 'networksPane',
       })
 
       polygon.on('click', (e: L.LeafletMouseEvent) => {
@@ -584,8 +661,9 @@ export default function LeafletMap({
         const networkLabelHtml = `<div style="font-size:13px;font-weight:700;white-space:nowrap;cursor:pointer;color:#1d4ed8;text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff,-1px 1px 0 #fff,1px 1px 0 #fff">${network.name}</div>`
         const labelMarker = L.marker([centroidLat, centroidLon], {
           icon: L.divIcon({ html: networkLabelHtml, className: '', iconSize: [0, 0], iconAnchor: [0, 0] }),
-          interactive: true,
+          interactive,
           keyboard: false,
+          pane: 'networksPane',
         })
         labelMarker.on('click', (e: L.LeafletMouseEvent) => {
           L.DomEvent.stopPropagation(e)
@@ -594,7 +672,7 @@ export default function LeafletMap({
         labelMarker.addTo(networksLayerRef.current!)
       }
     })
-  }, [networks, hiddenNetworkIds, selectedNetworkId, trimMode, zoom])
+  }, [networks, hiddenNetworkIds, selectedNetworkId, trimMode, editTrailMode, placingPhoto, zoom])
 
   // Effect: draw network polygon preview
   useEffect(() => {
@@ -665,6 +743,8 @@ export default function LeafletMap({
     drawTrailLayerRef.current.clearLayers()
     if (!drawTrailMode || drawTrailPoints.length === 0) return
 
+    const tool = trailEditTool
+
     const nodeIcon = L.divIcon({
       className: '',
       html: '<div style="width:8px;height:8px;background:#f97316;border:2px solid white;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.5)"></div>',
@@ -672,8 +752,25 @@ export default function LeafletMap({
       iconAnchor: [4, 4],
     })
 
-    drawTrailPoints.forEach((pt) => {
-      L.marker(pt as L.LatLngExpression, { icon: nodeIcon, interactive: false }).addTo(drawTrailLayerRef.current!)
+    drawTrailPoints.forEach((pt, i) => {
+      const marker = L.marker(pt as L.LatLngExpression, {
+        icon: nodeIcon,
+        interactive: tool === 'eraser',
+        draggable: tool === 'pencil',
+      })
+      if (tool === 'eraser') {
+        marker.on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e)
+          onDrawTrailPointRemovedRef.current(i)
+        })
+      }
+      if (tool === 'pencil') {
+        marker.on('dragend', () => {
+          const { lat, lng } = marker.getLatLng()
+          onDrawTrailPointMovedRef.current(i, [lat, lng])
+        })
+      }
+      marker.addTo(drawTrailLayerRef.current!)
     })
 
     if (drawTrailPoints.length >= 2) {
@@ -684,7 +781,27 @@ export default function LeafletMap({
         interactive: false,
       }).addTo(drawTrailLayerRef.current!)
     }
-  }, [drawTrailMode, drawTrailPoints])
+
+    if (tool === 'pencil' && drawTrailPoints.length >= 2) {
+      const midIcon = L.divIcon({
+        className: '',
+        html: '<div style="width:10px;height:10px;background:#fff;border:2px solid #f97316;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>',
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+      })
+      for (let i = 0; i < drawTrailPoints.length - 1; i++) {
+        const a = drawTrailPoints[i]
+        const b = drawTrailPoints[i + 1]
+        const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+        const marker = L.marker(mid as L.LatLngExpression, { icon: midIcon, interactive: true })
+        marker.on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e)
+          onDrawTrailInsertAfterRef.current(i, mid)
+        })
+        marker.addTo(drawTrailLayerRef.current!)
+      }
+    }
+  }, [drawTrailMode, drawTrailPoints, trailEditTool])
 
   // Effect 9: selected trail highlight
   useEffect(() => {

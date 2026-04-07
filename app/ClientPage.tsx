@@ -8,6 +8,8 @@ import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
 import type { Ride, Trail, Network, TrimSegment, TrimFormState, SaveTrailResponse, RidePhoto, DraftTrail } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import { polylineDistanceKm, estimatedElevationGainFt, generateAveragedTrail, clipPolylineToCorridor } from '@/lib/geo-utils'
+import type { MapBounds } from '@/lib/geo-utils'
+import { insertPointAfter, removePointAt } from '@/lib/geo-edit'
 import { useEditMode } from '@/hooks/useEditMode'
 import { loadDemoRides } from '@/lib/demo-rides'
 
@@ -66,20 +68,72 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     trimEndRef,
     selectedTrail, setSelectedTrail,
     refinedPolyline, setRefinedPolyline,
-    savingRefined, setSavingRefined,
     refineError, setRefineError,
     selectedNetwork, setSelectedNetwork,
     drawNetworkPoints, setDrawNetworkPoints,
     drawTrailPoints, setDrawTrailPoints,
-    drawTrailFinished, setDrawTrailFinished,
+    drawTrailHistoryPast, setDrawTrailHistoryPast,
+    drawTrailHistoryFuture, setDrawTrailHistoryFuture,
+    refineTrailHistoryPast, setRefineTrailHistoryPast,
+    refineTrailHistoryFuture, setRefineTrailHistoryFuture,
+    trailEditTool, setTrailEditTool,
   } = useEditMode()
 
   const trimMode = editMode === 'add-trail'
-  const editTrailMode = editMode === 'edit-trail'
-  const refineMode = editMode === 'refine-trail'
+  /** Map click selects a trail only when in edit mode without a trail yet (picker). */
+  const mapTrailPickMode = editMode === 'edit-trail' && !selectedTrail
+  /** Geometry overlays (midpoints, drag) while editing an existing trail. */
+  const geometryEditMode =
+    editMode === 'edit-trail' && !!selectedTrail && refinedPolyline !== null
   const drawNetworkMode = editMode === 'add-network'
   const editNetworkMode = editMode === 'edit-network'
   const drawTrailMode = editMode === 'draw-trail'
+
+  const lastEditTrailIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (editMode !== 'edit-trail') {
+      lastEditTrailIdRef.current = null
+      return
+    }
+    if (!selectedTrail) return
+    if (lastEditTrailIdRef.current !== selectedTrail.id) {
+      lastEditTrailIdRef.current = selectedTrail.id
+      setRefinedPolyline([...selectedTrail.polyline])
+      setRefineTrailHistoryPast([])
+      setRefineTrailHistoryFuture([])
+      setRefineError(null)
+    }
+  }, [editMode, selectedTrail, setRefinedPolyline, setRefineError, setRefineTrailHistoryFuture, setRefineTrailHistoryPast])
+
+  const polylinesEqual = useCallback((a: [number, number][], b: [number, number][]) => {
+    if (a === b) return true
+    if (a.length !== b.length) return false
+    for (let i = 0; i < a.length; i++) {
+      if (a[i][0] !== b[i][0] || a[i][1] !== b[i][1]) return false
+    }
+    return true
+  }, [])
+
+  const applyDrawTrailEdit = useCallback((updater: (prev: [number, number][]) => [number, number][]) => {
+    setDrawTrailPoints((prev) => {
+      const next = updater(prev)
+      if (polylinesEqual(prev, next)) return prev
+      setDrawTrailHistoryPast((past) => [...past, prev])
+      setDrawTrailHistoryFuture([])
+      return next
+    })
+  }, [polylinesEqual, setDrawTrailHistoryFuture, setDrawTrailHistoryPast, setDrawTrailPoints])
+
+  const applyRefineTrailEdit = useCallback((updater: (prev: [number, number][]) => [number, number][]) => {
+    setRefinedPolyline((prevMaybe) => {
+      const prev = prevMaybe ?? (selectedTrail ? [...selectedTrail.polyline] : [])
+      const next = updater(prev)
+      if (polylinesEqual(prev, next)) return prevMaybe
+      setRefineTrailHistoryPast((past) => [...past, prev])
+      setRefineTrailHistoryFuture([])
+      return next
+    })
+  }, [polylinesEqual, selectedTrail, setRefineTrailHistoryFuture, setRefineTrailHistoryPast, setRefinedPolyline])
 
   const [averagedTrimPolyline, setAveragedTrimPolyline] = useState<[number, number][] | null>(null)
   const [averagedRideCount, setAveragedRideCount] = useState(0)
@@ -92,6 +146,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [photosVisibleRideIds, setPhotosVisibleRideIds] = useState<Set<string>>(new Set())
   const [fetchingPhotosId, setFetchingPhotosId] = useState<string | null>(null)
   const [placingPhoto, setPlacingPhoto] = useState<RidePhoto | null>(null)
+  const [mapBounds, setMapBounds] = useState<MapBounds | null>(null)
+  const [showOnMapOnly, setShowOnMapOnly] = useState(false)
 
   useEffect(() => {
     fetch('/api/trails')
@@ -327,51 +383,47 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     setSelectedTrail(trail)
   }, [])
 
-  const handleEnterRefineMode = useCallback(() => {
-    if (!selectedTrail) return
-    setRefinedPolyline([...selectedTrail.polyline])
-    setRefineError(null)
-    setMode('refine-trail')
-  }, [selectedTrail])
-
   const handlePolylineRefined = useCallback((polyline: [number, number][]) => {
-    setRefinedPolyline([...polyline])
-  }, [])
+    applyRefineTrailEdit(() => [...polyline])
+  }, [applyRefineTrailEdit])
 
-  const handleSaveRefinedTrail = useCallback(async () => {
-    if (!selectedTrail || !refinedPolyline) return
-    setSavingRefined(true)
-    setRefineError(null)
-    try {
-      const res = await fetch(`/api/trails/${selectedTrail.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: selectedTrail.name,
-          difficulty: selectedTrail.difficulty,
-          direction: selectedTrail.direction,
-          notes: selectedTrail.notes,
-          polyline: refinedPolyline,
-          distanceKm: refinedPolyline.length > 1
-            ? (await import('@/lib/geo-utils')).polylineDistanceKm(refinedPolyline)
-            : selectedTrail.distanceKm,
-        }),
-      })
-      const data = await res.json()
-      if (data.success && data.trail) {
-        setTrails((prev) => prev.map((t) => (t.id === data.trail.id ? data.trail : t)))
-        setSelectedTrail(data.trail)
-        setRefinedPolyline(null)
-        setMode('edit-trail')
-      } else {
+  const handleSaveEditedTrail = useCallback(
+    async (form: TrimFormState): Promise<string | null> => {
+      if (!selectedTrail || !refinedPolyline) return 'Nothing to save'
+      if (refinedPolyline.length < 2) return 'Trail needs at least 2 points'
+      setRefineError(null)
+      try {
+        const distanceKm =
+          refinedPolyline.length > 1 ? polylineDistanceKm(refinedPolyline) : selectedTrail.distanceKm
+        const res = await fetch(`/api/trails/${selectedTrail.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: form.name,
+            difficulty: form.difficulty,
+            direction: form.direction,
+            notes: form.notes || undefined,
+            polyline: refinedPolyline,
+            distanceKm,
+          }),
+        })
+        const data = await res.json()
+        if (data.success && data.trail) {
+          setTrails((prev) => prev.map((t) => (t.id === data.trail.id ? data.trail : t)))
+          setSelectedTrail(null)
+          setRefinedPolyline(null)
+          setMode(null)
+          return null
+        }
         setRefineError(data.error ?? 'Save failed')
+        return data.error ?? 'Save failed'
+      } catch {
+        setRefineError('Network error')
+        return 'Network error'
       }
-    } catch {
-      setRefineError('Network error')
-    } finally {
-      setSavingRefined(false)
-    }
-  }, [selectedTrail, refinedPolyline])
+    },
+    [selectedTrail, refinedPolyline, setMode, setRefineError, setRefinedPolyline, setSelectedTrail]
+  )
 
   const handleDeleteTrail = useCallback(async (): Promise<string | null> => {
     if (!selectedTrail) return 'No trail selected'
@@ -388,34 +440,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       return 'Network error'
     }
   }, [selectedTrail])
-
-  const handleUpdateTrail = useCallback(
-    async (form: TrimFormState): Promise<string | null> => {
-      if (!selectedTrail) return 'No trail selected'
-
-      const res = await fetch(`/api/trails/${selectedTrail.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: form.name,
-          difficulty: form.difficulty,
-          direction: form.direction,
-          notes: form.notes || undefined,
-        }),
-      })
-
-      const data = await res.json()
-
-      if (data.success && data.trail) {
-        setTrails((prev) => prev.map((t) => (t.id === data.trail.id ? data.trail : t)))
-        setSelectedTrail(null)
-        return null
-      }
-
-      return data.error ?? 'Update failed'
-    },
-    [selectedTrail]
-  )
 
   const handleTrimPointSelected = useCallback((rideId: string, index: number) => {
     setTrimStart((prevStart) => {
@@ -581,16 +605,90 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   )
 
   const handleDrawTrailPointAdded = useCallback((latlng: [number, number]) => {
-    setDrawTrailPoints((prev) => [...prev, latlng])
-  }, [])
+    applyDrawTrailEdit((prev) => [...prev, latlng])
+  }, [applyDrawTrailEdit])
+
+  const handleDrawTrailPointRemoved = useCallback((index: number) => {
+    applyDrawTrailEdit((prev) => {
+      if (prev.length <= 2) return prev
+      return removePointAt(prev, index)
+    })
+  }, [applyDrawTrailEdit])
+
+  const handleDrawTrailInsertAfter = useCallback((indexBefore: number, latlng: [number, number]) => {
+    applyDrawTrailEdit((prev) => insertPointAfter(prev, indexBefore, latlng))
+  }, [applyDrawTrailEdit])
+
+  const handleDrawTrailPointMoved = useCallback((index: number, latlng: [number, number]) => {
+    applyDrawTrailEdit((prev) => {
+      if (index < 0 || index >= prev.length) return prev
+      const next = [...prev]
+      next[index] = latlng
+      return next
+    })
+  }, [applyDrawTrailEdit])
 
   const handleDrawTrailUndo = useCallback(() => {
-    setDrawTrailPoints((prev) => prev.slice(0, -1))
-  }, [])
+    setDrawTrailHistoryPast((past) => {
+      if (past.length === 0) return past
+      const prev = past[past.length - 1]
+      setDrawTrailHistoryFuture((future) => [drawTrailPoints, ...future])
+      setDrawTrailPoints(prev)
+      return past.slice(0, -1)
+    })
+  }, [drawTrailPoints, setDrawTrailHistoryFuture, setDrawTrailHistoryPast, setDrawTrailPoints])
 
-  const handleDrawTrailFinish = useCallback(() => {
-    if (drawTrailPoints.length >= 2) setDrawTrailFinished(true)
-  }, [drawTrailPoints])
+  const handleDrawTrailRedo = useCallback(() => {
+    setDrawTrailHistoryFuture((future) => {
+      if (future.length === 0) return future
+      const next = future[0]
+      setDrawTrailHistoryPast((past) => [...past, drawTrailPoints])
+      setDrawTrailPoints(next)
+      return future.slice(1)
+    })
+  }, [drawTrailPoints, setDrawTrailHistoryFuture, setDrawTrailHistoryPast, setDrawTrailPoints])
+
+  const handleDrawTrailClear = useCallback(() => {
+    applyDrawTrailEdit(() => [])
+  }, [applyDrawTrailEdit])
+
+  const handleRefineUndo = useCallback(() => {
+    setRefineTrailHistoryPast((past) => {
+      if (past.length === 0) return past
+      const prev = past[past.length - 1]
+      const current = refinedPolyline ?? (selectedTrail ? [...selectedTrail.polyline] : prev)
+      setRefineTrailHistoryFuture((future) => [current, ...future])
+      setRefinedPolyline(prev)
+      return past.slice(0, -1)
+    })
+  }, [refinedPolyline, selectedTrail, setRefineTrailHistoryFuture, setRefineTrailHistoryPast, setRefinedPolyline])
+
+  const handleRefineRedo = useCallback(() => {
+    setRefineTrailHistoryFuture((future) => {
+      if (future.length === 0) return future
+      const next = future[0]
+      const current = refinedPolyline ?? (selectedTrail ? [...selectedTrail.polyline] : next)
+      setRefineTrailHistoryPast((past) => [...past, current])
+      setRefinedPolyline(next)
+      return future.slice(1)
+    })
+  }, [refinedPolyline, selectedTrail, setRefineTrailHistoryFuture, setRefineTrailHistoryPast, setRefinedPolyline])
+
+  const handleRefineClear = useCallback(() => {
+    if (!selectedTrail) return
+    applyRefineTrailEdit(() => [...selectedTrail.polyline])
+  }, [applyRefineTrailEdit, selectedTrail])
+
+  const handleRefinePointRemoved = useCallback((index: number) => {
+    applyRefineTrailEdit((prev) => {
+      if (prev.length <= 2) return prev
+      return removePointAt(prev, index)
+    })
+  }, [applyRefineTrailEdit])
+
+  const handleRefineInsertAfter = useCallback((indexBefore: number, latlng: [number, number]) => {
+    applyRefineTrailEdit((prev) => insertPointAfter(prev, indexBefore, latlng))
+  }, [applyRefineTrailEdit])
 
   const handleNetworkPointAdded = useCallback((latlng: [number, number]) => {
     setDrawNetworkPoints((prev) => [...prev, latlng])
@@ -774,12 +872,22 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onOutputSpacingChange={setOutputSpacingKm}
           selectedTrail={selectedTrail}
           onSelectTrail={setSelectedTrail}
-          onUpdateTrail={handleUpdateTrail}
+          onSaveEditedTrail={handleSaveEditedTrail}
           onDeleteTrail={handleDeleteTrail}
-          onEnterRefineMode={handleEnterRefineMode}
-          onSaveRefinedTrail={handleSaveRefinedTrail}
-          savingRefined={savingRefined}
           refineError={refineError}
+          refinedPolyline={refinedPolyline}
+          trailEditTool={trailEditTool}
+          onSetTrailEditTool={setTrailEditTool}
+          canUndoDraw={drawTrailHistoryPast.length > 0}
+          canRedoDraw={drawTrailHistoryFuture.length > 0}
+          onDrawUndo={handleDrawTrailUndo}
+          onDrawRedo={handleDrawTrailRedo}
+          onDrawClear={handleDrawTrailClear}
+          canUndoRefine={refineTrailHistoryPast.length > 0}
+          canRedoRefine={refineTrailHistoryFuture.length > 0}
+          onRefineUndo={handleRefineUndo}
+          onRefineRedo={handleRefineRedo}
+          onRefineClear={handleRefineClear}
           networks={networks}
           hiddenNetworkIds={hiddenNetworkIds}
           onToggleNetwork={handleToggleNetwork}
@@ -806,10 +914,10 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onPublishDraft={handlePublishDraft}
           onDeleteDraft={handleDeleteDraft}
           drawTrailPoints={drawTrailPoints}
-          drawTrailFinished={drawTrailFinished}
-          onDrawTrailFinish={handleDrawTrailFinish}
-          onDrawTrailUndo={handleDrawTrailUndo}
           onSaveDrawnTrail={handleSaveDrawnTrail}
+          mapBounds={mapBounds}
+          showOnMapOnly={showOnMapOnly}
+          onToggleShowOnMapOnly={() => setShowOnMapOnly(v => !v)}
         />
       </div>
 
@@ -826,7 +934,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         </button>
       )}
 
-
       <LeafletMap
         rides={rides}
         hiddenRideIds={hiddenRideIds}
@@ -838,11 +945,11 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         trimSegment={trimSegment}
         averagedTrimPolyline={averagedTrimPolyline}
         onTrimPointSelected={handleTrimPointSelected}
-        editTrailMode={editTrailMode}
+        editTrailMode={mapTrailPickMode}
         selectedTrailId={selectedTrail?.id ?? null}
         onTrailSelected={handleTrailSelected}
-        refineMode={refineMode}
-        refinePolyline={refineMode ? (refinedPolyline ?? selectedTrail?.polyline ?? null) : null}
+        refineMode={geometryEditMode}
+        refinePolyline={geometryEditMode ? refinedPolyline : null}
         onPolylineRefined={handlePolylineRefined}
         networks={networks}
         hiddenNetworkIds={hiddenNetworkIds}
@@ -861,6 +968,13 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         drawTrailMode={drawTrailMode}
         drawTrailPoints={drawTrailPoints}
         onDrawTrailPointAdded={handleDrawTrailPointAdded}
+        onDrawTrailPointRemoved={handleDrawTrailPointRemoved}
+        onDrawTrailInsertAfter={handleDrawTrailInsertAfter}
+        onDrawTrailPointMoved={handleDrawTrailPointMoved}
+        onBoundsChange={setMapBounds}
+        trailEditTool={trailEditTool}
+        onRefinePointRemoved={handleRefinePointRemoved}
+        onRefineInsertAfter={handleRefineInsertAfter}
       />
       <AnnouncementModal isOpen={showAnnouncement} onClose={handleCloseAnnouncement} content={ANNOUNCEMENT} />
     </div>

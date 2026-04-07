@@ -1,5 +1,7 @@
 import type { EditMode, TrimPoint, Trail, Network } from '@/lib/types'
 
+export type TrailEditTool = 'pencil' | 'eraser'
+
 /**
  * All state that is scoped to an active edit mode.
  * Owned by useEditMode(); cleared selectively on mode transitions.
@@ -11,10 +13,15 @@ export interface EditModeState {
   refinedPolyline: [number, number][] | null
   savingRefined: boolean
   refineError: string | null
+  refineTrailHistoryPast: [number, number][][]
+  refineTrailHistoryFuture: [number, number][][]
   selectedNetwork: Network | null
   drawNetworkPoints: [number, number][]
   drawTrailPoints: [number, number][]
   drawTrailFinished: boolean
+  drawTrailHistoryPast: [number, number][][]
+  drawTrailHistoryFuture: [number, number][][]
+  trailEditTool: TrailEditTool
 }
 
 export const initialModeState: EditModeState = {
@@ -24,10 +31,15 @@ export const initialModeState: EditModeState = {
   refinedPolyline: null,
   savingRefined: false,
   refineError: null,
+  refineTrailHistoryPast: [],
+  refineTrailHistoryFuture: [],
   selectedNetwork: null,
   drawNetworkPoints: [],
   drawTrailPoints: [],
   drawTrailFinished: false,
+  drawTrailHistoryPast: [],
+  drawTrailHistoryFuture: [],
+  trailEditTool: 'pencil',
 }
 
 /**

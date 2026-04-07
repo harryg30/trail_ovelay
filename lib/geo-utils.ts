@@ -1,5 +1,16 @@
 import type { Ride, Trail } from "@/lib/types";
 
+export type MapBounds = { north: number; south: number; east: number; west: number }
+
+export function polylineInBounds(
+  polyline: [number, number][],
+  bounds: MapBounds
+): boolean {
+  return polyline.some(
+    ([lat, lng]) => lat <= bounds.north && lat >= bounds.south && lng <= bounds.east && lng >= bounds.west
+  )
+}
+
 // Minimum distance in km from a point to any segment of a polyline
 export function pointToPolylineDistanceKm(
   point: [number, number],
