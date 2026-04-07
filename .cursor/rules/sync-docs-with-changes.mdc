@@ -1,0 +1,14 @@
+---
+description: Keeps README, docs/, and agent markdown aligned with code changes from chat or branches.
+alwaysApply: true
+---
+
+# Documentation sync
+
+After **substantive** code changes (features, refactors, API or env changes, architecture moves), treat documentation as part of the same deliverable.
+
+1. Follow `@.cursor/skills/sync-docs-with-changes/SKILL.md` (and `@.cursor/skills/sync-docs-with-changes/reference.md` when mapping change types to files).
+2. Update only docs that the change **invalidates or extends**—no drive-by rewrites.
+3. Before considering the task done for PR-ready work: run the short checklist at the bottom of that SKILL.
+
+Skip when the change has **no** observable, operational, or contributor-facing impact (e.g. trivial rename with zero external docs references).
