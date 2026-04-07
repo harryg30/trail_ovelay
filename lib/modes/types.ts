@@ -58,8 +58,8 @@ export const initialModeState: EditModeState = {
  */
 export interface ModeDescriptor {
   id: NonNullable<EditMode>
-  /** CSS cursor shown on the Leaflet map container while this mode is active. */
-  cursor: 'crosshair' | 'pointer' | ''
+  /** CSS cursor shown on the Leaflet map container while this mode is active (may be overridden by tool/phase in LeafletMap). */
+  cursor: string
   /** Human-readable label (for future toolbar/tooltip use). */
   label: string
 }

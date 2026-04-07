@@ -4,8 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, Network, EditMode, RidePhoto } from '@/lib/types'
-import { MODE_REGISTRY } from '@/lib/modes'
 import type { TrailEditTool } from '@/lib/modes/types'
+import { resolveMapCursor } from '@/lib/modes/map-cursor'
 import { snapToNearestTrailPoint } from '@/lib/geo-utils'
 
 export interface LeafletMapProps {
@@ -93,6 +93,9 @@ export default function LeafletMap({
   onRefineInsertAfter,
   onBoundsChange,
 }: LeafletMapProps) {
+  /** Phases where the base_map should own clicks (not background trails/networks/rides). */
+  const mapDrawingSurface = drawTrailMode || refineMode || drawNetworkMode
+
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
   const ridesLayerRef = useRef<L.LayerGroup | null>(null)
@@ -129,6 +132,7 @@ export default function LeafletMap({
   const onDrawTrailInsertAfterRef = useRef(onDrawTrailInsertAfter)
   const onDrawTrailPointMovedRef = useRef(onDrawTrailPointMoved)
   const trailEditToolRef = useRef<TrailEditTool>(trailEditTool)
+  const refineModeRef = useRef(refineMode)
   const onRefinePointRemovedRef = useRef(onRefinePointRemoved)
   const onRefineInsertAfterRef = useRef(onRefineInsertAfter)
   const hasFitBoundsRef = useRef(false)
@@ -159,6 +163,7 @@ export default function LeafletMap({
   onDrawTrailInsertAfterRef.current = onDrawTrailInsertAfter
   onDrawTrailPointMovedRef.current = onDrawTrailPointMoved
   trailEditToolRef.current = trailEditTool
+  refineModeRef.current = refineMode
   onRefinePointRemovedRef.current = onRefinePointRemoved
   onRefineInsertAfterRef.current = onRefineInsertAfter
 
@@ -312,6 +317,8 @@ export default function LeafletMap({
     rides.filter((r) => !hiddenRideIds.has(r.id)).forEach((ride) => {
       const ridePopupContent = `<strong>${ride.name}</strong><br/>${(ride.distance / 1000).toFixed(1)} km`
 
+      const rideHitInteractive = trimMode || !mapDrawingSurface
+
       // Visible line — not interactive so the wide hit area beneath handles all events
       L.polyline(ride.polyline, {
         color: '#3b82f6',
@@ -326,7 +333,7 @@ export default function LeafletMap({
         color: '#3b82f6',
         weight: 20,
         opacity: 0,
-        interactive: true,
+        interactive: rideHitInteractive,
       })
 
       const findClosestIdx = (latlng: L.LatLng) => {
@@ -364,6 +371,7 @@ export default function LeafletMap({
           onTrimPointSelectedRef.current(ride.id, findClosestIdx(e.latlng))
           return
         }
+        if (drawTrailModeRef.current || refineModeRef.current) return
         if (editTrailModeRef.current) return
         L.popup().setLatLng(e.latlng).setContent(ridePopupContent).openOn(mapRef.current!)
       })
@@ -375,7 +383,7 @@ export default function LeafletMap({
     if (allPoints.length > 0 && !trimModeRef.current && !editTrailModeRef.current) {
       mapRef.current.fitBounds(L.latLngBounds(allPoints), { padding: [40, 40] })
     }
-  }, [rides, hiddenRideIds])
+  }, [rides, hiddenRideIds, trimMode, mapDrawingSurface])
 
   // Effect 4: trails layer
   useEffect(() => {
@@ -429,13 +437,15 @@ export default function LeafletMap({
       })
       pl.addTo(trailsLayerRef.current!)
 
+      const trailHitInteractive = !trimMode && (editTrailMode || !mapDrawingSurface)
+
       // Wide invisible hit area handles all mouse events for this trail
       // Non-interactive in trim mode so clicks fall through to ride lines beneath
       const hitArea = L.polyline(trail.polyline, {
         color: trailColor,
         weight: 20,
         opacity: 0,
-        interactive: !trimMode,
+        interactive: trailHitInteractive,
       })
       hitArea.on('click', clickHandler)
       hitArea.on('mouseover', () => { pl.setStyle({ weight: hoverWeight, opacity: 1 }); showHoverMarkers() })
@@ -466,14 +476,19 @@ export default function LeafletMap({
         }).addTo(trailsLayerRef.current!)
       }
     })
-  }, [trails, editTrailMode, trimMode, zoom])
+  }, [trails, editTrailMode, trimMode, zoom, mapDrawingSurface])
 
-  // Effect 4: cursor — driven by MODE_REGISTRY so new modes get correct cursors automatically
+  // Map container cursor: mode + trail picker vs geometry + pencil vs eraser
   useEffect(() => {
     if (!mapRef.current) return
-    const cursor = editMode ? (MODE_REGISTRY[editMode]?.cursor ?? '') : ''
-    mapRef.current.getContainer().style.cursor = cursor
-  }, [editMode])
+    mapRef.current.getContainer().style.cursor = resolveMapCursor({
+      editMode,
+      editTrailMode,
+      refineMode,
+      drawTrailMode,
+      trailEditTool,
+    })
+  }, [editMode, editTrailMode, refineMode, drawTrailMode, trailEditTool])
 
   // Effect 5: start marker (before second point is selected)
   useEffect(() => {
@@ -635,7 +650,7 @@ export default function LeafletMap({
       if (hiddenNetworkIds.has(network.id)) return
       if (network.polygon.length < 3) return
       const isSelected = network.id === selectedNetworkId
-      const interactive = !trimMode && !editTrailMode && !placingPhoto
+      const interactive = !trimMode && !editTrailMode && !placingPhoto && !mapDrawingSurface
       const polygon = L.polygon(network.polygon as L.LatLngExpression[], {
         color: '#3b82f6',
         weight: isSelected ? 3 : 2,
@@ -673,7 +688,7 @@ export default function LeafletMap({
         labelMarker.addTo(networksLayerRef.current!)
       }
     })
-  }, [networks, hiddenNetworkIds, selectedNetworkId, trimMode, editTrailMode, placingPhoto, zoom])
+  }, [networks, hiddenNetworkIds, selectedNetworkId, trimMode, editTrailMode, placingPhoto, zoom, mapDrawingSurface])
 
   // Effect: draw network polygon preview
   useEffect(() => {
