@@ -57,7 +57,7 @@ export function EditNetworkContent({
     setSaving(false)
   }
 
-  const inputCls = 'w-full rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-sm text-zinc-800 focus:outline-none focus:border-blue-400'
+  const inputCls = 'w-full rounded border border-border bg-mud/45 px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring'
   const disabled = !selectedNetwork
 
   return (
@@ -69,9 +69,9 @@ export function EditNetworkContent({
         onClear={() => onSelectNetwork(null)}
         getSearchText={(n) => n.name}
         renderItem={(network, isSelected) => (
-          <span className={`px-3 py-2 text-sm hover:bg-blue-50 flex items-center justify-between gap-2 ${isSelected ? 'bg-blue-50 text-blue-700' : 'text-zinc-800'}`}>
+          <span className={`px-3 py-2 text-sm hover:bg-primary/10 flex items-center justify-between gap-2 ${isSelected ? 'bg-primary/10 text-electric' : 'text-foreground'}`}>
             <span className="truncate">{network.name}</span>
-            <span className="text-xs text-zinc-400 shrink-0">{network.trailIds.length} trails</span>
+            <span className="text-xs text-muted-foreground shrink-0">{network.trailIds.length} trails</span>
           </span>
         )}
         placeholder="Search networks…"
@@ -79,12 +79,12 @@ export function EditNetworkContent({
       />
 
       {!selectedNetwork && (
-        <p className="text-xs text-zinc-500">Search above or click a network on the map.</p>
+        <p className="text-xs text-muted-foreground">Search above or click a network on the map.</p>
       )}
 
       <div className={`flex flex-col gap-3${disabled ? ' opacity-50 pointer-events-none' : ''}`}>
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-zinc-500">Name *</label>
+          <label className="text-xs text-muted-foreground">Name *</label>
           <input
             type="text"
             value={name}
@@ -95,35 +95,35 @@ export function EditNetworkContent({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs text-zinc-500">Trails</label>
+          <label className="text-xs text-muted-foreground">Trails</label>
           {trails.length === 0 ? (
-            <p className="text-xs text-zinc-400">No trails yet.</p>
+            <p className="text-xs text-muted-foreground">No trails yet.</p>
           ) : (
             <div className="flex flex-col gap-0.5 max-h-36 overflow-y-auto">
               {trails.map((trail) => (
-                <label key={trail.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-zinc-50 cursor-pointer">
+                <label key={trail.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-mud/45 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedTrailIds.has(trail.id)}
                     onChange={() => toggleTrail(trail.id)}
-                    className="accent-blue-500"
+                    className="accent-primary"
                   />
-                  <span className="text-xs text-zinc-700 truncate">{trail.name}</span>
-                  <span className="text-xs text-zinc-400 ml-auto shrink-0">{trail.distanceKm.toFixed(1)} km</span>
+                  <span className="text-xs text-foreground truncate">{trail.name}</span>
+                  <span className="text-xs text-muted-foreground ml-auto shrink-0">{trail.distanceKm.toFixed(1)} km</span>
                 </label>
               ))}
             </div>
           )}
         </div>
 
-        {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+        {saveError && <p className="text-xs text-destructive">{saveError}</p>}
 
         <div className="flex gap-2">
           <button
             type="button"
             onClick={handleSave}
             disabled={disabled || saving || !name.trim()}
-            className="flex-1 py-2 rounded-md bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 py-2 rounded-md bg-primary/100 text-white text-sm font-medium hover:brightness-105 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {saving ? 'Saving…' : 'Save Changes'}
           </button>
@@ -131,7 +131,7 @@ export function EditNetworkContent({
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50 transition-colors"
+            className="px-3 py-2 rounded-md border border-border text-sm text-muted-foreground hover:bg-mud/45 disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
@@ -141,7 +141,7 @@ export function EditNetworkContent({
           type="button"
           onClick={onRedraw}
           disabled={disabled || saving}
-          className="w-full py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50 transition-colors"
+          className="w-full py-2 rounded-md border border-border text-sm text-muted-foreground hover:bg-mud/45 disabled:opacity-50 transition-colors"
         >
           Redraw Polygon
         </button>

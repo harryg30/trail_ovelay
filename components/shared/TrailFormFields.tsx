@@ -1,6 +1,11 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import type { TrimFormState } from '@/lib/types'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { cn } from '@/lib/utils'
 
 /**
  * Shared controlled field set for trail name, difficulty, direction, and notes.
@@ -16,12 +21,12 @@ export function TrailFormFields({
   onChange: (form: TrimFormState) => void
   disabled: boolean
 }) {
-  const inputCls =
-    'w-full rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-sm text-zinc-800 focus:outline-none focus:border-orange-400 disabled:opacity-50 disabled:cursor-not-allowed'
+  const selectCls =
+    'h-9 w-full rounded-md border-2 border-foreground bg-card px-2 py-1 text-sm font-medium text-foreground shadow-[inset_2px_2px_0_0_var(--mud)] disabled:cursor-not-allowed disabled:opacity-50'
 
-  const field = (label: string, children: React.ReactNode) => (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs text-zinc-500">{label}</label>
+  const field = (label: string, children: ReactNode) => (
+    <div className="flex flex-col gap-1.5">
+      <Label className="text-[11px]">{label}</Label>
       {children}
     </div>
   )
@@ -30,11 +35,10 @@ export function TrailFormFields({
     <>
       {field(
         'Name *',
-        <input
+        <Input
           type="text"
           value={form.name}
           onChange={(e) => onChange({ ...form, name: e.target.value })}
-          className={inputCls}
           disabled={disabled}
           required
         />
@@ -45,7 +49,7 @@ export function TrailFormFields({
         <select
           value={form.difficulty}
           onChange={(e) => onChange({ ...form, difficulty: e.target.value as TrimFormState['difficulty'] })}
-          className={inputCls}
+          className={cn(selectCls)}
           disabled={disabled}
         >
           <option value="not_set">Not set</option>
@@ -61,7 +65,7 @@ export function TrailFormFields({
         <select
           value={form.direction}
           onChange={(e) => onChange({ ...form, direction: e.target.value as TrimFormState['direction'] })}
-          className={inputCls}
+          className={cn(selectCls)}
           disabled={disabled}
         >
           <option value="not_set">Not set</option>
@@ -73,11 +77,11 @@ export function TrailFormFields({
 
       {field(
         'Notes',
-        <textarea
+        <Textarea
           value={form.notes}
           onChange={(e) => onChange({ ...form, notes: e.target.value })}
           rows={2}
-          className={inputCls + ' resize-none'}
+          className="resize-none"
           placeholder="Optional"
           disabled={disabled}
         />

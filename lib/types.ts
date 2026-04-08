@@ -46,7 +46,15 @@ export interface TrimFormState {
   networkId?: string;
 }
 
-export type EditMode = 'add-trail' | 'edit-trail' | 'refine-trail' | 'add-network' | 'edit-network' | 'draw-trail' | null
+export type EditMode =
+  | 'add-trail'
+  | 'edit-trail'
+  | 'refine-trail'
+  | 'add-network'
+  | 'edit-network'
+  | 'draw-trail'
+  | 'add-trail-photo'
+  | null
 
 export interface DraftTrail {
   localId: string
@@ -84,6 +92,24 @@ export interface RidePhoto {
   trailLat?: number;
   trailLon?: number;
   accepted: boolean;
+}
+
+export interface TrailPhoto {
+  id: string;
+  blobUrl: string;
+  thumbnailUrl?: string;
+  lat?: number;
+  lon?: number;
+  takenAt?: Date;
+  trailId?: string;
+  trailLat?: number;
+  trailLon?: number;
+  accepted: boolean;
+  status: 'published' | 'hidden' | 'flagged';
+  createdByUserId?: string;
+  createdAt: Date;
+  /** Client-only demo photo (not persisted). */
+  isLocal?: boolean;
 }
 
 export interface SaveTrailRequest {

@@ -1,18 +1,40 @@
 'use client'
 
-import { useRef, useState, useEffect } from 'react'
-import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network, RidePhoto } from '@/lib/types'
+import { Fragment, useMemo, useRef, useState } from 'react'
+import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network, RidePhoto, TrailPhoto } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import type { MapBounds } from '@/lib/geo-utils'
-import { polylineInBounds } from '@/lib/geo-utils'
+import { polylineInBounds, pointInBounds, trailPhotoMapPoint } from '@/lib/geo-utils'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import AuthButton from '@/components/AuthButton'
+import ThemeToggle from '@/components/ThemeToggle'
 import { AddTrailContent } from '@/components/trail/AddTrailContent'
 import { TrailEditDrawer } from '@/components/trail/TrailEditDrawer'
 import { NetworkRow } from '@/components/network/NetworkRow'
 import { DrawNetworkContent } from '@/components/network/DrawNetworkContent'
 import { EditNetworkContent } from '@/components/network/EditNetworkContent'
 import { DraftsList } from '@/components/trail/DraftsList'
+import { AddTrailPhotoContent } from '@/components/photo/AddTrailPhotoContent'
 import type { TrailEditTool } from '@/lib/modes/types'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import {
+  faCamera,
+  faCheck,
+  faCrosshairs,
+  faChevronDown,
+  faChevronRight,
+  faDownload,
+  faEye,
+  faEyeSlash,
+  faFolder,
+  faPenToSquare,
+  faPlus,
+  faSpinner,
+  faXmark,
+} from '@fortawesome/free-solid-svg-icons'
 
 interface LeftDrawerProps {
   user: SessionUser | null
@@ -85,6 +107,20 @@ interface LeftDrawerProps {
   mapBounds: MapBounds | null
   showOnMapOnly: boolean
   onToggleShowOnMapOnly: () => void
+  onTrailPhotoCreated: (photo: TrailPhoto) => void
+  onEnterAddTrailPhoto: () => void
+  /** Public pinned photos (for trail rows + reference). */
+  communityTrailPhotos: TrailPhoto[]
+  /** Current user’s unpinned + local demo photos. */
+  unpinnedTrailPhotos: TrailPhoto[]
+  placingPhoto: RidePhoto | null
+  placingTrailPhoto: TrailPhoto | null
+  onPlaceRidePhoto: (photo: RidePhoto) => void
+  onPlaceTrailPhoto: (photo: TrailPhoto) => void
+  onCancelPinOnMap: () => void
+  onOpenPhotoLightbox: (src: string) => void
+  onFlyToTrail: (trail: Trail) => void
+  onFlyToNetwork: (network: Network) => void
 }
 
 export default function LeftDrawer({
@@ -158,6 +194,18 @@ export default function LeftDrawer({
   mapBounds,
   showOnMapOnly,
   onToggleShowOnMapOnly,
+  onTrailPhotoCreated,
+  onEnterAddTrailPhoto,
+  communityTrailPhotos,
+  unpinnedTrailPhotos,
+  placingPhoto,
+  placingTrailPhoto,
+  onPlaceRidePhoto,
+  onPlaceTrailPhoto,
+  onCancelPinOnMap,
+  onOpenPhotoLightbox,
+  onFlyToTrail,
+  onFlyToNetwork,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -180,6 +228,24 @@ export default function LeftDrawer({
     return saved ? Number(saved) : 10
   })
   const [trailsPage, setTrailsPage] = useState(0)
+  /** Ride photo chosen in drawer — prompt View vs Pin to map */
+  const [ridePhotoForAction, setRidePhotoForAction] = useState<RidePhoto | null>(null)
+
+  const ridePhotoNeedsMapPin = (p: RidePhoto) => !p.accepted && p.lat == null
+  const trailPhotoNeedsMapPin = (p: TrailPhoto) => !p.accepted
+
+  const [trailPhotoForAction, setTrailPhotoForAction] = useState<TrailPhoto | null>(null)
+  const [expandedTrailPhotoTrails, setExpandedTrailPhotoTrails] = useState<Set<string>>(() => new Set())
+
+  const visibleUnpinnedForPin = useMemo(() => {
+    const pending = unpinnedTrailPhotos.filter((p) => trailPhotoNeedsMapPin(p))
+    const activeBounds = showOnMapOnly && mapBounds ? mapBounds : null
+    if (!activeBounds) return pending
+    return pending.filter((p) => {
+      const pt = trailPhotoMapPoint(p)
+      return pt != null && pointInBounds(pt, activeBounds)
+    })
+  }, [unpinnedTrailPhotos, showOnMapOnly, mapBounds])
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -245,15 +311,22 @@ export default function LeftDrawer({
     editMode !== 'draw-trail' && !(editMode === 'edit-trail' && selectedTrail)
 
   return (
-    <div className="w-full max-w-[392px] sm:w-[392px] h-screen bg-white border-r border-zinc-200 shadow-lg flex flex-col overflow-y-auto shrink-0">
+    <div className="flex h-screen w-full max-w-[392px] shrink-0 flex-col overflow-y-auto border-r-2 border-foreground bg-card shadow-[4px_0_0_0_var(--foreground)] sm:w-[392px]">
       {/* Header */}
-      <div className="px-4 py-4 border-b border-zinc-100">
-        <h1 className="text-base font-semibold text-zinc-900">Trail Overlay</h1>
+      <div className="catalog-title-strip border-b-2 border-foreground px-4 py-4">
+        <h1 className="mb-3 leading-none">
+          <span className="font-display inline-block border-2 border-foreground bg-primary px-3 py-2 text-2xl font-normal uppercase tracking-[0.22em] text-primary-foreground shadow-[5px_5px_0_0_var(--foreground)] dark:bg-muted dark:text-primary sm:px-4 sm:py-2.5 sm:text-3xl sm:tracking-[0.26em}">
+            Trail Overlay
+          </span>
+        </h1>
         <AuthButton user={user} />
+        <div className="mt-3 w-full">
+          <ThemeToggle className="w-full" size="sm" />
+        </div>
       </div>
 
       {/* Upload section */}
-      <div className="px-4 py-4 border-b border-zinc-100 flex flex-col gap-2">
+      <div className="flex flex-col gap-2 border-b-2 border-border px-4 py-4">
         <input
           ref={inputRef}
           type="file"
@@ -264,40 +337,45 @@ export default function LeftDrawer({
         />
         {user ? (
           <>
-            <button
+            <Button
+              type="button"
               onClick={() => inputRef.current?.click()}
               disabled={uploading}
-              className="w-full py-2 px-3 rounded-md bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              variant="default"
+              className="w-full"
             >
               {uploadProgress
                 ? `Uploading ${uploadProgress.done} / ${uploadProgress.total}…`
                 : 'Upload GPX / ZIP'}
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
               onClick={handleSync}
               disabled={syncing}
-              className="w-full py-2 px-3 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              variant="secondary"
+              className="w-full"
             >
               {syncing ? 'Syncing...' : 'Sync Strava Rides'}
-            </button>
-            {syncMessage && <p className="text-xs text-zinc-500">{syncMessage}</p>}
+            </Button>
+            {syncMessage && <p className="text-xs text-muted-foreground">{syncMessage}</p>}
           </>
         ) : (
-          <p className="text-xs text-zinc-400">Connect with Strava to upload rides.</p>
+          <p className="text-xs text-muted-foreground">Connect with Strava to upload rides.</p>
         )}
-        {uploadError && <p className="text-xs text-red-500">{uploadError}</p>}
+        {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
       </div>
 
       {/* Viewport filter toggle */}
-      <div className="px-4 py-2 border-b border-zinc-100 flex items-center gap-1">
+      <div className="flex items-center gap-0 border-b-2 border-border px-4 py-2">
         <button
           type="button"
           onClick={() => showOnMapOnly && onToggleShowOnMapOnly()}
-          className={`flex-1 py-1.5 rounded-l-md text-xs font-medium border transition-colors ${
+          className={cn(
+            'flex-1 border-2 border-r-0 border-foreground py-1.5 text-xs font-bold uppercase tracking-wide transition-colors',
             !showOnMapOnly
-              ? 'bg-zinc-800 text-white border-zinc-800'
-              : 'bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50'
-          }`}
+              ? 'bg-foreground text-background'
+              : 'bg-card text-muted-foreground hover:bg-mud/80'
+          )}
         >
           All data
         </button>
@@ -305,20 +383,21 @@ export default function LeftDrawer({
           type="button"
           onClick={() => !showOnMapOnly && onToggleShowOnMapOnly()}
           disabled={!mapBounds}
-          className={`flex-1 py-1.5 rounded-r-md text-xs font-medium border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+          className={cn(
+            'flex-1 border-2 border-foreground py-1.5 text-xs font-bold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-40',
             showOnMapOnly
-              ? 'bg-zinc-800 text-white border-zinc-800'
-              : 'bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50'
-          }`}
+              ? 'bg-foreground text-background'
+              : 'bg-card text-muted-foreground hover:bg-mud/80'
+          )}
         >
           On map
         </button>
       </div>
 
       {/* Trails list */}
-      <div className="px-4 py-4 border-b border-zinc-100 flex flex-col gap-2">
+      <div className="flex flex-col gap-2 border-b-2 border-border px-4 py-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+          <h2 className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
             Trails ({trails.length})
           </h2>
           <div className="flex items-center gap-1">
@@ -326,46 +405,72 @@ export default function LeftDrawer({
               type="button"
               onClick={() => handleModeClick('draw-trail')}
               title={editMode === 'draw-trail' ? 'Cancel draw' : 'Draw a trail'}
-              className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
+              className={cn(
+                'flex size-6 items-center justify-center rounded-sm border-2 transition-colors',
                 editMode === 'draw-trail'
-                  ? 'bg-orange-500 text-white'
-                  : 'border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
-              }`}
+                  ? 'border-foreground bg-primary text-primary-foreground'
+                  : 'border-border text-muted-foreground hover:bg-mud/80'
+              )}
             >
-              {editMode === 'draw-trail' ? '×' : (
-                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                </svg>
+              {editMode === 'draw-trail' ? (
+                <FontAwesomeIcon icon={faXmark} className="w-3.5 h-3.5" />
+              ) : (
+                <FontAwesomeIcon icon={faPenToSquare} className="w-3.5 h-3.5" />
               )}
             </button>
             <button
               type="button"
               onClick={() => handleModeClick('add-trail')}
               title={editMode === 'add-trail' ? 'Cancel' : 'Trim trail from ride'}
-              className={`w-6 h-6 flex items-center justify-center rounded text-base font-light transition-colors ${
+              className={cn(
+                'flex size-6 items-center justify-center rounded-sm border-2 text-base font-light transition-colors',
                 editMode === 'add-trail'
-                  ? 'bg-orange-500 text-white'
-                  : 'border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
-              }`}
+                  ? 'border-foreground bg-primary text-primary-foreground'
+                  : 'border-border text-muted-foreground hover:bg-mud/80'
+              )}
             >
-              {editMode === 'add-trail' ? '×' : '+'}
+              {editMode === 'add-trail' ? (
+                <FontAwesomeIcon icon={faXmark} className="w-3.5 h-3.5" />
+              ) : (
+                <FontAwesomeIcon icon={faPlus} className="w-3.5 h-3.5" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (editMode === 'add-trail-photo') onEditModeChange(null)
+                else onEnterAddTrailPhoto()
+              }}
+              title={editMode === 'add-trail-photo' ? 'Cancel' : 'Add a trail photo'}
+              className={cn(
+                'flex size-6 items-center justify-center rounded-sm border-2 transition-colors',
+                editMode === 'add-trail-photo'
+                  ? 'border-foreground bg-forest text-secondary-foreground'
+                  : 'border-border text-muted-foreground hover:bg-mud/80'
+              )}
+            >
+              {editMode === 'add-trail-photo' ? (
+                <FontAwesomeIcon icon={faXmark} className="w-4 h-4" />
+              ) : (
+                <FontAwesomeIcon icon={faCamera} className="w-4 h-4" />
+              )}
             </button>
             {user && (
               <button
                 type="button"
                 onClick={() => handleModeClick('edit-trail')}
                 title={editMode === 'edit-trail' ? 'Cancel edit' : 'Edit a trail'}
-                className={`w-6 h-6 flex items-center justify-center rounded transition-colors ${
+                className={cn(
+                  'flex size-6 items-center justify-center rounded-sm border-2 transition-colors',
                   editMode === 'edit-trail'
-                    ? 'bg-orange-500 text-white'
-                    : 'border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
-                }`}
+                    ? 'border-foreground bg-primary text-primary-foreground'
+                    : 'border-border text-muted-foreground hover:bg-mud/80'
+                )}
               >
-                {editMode === 'edit-trail' ? '×' : (
-                  <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                    <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
-                    <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
-                  </svg>
+                {editMode === 'edit-trail' ? (
+                  <FontAwesomeIcon icon={faXmark} className="w-3.5 h-3.5" />
+                ) : (
+                  <FontAwesomeIcon icon={faPenToSquare} className="w-3.5 h-3.5" />
                 )}
               </button>
             )}
@@ -374,7 +479,7 @@ export default function LeftDrawer({
 
         {editMode === 'draw-trail' && (
           <div className="flex flex-col gap-2">
-            {refineError && <p className="text-xs text-red-500">{refineError}</p>}
+            {refineError && <p className="text-xs text-destructive">{refineError}</p>}
             <TrailEditDrawer
               variant="draw"
               trailEditTool={trailEditTool}
@@ -398,7 +503,7 @@ export default function LeftDrawer({
 
         {editMode === 'edit-trail' && selectedTrail && (
           <div className="flex flex-col gap-2">
-            {refineError && <p className="text-xs text-red-500">{refineError}</p>}
+            {refineError && <p className="text-xs text-destructive">{refineError}</p>}
             <TrailEditDrawer
               variant="edit"
               trailEditTool={trailEditTool}
@@ -447,8 +552,54 @@ export default function LeftDrawer({
           />
         )}
 
+        {editMode === 'add-trail-photo' && (
+          <AddTrailPhotoContent
+            user={user}
+            onCreated={(photo) => {
+              onTrailPhotoCreated(photo)
+              onEditModeChange(null)
+            }}
+            onCancel={() => onEditModeChange(null)}
+          />
+        )}
+
+        {visibleUnpinnedForPin.length > 0 && (
+          <div className="flex flex-col gap-2 px-4 py-3 border-t-2 border-border">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              {user ? 'My trail photos — pin on map' : 'Demo trail photos — pin on map'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Tap a thumbnail, then tap a trail on the map. Demo photos are not saved for others.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {visibleUnpinnedForPin.map((photo) => (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => setTrailPhotoForAction(photo)}
+                    title="View or pin to trail"
+                    className={`relative w-14 h-14 rounded-md overflow-hidden border-2 shrink-0 transition-all ${
+                      placingTrailPhoto?.id === photo.id
+                        ? 'border-forest ring-2 ring-forest/35'
+                        : 'border-border hover:border-foreground/40'
+                    }`}
+                  >
+                    <img
+                      src={photo.thumbnailUrl || photo.blobUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute inset-x-0 bottom-0 bg-forest/95 py-0.5 text-center text-[9px] font-bold uppercase tracking-wide text-secondary-foreground">
+                      Pin
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </div>
+        )}
+
         {editMode === 'edit-trail' && !selectedTrail && (
-          <p className="text-xs text-zinc-500">Select a trail from the list to edit its line and details.</p>
+          <p className="text-xs text-muted-foreground">Select a trail from the list to edit its line and details.</p>
         )}
 
         {showTrailFolderList && (() => {
@@ -481,7 +632,7 @@ export default function LeftDrawer({
           }
 
           if (rows.length === 0) {
-            return <p className="text-xs text-zinc-400">{trails.length === 0 ? 'No trails saved yet.' : 'No trails match.'}</p>
+            return <p className="text-xs text-muted-foreground">{trails.length === 0 ? 'No trails saved yet.' : 'No trails match.'}</p>
           }
 
           const totalPages = Math.max(1, Math.ceil(rows.length / trailsPageSize))
@@ -491,17 +642,17 @@ export default function LeftDrawer({
           return (
             <>
               <div className="flex items-center gap-2">
-                <input
+                <Input
                   type="text"
                   value={trailsQuery}
                   onChange={(e) => { setTrailsQuery(e.target.value); setTrailsPage(0) }}
                   placeholder="Search trails…"
-                  className="flex-1 min-w-0 border border-zinc-200 rounded-md px-3 py-1.5 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300"
+                  className="h-9 flex-1 min-w-0"
                 />
                 <select
                   value={trailsPageSize}
                   onChange={(e) => { const v = Number(e.target.value); setTrailsPageSize(v); localStorage.setItem('trailsPageSize', String(v)); setTrailsPage(0) }}
-                  className="text-xs border border-zinc-200 rounded px-1 py-0.5 text-zinc-600 bg-white shrink-0"
+                  className="shrink-0 rounded-sm border-2 border-foreground bg-card px-1 py-0.5 text-xs font-semibold text-foreground shadow-[1px_1px_0_0_var(--foreground)]"
                 >
                   <option value={5}>5 / pg</option>
                   <option value={10}>10 / pg</option>
@@ -511,77 +662,166 @@ export default function LeftDrawer({
               <ul className="flex flex-col gap-0.5">
                 {pagedRows.map((row, i) => {
                   if (row.kind === 'header') {
+                    const folderNetwork =
+                      row.networkId !== '__unassigned__'
+                        ? networks.find((n) => n.id === row.networkId) ?? null
+                        : null
                     return (
                       <li key={`h-${row.networkId}-${i}`} className="flex items-center gap-1.5 px-1 pt-2 pb-0.5">
-                        <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3 text-zinc-400 shrink-0" viewBox="0 0 20 20" fill="currentColor">
-                          <path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                        </svg>
-                        <span className="text-xs font-semibold text-zinc-500 truncate">{row.name}</span>
-                        <span className="ml-auto text-xs text-zinc-400 shrink-0">{row.count}</span>
+                        <FontAwesomeIcon icon={faFolder} className="h-3 w-3 shrink-0 text-muted-foreground" />
+                        <span className="text-xs font-semibold text-muted-foreground truncate flex-1 min-w-0">
+                          {row.name}
+                        </span>
+                        {folderNetwork && (
+                          <button
+                            type="button"
+                            onClick={() => onFlyToNetwork(folderNetwork)}
+                            title="Fly to on map"
+                            className="text-muted-foreground hover:text-foreground transition-colors shrink-0 p-0.5"
+                          >
+                            <FontAwesomeIcon icon={faCrosshairs} className="h-3 w-3" />
+                          </button>
+                        )}
+                        <span className="text-xs text-muted-foreground shrink-0 tabular-nums">{row.count}</span>
                       </li>
                     )
                   }
                   const { trail } = row
+                  const trailPub = communityTrailPhotos.filter(
+                    (p) => p.trailId === trail.id && p.accepted
+                  )
+                  const visibleTrailPub = activeBounds
+                    ? trailPub.filter((p) => {
+                        const pt = trailPhotoMapPoint(p)
+                        return pt != null && pointInBounds(pt, activeBounds)
+                      })
+                    : trailPub
+                  const expanded = expandedTrailPhotoTrails.has(trail.id)
+                  const hasPhotos = trailPub.length > 0
                   return (
-                    <li
-                      key={`t-${trail.id}-${row.networkId ?? 'u'}`}
-                      className={`flex items-center justify-between py-2 px-3 ml-3 rounded-md bg-zinc-50 text-sm ${
-                        selectedTrail?.id === trail.id && editMode === 'edit-trail' ? 'ring-1 ring-orange-400' : ''
-                      }`}
-                    >
-                      <span className="text-zinc-800 truncate pr-2">{trail.name}</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-zinc-400 text-xs">{trail.distanceKm.toFixed(1)} km</span>
-                        {trail.difficulty !== 'not_set' && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                            trail.difficulty === 'easy' ? 'bg-green-100 text-green-700' :
-                            trail.difficulty === 'intermediate' ? 'bg-blue-100 text-blue-700' :
-                            trail.difficulty === 'hard' ? 'bg-zinc-800 text-white' :
-                            'bg-black text-white'
-                          }`}>
-                            {trail.difficulty === 'easy' ? '● Green' :
-                             trail.difficulty === 'intermediate' ? '■ Blue' :
-                             trail.difficulty === 'hard' ? '◆ Black' :
-                             '◆◆ Dbl'}
-                          </span>
+                    <Fragment key={`t-wrap-${trail.id}-${row.networkId ?? 'u'}-${i}`}>
+                      <li
+                        className={cn(
+                          'ml-3 flex items-center gap-2 rounded-md border border-transparent bg-mud/45 px-2 py-2 text-sm',
+                          selectedTrail?.id === trail.id && editMode === 'edit-trail'
+                            ? 'ring-2 ring-primary'
+                            : ''
                         )}
-                        {user && (
+                      >
+                        {hasPhotos ? (
                           <button
                             type="button"
-                            onClick={() => { onSelectTrail(trail); onEditModeChange('edit-trail') }}
-                            title="Edit trail"
-                            className="text-zinc-400 hover:text-zinc-700 transition-colors"
+                            className="text-muted-foreground hover:text-muted-foreground p-0.5 shrink-0"
+                            aria-expanded={expanded}
+                            title={expanded ? 'Hide photos' : 'Show photos on this trail'}
+                            onClick={() => {
+                              setExpandedTrailPhotoTrails((prev) => {
+                                const n = new Set(prev)
+                                if (n.has(trail.id)) n.delete(trail.id)
+                                else n.add(trail.id)
+                                return n
+                              })
+                            }}
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                              <path d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z" />
-                              <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z" />
-                            </svg>
+                            <FontAwesomeIcon icon={expanded ? faChevronDown : faChevronRight} className="w-3 h-3" />
                           </button>
+                        ) : (
+                          <span className="w-4 shrink-0" aria-hidden />
                         )}
-                      </div>
-                    </li>
+                        <span className="text-foreground truncate flex-1 min-w-0">{trail.name}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-muted-foreground text-xs">{trail.distanceKm.toFixed(1)} km</span>
+                          {trail.difficulty !== 'not_set' && (
+                            <Badge
+                              variant={
+                                trail.difficulty === 'easy'
+                                  ? 'trail'
+                                  : trail.difficulty === 'intermediate'
+                                    ? 'catalog'
+                                    : trail.difficulty === 'hard'
+                                      ? 'ink'
+                                      : 'default'
+                              }
+                              className="tabular-nums"
+                            >
+                              {trail.difficulty === 'easy' ? '● Green' :
+                               trail.difficulty === 'intermediate' ? '■ Blue' :
+                               trail.difficulty === 'hard' ? '◆ Black' :
+                               '◆◆ Dbl'}
+                            </Badge>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onFlyToTrail(trail)}
+                            title="Fly to on map"
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <FontAwesomeIcon icon={faCrosshairs} className="w-3.5 h-3.5" />
+                          </button>
+                          {user && (
+                            <button
+                              type="button"
+                              onClick={() => { onSelectTrail(trail); onEditModeChange('edit-trail') }}
+                              title="Edit trail"
+                              className="text-muted-foreground hover:text-foreground transition-colors"
+                            >
+                              <FontAwesomeIcon icon={faPenToSquare} className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                      {expanded && hasPhotos && (
+                        <li className="ml-6 mr-1 mb-1">
+                          <div className="rounded-md border-2 border-border bg-card px-2 py-2">
+                            {visibleTrailPub.length === 0 ? (
+                              <p className="text-xs text-muted-foreground">No photos in current map view.</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {visibleTrailPub.map((photo) => (
+                                  <button
+                                    key={photo.id}
+                                    type="button"
+                                    className="h-12 w-12 shrink-0 overflow-hidden rounded-sm border-2 border-border"
+                                    onClick={() => setTrailPhotoForAction(photo)}
+                                    title="View photo"
+                                  >
+                                    <img
+                                      src={photo.thumbnailUrl || photo.blobUrl}
+                                      alt=""
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      )}
+                    </Fragment>
                   )
                 })}
               </ul>
               {totalPages > 1 && (
                 <div className="flex items-center justify-between pt-1">
-                  <button
+                  <Button
                     type="button"
+                    variant="outlineThick"
+                    size="xs"
                     onClick={() => setTrailsPage(p => Math.max(0, p - 1))}
                     disabled={safePage === 0}
-                    className="text-xs px-2 py-1 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Prev
-                  </button>
-                  <span className="text-xs text-zinc-400">Page {safePage + 1} of {totalPages}</span>
-                  <button
+                  </Button>
+                  <span className="text-xs font-semibold text-muted-foreground">Page {safePage + 1} of {totalPages}</span>
+                  <Button
                     type="button"
+                    variant="outlineThick"
+                    size="xs"
                     onClick={() => setTrailsPage(p => Math.min(totalPages - 1, p + 1))}
                     disabled={safePage === totalPages - 1}
-                    className="text-xs px-2 py-1 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Next
-                  </button>
+                  </Button>
                 </div>
               )}
             </>
@@ -591,8 +831,8 @@ export default function LeftDrawer({
 
       {/* Drafts section */}
       {!focusedTrailSession && draftTrails.length > 0 && (
-        <div className="px-4 py-4 border-t border-zinc-100 flex flex-col gap-2">
-          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+        <div className="px-4 py-4 border-t-2 border-border flex flex-col gap-2">
+          <h2 className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
             Drafts ({draftTrails.length})
           </h2>
           <DraftsList
@@ -606,9 +846,9 @@ export default function LeftDrawer({
 
       {/* Networks section */}
       {!focusedTrailSession && (
-      <div className="px-4 py-4 border-t border-zinc-100 flex flex-col gap-2">
+      <div className="px-4 py-4 border-t-2 border-border flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+          <h2 className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
             Networks ({networks.length})
           </h2>
           {user && (
@@ -616,11 +856,12 @@ export default function LeftDrawer({
               type="button"
               onClick={() => onEditModeChange(editMode === 'add-network' ? null : 'add-network')}
               title={editMode === 'add-network' ? 'Cancel' : 'Add new network'}
-              className={`w-6 h-6 flex items-center justify-center rounded text-base font-light transition-colors ${
+              className={cn(
+                'flex size-6 items-center justify-center rounded-sm border-2 text-base font-light transition-colors',
                 editMode === 'add-network'
-                  ? 'bg-blue-500 text-white'
-                  : 'border border-zinc-200 text-zinc-500 hover:bg-zinc-50'
-              }`}
+                  ? 'border-foreground bg-primary text-primary-foreground'
+                  : 'border-border text-muted-foreground hover:bg-mud/80'
+              )}
             >
               {editMode === 'add-network' ? '×' : '+'}
             </button>
@@ -659,7 +900,7 @@ export default function LeftDrawer({
                 trails.some(t => n.trailIds.includes(t.id) && polylineInBounds(t.polyline, activeBounds))
               )
             : networks
-          if (visibleNetworks.length === 0) return <p className="text-xs text-zinc-400">{networks.length === 0 ? 'No networks yet.' : 'No networks in view.'}</p>
+          if (visibleNetworks.length === 0) return <p className="text-xs text-muted-foreground">{networks.length === 0 ? 'No networks yet.' : 'No networks in view.'}</p>
           return (
             <ul className="flex flex-col gap-1">
               {visibleNetworks.map((network) => (
@@ -670,6 +911,7 @@ export default function LeftDrawer({
                   isSelected={selectedNetwork?.id === network.id && editMode === 'edit-network'}
                   isHidden={hiddenNetworkIds.has(network.id)}
                   onToggleVisibility={() => onToggleNetwork(network.id)}
+                  onFlyTo={() => onFlyToNetwork(network)}
                   onEdit={() => {
                     onSelectNetwork(network)
                     onEditModeChange('edit-network')
@@ -685,9 +927,9 @@ export default function LeftDrawer({
 
       {/* Rides list */}
       {!focusedTrailSession && (
-      <div className="px-4 py-4 border-t border-zinc-100 flex flex-col gap-2">
+      <div className="px-4 py-4 border-t-2 border-border flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <h2 className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+          <h2 className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
             Rides ({rides.length})
           </h2>
           <div className="flex items-center gap-2">
@@ -695,7 +937,7 @@ export default function LeftDrawer({
               <button
                 type="button"
                 onClick={onHideAllRides}
-                className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+                className="text-xs font-bold uppercase tracking-wide text-electric underline-offset-2 hover:underline"
                 title="Hide all rides"
               >
                 Hide all
@@ -704,7 +946,7 @@ export default function LeftDrawer({
             <select
               value={ridesPageSize}
               onChange={(e) => { const v = Number(e.target.value); setRidesPageSize(v); localStorage.setItem('ridesPageSize', String(v)); setRidesPage(0) }}
-              className="text-xs border border-zinc-200 rounded px-1 py-0.5 text-zinc-600 bg-white"
+              className="shrink-0 rounded-sm border-2 border-foreground bg-card px-1 py-0.5 text-xs font-semibold text-foreground shadow-[1px_1px_0_0_var(--foreground)]"
             >
               <option value={5}>5 / page</option>
               <option value={10}>10 / page</option>
@@ -712,8 +954,26 @@ export default function LeftDrawer({
             </select>
           </div>
         </div>
+        {(placingPhoto || placingTrailPhoto) && (
+          <div className="mx-4 mb-2 flex items-center justify-between gap-2 border-2 border-foreground bg-primary/15 px-3 py-2 shadow-[2px_2px_0_0_var(--foreground)]">
+            <p className="text-xs font-semibold text-foreground">
+              {placingTrailPhoto && !placingPhoto
+                ? 'Tap the map on or near a trail line to pin this trail photo.'
+                : 'Tap the map on or near a trail line to pin this photo.'}
+            </p>
+            <Button
+              type="button"
+              variant="ghostMud"
+              size="xs"
+              onClick={onCancelPinOnMap}
+              className="shrink-0"
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
         {rides.length === 0 ? (
-          <p className="text-xs text-zinc-400">No rides uploaded yet.</p>
+          <p className="text-xs text-muted-foreground">No rides uploaded yet.</p>
         ) : (() => {
           const activeBounds = showOnMapOnly && mapBounds ? mapBounds : null
           const filteredRides = (ridesQuery.trim()
@@ -730,15 +990,15 @@ export default function LeftDrawer({
           const pagedRides = filteredRides.slice(safePage * ridesPageSize, (safePage + 1) * ridesPageSize)
           return (
             <>
-              <input
+              <Input
                 type="text"
                 value={ridesQuery}
                 onChange={(e) => { setRidesQuery(e.target.value); setRidesPage(0) }}
                 placeholder="Search rides…"
-                className="w-full border border-zinc-200 rounded-md px-3 py-1.5 text-sm text-zinc-800 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-zinc-300"
+                className="w-full"
               />
               {pagedRides.length === 0 ? (
-                <p className="text-xs text-zinc-400">No rides match.</p>
+                <p className="text-xs text-muted-foreground">No rides match.</p>
               ) : (
                 <ul className="flex flex-col gap-1">
                   {pagedRides.map((ride) => {
@@ -751,11 +1011,11 @@ export default function LeftDrawer({
                     const photosLoaded = photos !== undefined
                     const photosVisible = photosVisibleRideIds.has(ride.id)
                     return (
-                      <li key={ride.id} className="flex flex-col rounded-md bg-zinc-50">
+                      <li key={ride.id} className="flex flex-col rounded-md border border-border bg-mud/35">
                         <div className={`flex items-center justify-between py-2 px-3 text-sm ${hidden ? 'opacity-50' : ''}`}>
-                          <span className="text-zinc-800 truncate pr-2">{ride.name}</span>
+                          <span className="text-foreground truncate pr-2">{ride.name}</span>
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-zinc-400 text-xs">
+                            <span className="text-muted-foreground text-xs">
                               {(ride.distance / 1000).toFixed(1)} km
                             </span>
                             {ride.stravaActivityId && (
@@ -764,21 +1024,14 @@ export default function LeftDrawer({
                                 onClick={() => isHighRes ? undefined : setPendingHighResRideId(isPending ? null : ride.id)}
                                 disabled={isFetching || isHighRes}
                                 title={isHighRes ? 'High-res loaded' : 'Download high-res polyline from Strava'}
-                                className="text-zinc-400 hover:text-blue-500 transition-colors disabled:opacity-40 disabled:cursor-default"
+                                className="text-muted-foreground transition-colors hover:text-electric disabled:cursor-default disabled:opacity-40"
                               >
                                 {isFetching ? (
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364l-2.121 2.121M8.757 15.243l-2.121 2.121M18.364 18.364l-2.121-2.121M8.757 8.757L6.636 6.636" />
-                                  </svg>
+                                  <FontAwesomeIcon icon={faSpinner} spin className="w-4 h-4" />
                                 ) : isHighRes ? (
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clipRule="evenodd" />
-                                  </svg>
+                                  <FontAwesomeIcon icon={faCheck} className="h-4 w-4 text-electric" />
                                 ) : (
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                                    <path d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z" />
-                                    <path d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z" />
-                                  </svg>
+                                  <FontAwesomeIcon icon={faDownload} className="w-4 h-4" />
                                 )}
                               </button>
                             )}
@@ -788,19 +1041,15 @@ export default function LeftDrawer({
                                 onClick={() => onFetchAndTogglePhotos(ride.id)}
                                 disabled={isFetchingPhotos}
                                 title={photosVisible ? 'Hide photos' : photosLoaded ? 'Show photos' : 'Fetch photos from Strava'}
-                                className="relative text-zinc-400 hover:text-amber-500 transition-colors disabled:opacity-40 disabled:cursor-default"
+                                className="relative text-muted-foreground transition-colors hover:text-primary disabled:cursor-default disabled:opacity-40"
                               >
                                 {isFetchingPhotos ? (
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m15.364-6.364l-2.121 2.121M8.757 15.243l-2.121 2.121M18.364 18.364l-2.121-2.121M8.757 8.757L6.636 6.636" />
-                                  </svg>
+                                  <FontAwesomeIcon icon={faSpinner} spin className="w-4 h-4" />
                                 ) : (
-                                  <svg xmlns="http://www.w3.org/2000/svg" className={`w-4 h-4 ${photosVisible ? 'text-amber-500' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M1 8a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 018.07 3h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0016.07 6H17a2 2 0 012 2v7a2 2 0 01-2 2H3a2 2 0 01-2-2V8zm13.5 3a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM10 14a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-                                  </svg>
+                                  <FontAwesomeIcon icon={faCamera} className={cn('h-4 w-4', photosVisible && 'text-primary')} />
                                 )}
                                 {photosLoaded && photos.length > 0 && (
-                                  <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-[9px] leading-none rounded-full w-3.5 h-3.5 flex items-center justify-center font-bold">
+                                  <span className="absolute -right-1.5 -top-1.5 flex size-3.5 items-center justify-center rounded-full bg-primary text-[9px] font-bold leading-none text-primary-foreground">
                                     {photos.length > 9 ? '9+' : photos.length}
                                   </span>
                                 )}
@@ -810,42 +1059,73 @@ export default function LeftDrawer({
                               type="button"
                               onClick={() => onToggleRide(ride.id)}
                               title={hidden ? 'Show on map' : 'Hide from map'}
-                              className="text-zinc-400 hover:text-zinc-700 transition-colors"
+                              className="text-muted-foreground hover:text-foreground transition-colors"
                             >
-                              {hidden ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                                  <path fillRule="evenodd" d="M3.28 2.22a.75.75 0 00-1.06 1.06l14.5 14.5a.75.75 0 101.06-1.06l-1.745-1.745a10.029 10.029 0 003.3-4.38 1.651 1.651 0 000-1.185A10.004 10.004 0 009.999 3a9.956 9.956 0 00-4.744 1.194L3.28 2.22zM7.752 6.69l1.092 1.092a2.5 2.5 0 013.374 3.373l1.091 1.092a4 4 0 00-5.557-5.557z" clipRule="evenodd" />
-                                  <path d="M10.748 13.93l2.523 2.523a9.987 9.987 0 01-3.27.547c-4.258 0-7.894-2.66-9.337-6.41a1.651 1.651 0 010-1.186A10.007 10.007 0 012.839 6.02L6.07 9.252a4 4 0 004.678 4.678z" />
-                                </svg>
-                              ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                                  <path d="M10 12.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5z" />
-                                  <path fillRule="evenodd" d="M.664 10.59a1.651 1.651 0 010-1.186A10.004 10.004 0 0110 3c4.257 0 7.893 2.66 9.336 6.41.147.381.146.804 0 1.186A10.004 10.004 0 0110 17c-4.257 0-7.893-2.66-9.336-6.41z" clipRule="evenodd" />
-                                </svg>
-                              )}
+                              <FontAwesomeIcon icon={hidden ? faEyeSlash : faEye} className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
+                        {photosVisible && photosLoaded && photos.length > 0 && (
+                          <div className="border-t-2 border-border px-3 pb-2 pt-1">
+                            <p className="mb-1.5 text-[10px] font-display font-normal uppercase tracking-[0.2em] text-muted-foreground">
+                              Photos
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {photos.map((photo) => (
+                                <button
+                                  key={photo.id}
+                                  type="button"
+                                  onClick={() => setRidePhotoForAction(photo)}
+                                  title={
+                                    ridePhotoNeedsMapPin(photo)
+                                      ? 'View or pin to trail'
+                                      : 'View photo'
+                                  }
+                                  className={cn(
+                                    'relative h-14 w-14 shrink-0 overflow-hidden rounded-md border-2 transition-all',
+                                    placingPhoto?.id === photo.id
+                                      ? 'border-primary ring-2 ring-primary/35'
+                                      : 'border-border hover:border-foreground/40'
+                                  )}
+                                >
+                                  <img
+                                    src={photo.thumbnailUrl || photo.blobUrl}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                  />
+                                  {ridePhotoNeedsMapPin(photo) && (
+                                    <span className="absolute inset-x-0 bottom-0 bg-primary/95 py-0.5 text-center text-[9px] font-bold uppercase tracking-wide text-primary-foreground">
+                                      Pin
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         {isPending && (
                           <div className="px-3 pb-2 flex flex-col gap-1.5">
-                            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                            <p className="rounded-sm border-2 border-foreground bg-mud/60 px-2 py-1.5 text-xs font-medium text-foreground">
                               Uses 1 Strava API call (limit 200/day). High-res data is only stored in memory for this session.
                             </p>
                             <div className="flex gap-2">
-                              <button
+                              <Button
                                 type="button"
+                                variant="catalog"
+                                size="sm"
+                                className="flex-1"
                                 onClick={() => { setPendingHighResRideId(null); onFetchHighRes(ride.id) }}
-                                className="flex-1 py-1 rounded bg-blue-500 text-white text-xs font-medium hover:bg-blue-600 transition-colors"
                               >
                                 Fetch
-                              </button>
-                              <button
+                              </Button>
+                              <Button
                                 type="button"
+                                variant="outlineThick"
+                                size="sm"
                                 onClick={() => setPendingHighResRideId(null)}
-                                className="px-3 py-1 rounded border border-zinc-200 text-xs text-zinc-600 hover:bg-zinc-50 transition-colors"
                               >
                                 Cancel
-                              </button>
+                              </Button>
                             </div>
                           </div>
                         )}
@@ -856,25 +1136,27 @@ export default function LeftDrawer({
               )}
               {totalPages > 1 && (
                 <div className="flex items-center justify-between pt-1">
-                  <button
+                  <Button
                     type="button"
+                    variant="outlineThick"
+                    size="xs"
                     onClick={() => setRidesPage(p => Math.max(0, p - 1))}
                     disabled={safePage === 0}
-                    className="text-xs px-2 py-1 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Prev
-                  </button>
-                  <span className="text-xs text-zinc-400">
+                  </Button>
+                  <span className="text-xs font-semibold text-muted-foreground">
                     Page {safePage + 1} of {totalPages}
                   </span>
-                  <button
+                  <Button
                     type="button"
+                    variant="outlineThick"
+                    size="xs"
                     onClick={() => setRidesPage(p => Math.min(totalPages - 1, p + 1))}
                     disabled={safePage === totalPages - 1}
-                    className="text-xs px-2 py-1 rounded border border-zinc-200 text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Next
-                  </button>
+                  </Button>
                 </div>
               )}
             </>
@@ -883,12 +1165,144 @@ export default function LeftDrawer({
       </div>
       )}
 
+      {ridePhotoForAction && (
+        <div
+          className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-black/40"
+          role="presentation"
+          onClick={() => setRidePhotoForAction(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ride-photo-action-title"
+            className="catalog-panel flex w-full max-w-sm flex-col gap-3 p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex gap-3">
+              <img
+                src={ridePhotoForAction.thumbnailUrl || ridePhotoForAction.blobUrl}
+                alt=""
+                className="h-20 w-20 shrink-0 rounded-md border-2 border-foreground object-cover"
+              />
+              <div className="min-w-0">
+                <p id="ride-photo-action-title" className="font-display text-base font-normal uppercase tracking-wide text-foreground">
+                  Ride photo
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  View full size, or pin to a trail on the map.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="default"
+                className="w-full"
+                onClick={() => {
+                  onOpenPhotoLightbox(ridePhotoForAction.blobUrl)
+                  setRidePhotoForAction(null)
+                }}
+              >
+                View
+              </Button>
+              {ridePhotoNeedsMapPin(ridePhotoForAction) && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full"
+                  onClick={() => {
+                    onPlaceRidePhoto(ridePhotoForAction)
+                    setRidePhotoForAction(null)
+                  }}
+                >
+                  Pin to map…
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outlineThick"
+                className="w-full"
+                onClick={() => setRidePhotoForAction(null)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {trailPhotoForAction && (
+        <div
+          className="fixed inset-0 z-[5002] flex items-center justify-center p-4 bg-black/40"
+          role="presentation"
+          onClick={() => setTrailPhotoForAction(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="trail-photo-action-title"
+            className="catalog-panel flex w-full max-w-sm flex-col gap-3 p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex gap-3">
+              <img
+                src={trailPhotoForAction.thumbnailUrl || trailPhotoForAction.blobUrl}
+                alt=""
+                className="h-20 w-20 shrink-0 rounded-md border-2 border-foreground object-cover"
+              />
+              <div className="min-w-0">
+                <p id="trail-photo-action-title" className="font-display text-base font-normal uppercase tracking-wide text-foreground">
+                  Trail photo
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  View full size, or pin to a trail on the map.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="default"
+                className="w-full"
+                onClick={() => {
+                  onOpenPhotoLightbox(trailPhotoForAction.blobUrl)
+                  setTrailPhotoForAction(null)
+                }}
+              >
+                View
+              </Button>
+              {trailPhotoNeedsMapPin(trailPhotoForAction) && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-full bg-forest text-secondary-foreground hover:brightness-110"
+                  onClick={() => {
+                    onPlaceTrailPhoto(trailPhotoForAction)
+                    setTrailPhotoForAction(null)
+                  }}
+                >
+                  Pin to map…
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outlineThick"
+                className="w-full"
+                onClick={() => setTrailPhotoForAction(null)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* About footer */}
-      <div className="mt-auto px-4 py-3 border-t border-zinc-100">
+      <div className="mt-auto px-4 py-3 border-t-2 border-border">
         <button
           type="button"
           onClick={onOpenAnnouncement}
-          className="text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+          className="text-xs font-bold uppercase tracking-wider text-electric underline-offset-2 hover:underline"
         >
           About Trail Overlay
         </button>

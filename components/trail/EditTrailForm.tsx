@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import type { Trail, TrimFormState } from '@/lib/types'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
 import { ConfirmDeleteButton } from '@/components/shared/ConfirmDeleteButton'
+import { Button } from '@/components/ui/button'
 
 export function EditTrailForm({
   selectedTrail,
@@ -29,6 +30,7 @@ export function EditTrailForm({
 
   useEffect(() => {
     if (!selectedTrail) return
+    /* eslint-disable react-hooks/set-state-in-effect -- sync local form when trail selection changes */
     setForm({
       name: selectedTrail.name,
       difficulty: selectedTrail.difficulty,
@@ -36,6 +38,7 @@ export function EditTrailForm({
       notes: selectedTrail.notes ?? '',
     })
     setSaveError(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [selectedTrail])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -50,8 +53,7 @@ export function EditTrailForm({
 
   return (
     <form onSubmit={handleSubmit} className={`flex flex-col gap-3${disabled ? ' opacity-50' : ''}`}>
-      {/* Read-only stats */}
-      <div className="flex gap-3 text-xs text-zinc-500">
+      <div className="flex gap-3 font-mono text-xs text-muted-foreground">
         {selectedTrail ? (
           <>
             <span>{selectedTrail.distanceKm.toFixed(2)} km</span>
@@ -64,24 +66,20 @@ export function EditTrailForm({
 
       <TrailFormFields form={form} onChange={setForm} disabled={disabled} />
 
-      {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+      {saveError && <p className="text-xs font-semibold text-destructive">{saveError}</p>}
 
       <div className="flex gap-2">
-        <button
+        <Button
           type="submit"
+          variant="catalog"
+          className="flex-1"
           disabled={disabled || saving || !form.name.trim()}
-          className="flex-1 py-2 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? 'Saving...' : 'Save Changes'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={disabled}
-          className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
+        </Button>
+        <Button type="button" variant="outlineThick" onClick={onCancel} disabled={disabled}>
           Cancel
-        </button>
+        </Button>
       </div>
 
       <ConfirmDeleteButton onDelete={onDelete} disabled={disabled || saving} entityLabel="Trail" />

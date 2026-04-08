@@ -1,26 +1,298 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
+/* Trail catalog / 90s MTB: cream paper, ink, safety orange, forest + electric accents */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-heading: var(--font-russo), Impact, ui-sans-serif, sans-serif;
+  --font-display: var(--font-russo), Impact, ui-sans-serif, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-safety: var(--safety);
+  --color-electric: var(--electric);
+  --color-mud: var(--mud);
+  --color-forest: var(--forest);
+  --color-surface-paper: var(--surface-paper);
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: calc(var(--radius) * 0.75);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.25);
+  --radius-2xl: calc(var(--radius) * 1.5);
+  --radius-3xl: calc(var(--radius) * 1.75);
+  --radius-4xl: calc(var(--radius) * 2);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+:root {
+  /* Warm trail paper */
+  --surface-paper: oklch(0.965 0.018 88);
+  --background: oklch(0.955 0.022 88);
+  --foreground: oklch(0.18 0.028 265);
+  --mud: oklch(0.88 0.035 75);
+  --forest: oklch(0.38 0.1 155);
+  --safety: oklch(0.7 0.2 48);
+  --electric: oklch(0.58 0.26 292);
+
+  --card: var(--surface-paper);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface-paper);
+  --popover-foreground: var(--foreground);
+
+  --primary: var(--safety);
+  --primary-foreground: oklch(0.14 0.02 265);
+
+  --secondary: oklch(0.42 0.09 155);
+  --secondary-foreground: oklch(0.99 0.01 95);
+
+  --muted: var(--mud);
+  --muted-foreground: oklch(0.42 0.035 265);
+
+  --accent: oklch(0.9 0.05 292);
+  --accent-foreground: oklch(0.32 0.12 292);
+
+  --destructive: oklch(0.52 0.22 25);
+  --destructive-foreground: oklch(0.99 0.01 95);
+  --border: oklch(0.32 0.025 265);
+  --input: oklch(0.78 0.028 88);
+  --ring: var(--electric);
+
+  --chart-1: var(--safety);
+  --chart-2: var(--forest);
+  --chart-3: var(--electric);
+  --chart-4: var(--mud);
+  --chart-5: oklch(0.55 0.15 265);
+
+  --radius: 0.375rem;
+
+  --sidebar: var(--surface-paper);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--mud);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
+
+  /*
+   * Map chrome (Leaflet bars, popups, attribution) + on-map overlays stay “catalog paper”
+   * in both themes so vectors/tiles match light hex from map-theme.ts.
+   */
+  --map-chrome-fg: oklch(0.18 0.028 265);
+  --map-chrome-bg: oklch(0.965 0.018 88);
+  --map-chrome-muted: oklch(0.88 0.035 75);
+  --map-chrome-muted-fg: oklch(0.42 0.035 265);
+}
+
+.dark {
+  /* Warm charcoal + cream ink (WCAG AA–oriented; avoids cool blue-gray + stark white) */
+  --surface-paper: oklch(0.3 0.028 78);
+  --background: oklch(0.22 0.034 76);
+  --foreground: oklch(0.93 0.02 86);
+  --mud: oklch(0.36 0.03 78);
+  --forest: oklch(0.62 0.11 153);
+  --safety: oklch(0.72 0.15 52);
+  --electric: oklch(0.66 0.19 295);
+
+  --card: var(--surface-paper);
+  --card-foreground: var(--foreground);
+  --popover: var(--surface-paper);
+  --popover-foreground: var(--foreground);
+
+  --primary: var(--safety);
+  /* Dark text on safety orange — stronger contrast than light-on-orange */
+  --primary-foreground: oklch(0.14 0.03 265);
+
+  --secondary: oklch(0.4 0.09 152);
+  --secondary-foreground: oklch(0.98 0.012 95);
+
+  --muted: oklch(0.36 0.028 78);
+  /* Small UI text ≥ ~4.5:1 vs --background */
+  --muted-foreground: oklch(0.76 0.024 84);
+
+  --accent: oklch(0.38 0.09 292);
+  --accent-foreground: oklch(0.94 0.04 295);
+
+  --destructive: oklch(0.59 0.19 22);
+  --destructive-foreground: oklch(0.98 0.01 95);
+  --border: oklch(0.5 0.03 80);
+  --input: oklch(0.34 0.028 78);
+  --ring: oklch(0.68 0.18 295);
+
+  --chart-1: var(--safety);
+  --chart-2: var(--forest);
+  --chart-3: var(--electric);
+  --chart-4: var(--mud);
+  --chart-5: oklch(0.62 0.1 265);
+
+  --sidebar: oklch(0.21 0.033 76);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(0.36 0.028 78);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: oklch(0.48 0.03 80);
+  --sidebar-ring: var(--ring);
+
+  /* Same as :root — map widgets stay light on the canvas */
+  --map-chrome-fg: oklch(0.18 0.028 265);
+  --map-chrome-bg: oklch(0.965 0.018 88);
+  --map-chrome-muted: oklch(0.88 0.035 75);
+  --map-chrome-muted-fg: oklch(0.42 0.035 265);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+  html {
+    @apply font-sans;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer utilities {
+  .catalog-panel {
+    @apply border-2 border-foreground bg-surface-paper;
+    box-shadow: 4px 4px 0 0 var(--foreground);
+  }
+
+  /* Diagonal stripe is only on a ::before layer so text stays full opacity */
+  .catalog-title-strip {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .catalog-title-strip::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      -12deg,
+      var(--foreground),
+      var(--foreground) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+    opacity: 0.12;
+  }
+
+  .catalog-title-strip > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .font-display {
+    font-family: var(--font-russo), Impact, system-ui, sans-serif;
+  }
+}
+
+/* Leaflet — always “catalog paper” chrome (see --map-chrome-*; matches light map-theme hex) */
+.leaflet-bar {
+  border: 2px solid var(--map-chrome-fg) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: 4px 4px 0 0 var(--map-chrome-fg) !important;
+  overflow: hidden;
+}
+
+.leaflet-bar a {
+  width: 28px !important;
+  height: 28px !important;
+  line-height: 28px !important;
+  background-color: var(--map-chrome-bg) !important;
+  color: var(--map-chrome-fg) !important;
+  border-bottom: 2px solid var(--map-chrome-fg) !important;
+  border-radius: 0 !important;
+}
+
+.leaflet-bar a:last-child {
+  border-bottom: none !important;
+}
+
+.leaflet-bar a:hover {
+  background-color: var(--map-chrome-muted) !important;
+}
+
+.leaflet-bar a.leaflet-disabled {
+  opacity: 0.45 !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  border: 2px solid var(--map-chrome-fg) !important;
+  background: var(--map-chrome-bg) !important;
+  color: var(--map-chrome-fg) !important;
+  box-shadow: 4px 4px 0 0 var(--map-chrome-fg) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+.leaflet-popup-content {
+  margin: 10px 12px !important;
+  line-height: 1.35 !important;
+}
+
+.leaflet-container .leaflet-control-attribution {
+  margin: 0 !important;
+  padding: 2px 6px !important;
+  max-width: 60vw;
+  font-size: 10px !important;
+  line-height: 1.3 !important;
+  background: var(--map-chrome-bg) !important;
+  color: var(--map-chrome-muted-fg) !important;
+  border: 2px solid var(--map-chrome-fg) !important;
+  border-radius: var(--radius-sm) !important;
+  box-shadow: 2px 2px 0 0 var(--map-chrome-fg) !important;
+}
+
+.leaflet-container .leaflet-control-attribution a {
+  color: var(--map-chrome-fg) !important;
+}
+
+/* Classic — standard OSM appearance (same tiles as Catalog, no grade) */
+.leaflet-container[data-basemap='osm'] .leaflet-tile-pane {
+  filter: none;
+}
+
+/*
+ * Catalog — same OSM rasters, graded darker & richer than Classic (twilight catalog / ink-on-field).
+ * High contrast + saturation keeps forests and roads readable under bright trail vectors.
+ */
+.leaflet-container[data-basemap='stylized'] .leaflet-tile-pane {
+  filter: brightness(0.78) contrast(1.24) saturate(1.2) sepia(0.15) hue-rotate(-10deg);
 }

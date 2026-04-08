@@ -22,7 +22,7 @@ export function EditTrailContent({
   const handleClear = () => onSelectTrail(null)
 
   const inputCls =
-    'w-full rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-sm text-zinc-800 focus:outline-none focus:border-orange-400'
+    'w-full rounded border border-border bg-mud/45 px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring'
 
   return (
     <div className="flex flex-col gap-3">
@@ -33,16 +33,16 @@ export function EditTrailContent({
         onClear={handleClear}
         getSearchText={(t) => t.name}
         renderItem={(trail, isSelected) => (
-          <span className={`px-3 py-2 text-sm hover:bg-orange-50 flex items-center justify-between gap-2 ${isSelected ? 'bg-orange-50 text-orange-700' : 'text-zinc-800'}`}>
+          <span className={`px-3 py-2 text-sm hover:bg-primary/10 flex items-center justify-between gap-2 ${isSelected ? 'bg-primary/10 text-primary' : 'text-foreground'}`}>
             <span className="truncate">{trail.name}</span>
-            <span className="text-xs text-zinc-400 shrink-0">{trail.distanceKm.toFixed(1)} km</span>
+            <span className="text-xs text-muted-foreground shrink-0">{trail.distanceKm.toFixed(1)} km</span>
           </span>
         )}
         placeholder="Search trails…"
         inputCls={inputCls}
       />
       {!selectedTrail && (
-        <p className="text-xs text-zinc-500">Search above or click a trail on the map.</p>
+        <p className="text-xs text-muted-foreground">Search above or click a trail on the map.</p>
       )}
       <EditTrailForm
         selectedTrail={selectedTrail}
@@ -55,7 +55,7 @@ export function EditTrailContent({
         <button
           type="button"
           onClick={onEnterRefineMode}
-          className="w-full py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
+          className="w-full py-2 rounded-md border border-border text-sm text-muted-foreground hover:bg-mud/45 transition-colors"
         >
           Refine Line
         </button>

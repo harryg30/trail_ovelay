@@ -5,48 +5,18 @@ import type { Trail, TrimFormState, Network } from '@/lib/types'
 import type { TrailEditTool } from '@/lib/modes/types'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
 import { ConfirmDeleteButton } from '@/components/shared/ConfirmDeleteButton'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { polylineDistanceKm } from '@/lib/geo-utils'
+import { cn } from '@/lib/utils'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faEraser, faPencil, faRotateLeft, faRotateRight } from '@fortawesome/free-solid-svg-icons'
 
-function PencilIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
-    </svg>
-  )
-}
-
-function EraserIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M20 20H11" />
-      <path d="M5.5 13.5 14 5a2.8 2.8 0 0 1 4 4l-7.5 7.5a2.8 2.8 0 0 1-4 0l-1-1a2.8 2.8 0 0 1 0-4z" />
-    </svg>
-  )
-}
-
-function UndoIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M9 14 4 9l5-5" />
-      <path d="M4 9h9a7 7 0 1 1 0 14h-1" />
-    </svg>
-  )
-}
-
-function RedoIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M15 14l5-5-5-5" />
-      <path d="M20 9H11a7 7 0 1 0 0 14h1" />
-    </svg>
-  )
-}
-
-const toolBtnActive = 'bg-zinc-900 text-white border-zinc-900'
-const toolBtnIdle = 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
+const toolBtnActive = 'border-2 border-foreground bg-foreground text-background'
+const toolBtnIdle = 'border-2 border-border bg-card text-foreground hover:bg-mud/80'
 const iconActionBtn =
-  'p-2 rounded-md border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors'
+  'rounded-md border-2 border-border bg-card p-2 text-foreground transition-colors hover:bg-mud/80 disabled:cursor-not-allowed disabled:opacity-40'
 
 export function TrailEditDrawer({
   variant,
@@ -99,6 +69,7 @@ export function TrailEditDrawer({
 
   useEffect(() => {
     if (variant !== 'edit' || !selectedTrail) return
+    /* eslint-disable react-hooks/set-state-in-effect -- hydrate form from selected trail */
     setForm({
       name: selectedTrail.name,
       difficulty: selectedTrail.difficulty,
@@ -106,13 +77,16 @@ export function TrailEditDrawer({
       notes: selectedTrail.notes ?? '',
     })
     setSaveError(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [variant, selectedTrail])
 
   useEffect(() => {
     if (variant !== 'draw') return
+    /* eslint-disable react-hooks/set-state-in-effect -- reset draw flow fields */
     setForm({ name: '', difficulty: 'not_set', direction: 'not_set', notes: '' })
     setNetworkQuery('')
     setSaveError(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [variant])
 
   const displayPoints = variant === 'edit' ? (refinedPolyline ?? points) : points
@@ -141,14 +115,17 @@ export function TrailEditDrawer({
   }
 
   const title = variant === 'draw' ? 'Draw trail' : 'Edit trail'
-  const toolBase = 'p-2 rounded-md border transition-colors flex items-center justify-center'
+  const toolBase =
+    'flex items-center justify-center rounded-md border-2 p-2 transition-colors'
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <div>
-        <h2 className="text-sm font-semibold text-zinc-900">{title}</h2>
-        <p className="text-xs text-zinc-500 mt-0.5">
-          <span className="font-medium text-zinc-700">{displayPoints.length}</span> pts
+        <h2 className="font-display text-base font-normal uppercase tracking-wide text-foreground">
+          {title}
+        </h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          <span className="font-semibold text-foreground">{displayPoints.length}</span> pts
           {distanceKm > 0 && (
             <span className="ml-2">{distanceKm.toFixed(2)} km</span>
           )}
@@ -156,7 +133,9 @@ export function TrailEditDrawer({
       </div>
 
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">Tools</p>
+        <p className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
+          Tools
+        </p>
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -166,7 +145,7 @@ export function TrailEditDrawer({
             onClick={() => onSetTool('pencil')}
             className={`${toolBase} ${trailEditTool === 'pencil' ? toolBtnActive : toolBtnIdle}`}
           >
-            <PencilIcon className="w-4 h-4" />
+            <FontAwesomeIcon icon={faPencil} className="w-4 h-4" />
           </button>
           <button
             type="button"
@@ -176,37 +155,35 @@ export function TrailEditDrawer({
             onClick={() => onSetTool('eraser')}
             className={`${toolBase} ${trailEditTool === 'eraser' ? toolBtnActive : toolBtnIdle}`}
           >
-            <EraserIcon className="w-4 h-4" />
+            <FontAwesomeIcon icon={faEraser} className="w-4 h-4" />
           </button>
           <button type="button" className={iconActionBtn} onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo">
-            <UndoIcon className="w-4 h-4" />
+            <FontAwesomeIcon icon={faRotateLeft} className="w-4 h-4" />
           </button>
           <button type="button" className={iconActionBtn} onClick={onRedo} disabled={!canRedo} title="Redo" aria-label="Redo">
-            <RedoIcon className="w-4 h-4" />
+            <FontAwesomeIcon icon={faRotateRight} className="w-4 h-4" />
           </button>
-          <button
-            type="button"
-            className="text-xs px-2.5 py-2 rounded-md border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-            onClick={onClear}
-          >
+          <Button type="button" variant="outlineThick" size="sm" onClick={onClear}>
             Clear
-          </button>
+          </Button>
         </div>
-        <p className="text-[11px] text-zinc-500 leading-snug">
+        <p className="text-[11px] leading-snug text-muted-foreground">
           Pencil: add or drag points on the map; tap midpoints to insert. Eraser: remove a point.
         </p>
       </div>
 
       <div>
-        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-2">Trail details</p>
+        <p className="font-display mb-2 text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
+          Trail details
+        </p>
         <TrailFormFields form={form} onChange={setForm} disabled={saving} />
       </div>
 
       {variant === 'draw' && (
         <div className="relative">
-          <label className="block text-xs text-zinc-500 mb-1">Network</label>
+          <Label className="mb-1 text-[11px]">Network</Label>
           <div className="flex items-center gap-1">
-            <input
+            <Input
               type="text"
               placeholder="Search networks…"
               disabled={saving}
@@ -218,7 +195,7 @@ export function TrailEditDrawer({
               }}
               onFocus={() => setShowNetworkDropdown(true)}
               onBlur={() => setTimeout(() => setShowNetworkDropdown(false), 150)}
-              className="flex-1 px-2 py-1.5 text-sm border border-zinc-200 rounded-md bg-zinc-50 focus:outline-none focus:border-orange-400 disabled:opacity-50"
+              className="h-9 flex-1 text-sm"
             />
             {form.networkId && (
               <button
@@ -227,7 +204,7 @@ export function TrailEditDrawer({
                   setNetworkQuery('')
                   setForm((f) => ({ ...f, networkId: undefined }))
                 }}
-                className="text-zinc-400 hover:text-zinc-600 px-1"
+                className="px-1 text-muted-foreground hover:text-foreground"
                 title="Clear network"
               >
                 ×
@@ -238,7 +215,7 @@ export function TrailEditDrawer({
             const matches = networks.filter((n) => n.name.toLowerCase().includes(networkQuery.toLowerCase()))
             if (!matches.length) return null
             return (
-              <ul className="absolute z-50 w-full mt-0.5 bg-white border border-zinc-200 rounded-md shadow-md max-h-36 overflow-y-auto text-sm">
+              <ul className="absolute z-50 mt-0.5 max-h-36 w-full overflow-y-auto border-2 border-foreground bg-card text-sm shadow-[3px_3px_0_0_var(--foreground)]">
                 {matches.map((n) => (
                   <li
                     key={n.id}
@@ -247,7 +224,10 @@ export function TrailEditDrawer({
                       setNetworkQuery(n.name)
                       setShowNetworkDropdown(false)
                     }}
-                    className={`px-3 py-2 cursor-pointer hover:bg-orange-50 ${form.networkId === n.id ? 'font-medium text-orange-700' : ''}`}
+                    className={cn(
+                      'cursor-pointer px-3 py-2 hover:bg-mud/80',
+                      form.networkId === n.id && 'bg-primary/20 font-bold text-primary'
+                    )}
                   >
                     {n.name}
                   </li>
@@ -259,42 +239,38 @@ export function TrailEditDrawer({
       )}
 
       {variant === 'edit' && selectedTrail && (
-        <div className="flex gap-3 text-xs text-zinc-500">
+        <div className="flex gap-3 font-mono text-xs text-muted-foreground">
           <span>Original ~{selectedTrail.distanceKm.toFixed(2)} km</span>
           <span>~{Math.round(selectedTrail.elevationGainFt)} ft gain</span>
         </div>
       )}
 
-      {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+      {saveError && <p className="text-xs font-semibold text-destructive">{saveError}</p>}
       {variant === 'edit' && refinedPolyline === null && (
-        <p className="text-xs text-zinc-500">Loading line…</p>
+        <p className="text-xs text-muted-foreground">Loading line…</p>
       )}
 
       <div className="flex gap-2 pt-1">
-        <button
+        <Button
           type="submit"
+          variant="catalog"
+          className="flex-1"
           disabled={saving || !form.name.trim() || (variant === 'edit' && refinedPolyline === null)}
-          className="flex-1 py-2 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? 'Saving…' : variant === 'draw' ? 'Save trail' : 'Save changes'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={saving}
-          className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
-        >
+        </Button>
+        <Button type="button" variant="outlineThick" onClick={onCancel} disabled={saving}>
           Cancel
-        </button>
+        </Button>
       </div>
 
       {variant === 'draw' && canPublish && (
-        <label className="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer select-none">
+        <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-muted-foreground">
           <input
             type="checkbox"
             checked={publishOnSave}
             onChange={(e) => setPublishOnSave(e.target.checked)}
-            className="accent-orange-500"
+            className="size-3.5 accent-primary"
           />
           Publish to public map
         </label>

@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
 import type { AnnouncementContent } from "@/lib/announcement";
 import AnnouncementWhatsNew from "@/components/AnnouncementWhatsNew";
 import AnnouncementBio from "@/components/AnnouncementBio";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 
 interface AnnouncementModalProps {
   isOpen: boolean;
@@ -16,63 +22,49 @@ export default function AnnouncementModal({
   onClose,
   content
 }: AnnouncementModalProps) {
-  useEffect(() => {
-    if (!isOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, onClose]);
-
-  if (!isOpen) return null;
-
   return (
-    <div
-      className='fixed inset-0 z-3000 flex items-end sm:items-center justify-center sm:bg-black/50'
-      onClick={onClose}
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
     >
-      <div
-        className='bg-white sm:rounded-xl shadow-2xl w-full sm:w-[80vw] sm:max-w-none flex flex-col rounded-t-xl overflow-hidden'
-        style={{ maxHeight: "95vh", height: "auto", minHeight: 0 }}
-        onClick={(e) => e.stopPropagation()}
+      <DialogContent
+        className="flex max-h-[95vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-[min(90vw,56rem)]"
+        showCloseButton
       >
-        {/* Mobile drag handle */}
-        <div className='sm:hidden flex justify-center pt-3 pb-1 shrink-0'>
-          <div className='w-10 h-1 rounded-full bg-zinc-300' />
+        <div className="flex justify-center pt-2 pb-1 sm:hidden shrink-0">
+          <div className="h-1 w-10 rounded-sm bg-foreground/35" aria-hidden />
         </div>
+        <DialogHeader className="shrink-0">
+          <DialogTitle className="max-w-[90%]">{content.title}</DialogTitle>
+        </DialogHeader>
 
-        {/* Single scrollable body */}
-        <div className='overflow-y-auto px-5 sm:px-8 pt-4 sm:pt-8 pb-8 flex flex-col gap-6'>
-          <div>
-            <h2 className='text-lg font-semibold text-zinc-900 mb-1'>
-              {content.title}
-            </h2>
-            <p className='text-sm text-zinc-600 leading-relaxed whitespace-pre-wrap'>
-              {content.description}
-            </p>
-          </div>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8 pt-4 sm:px-8 flex flex-col gap-6">
+          <p className="text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+            {content.description}
+          </p>
           <AnnouncementWhatsNew
             whatsNew={content.whatsNew}
             upcoming={content.upcoming}
           />
-          <div className='flex flex-col gap-2'>
-            <p className='text-sm text-zinc-600 leading-relaxed'>
+          <div className="flex flex-col gap-2">
+            <p className="text-sm leading-relaxed text-muted-foreground">
               {content.roadmap.description}
             </p>
             <a
               href={content.roadmap.href}
-              target='_blank'
-              rel='noopener noreferrer'
-              className='text-xs text-blue-500 hover:text-blue-700 transition-colors w-fit'
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-fit text-xs font-bold uppercase tracking-wider text-electric underline-offset-2 hover:underline"
             >
               {content.roadmap.linkLabel}
             </a>
           </div>
-          <hr className='border-zinc-200' />
+          <Separator className="data-horizontal:h-0.5 bg-foreground/20" />
           <AnnouncementBio bio={content.bio} onClose={onClose} />
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

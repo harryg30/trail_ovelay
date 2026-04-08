@@ -3,6 +3,10 @@
 import { useState, useEffect, useRef } from 'react'
 import type { TrimSegment, TrimFormState, Network } from '@/lib/types'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
 
 const AUTOSAVE_KEY = 'trim_form_autosave'
 
@@ -31,25 +35,27 @@ export function TrimForm({
   })
   const [networkQuery, setNetworkQuery] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
-  const networkInputRef = useRef<HTMLInputElement>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [publishOnSave, setPublishOnSave] = useState(!!canPublish)
   const formRef = useRef(form)
-  formRef.current = form
 
-  // Restore form from autosave (survives Strava OAuth redirect)
+  useEffect(() => {
+    formRef.current = form
+  }, [form])
+
   useEffect(() => {
     try {
       const saved = localStorage.getItem(AUTOSAVE_KEY)
       if (saved) {
+        /* eslint-disable react-hooks/set-state-in-effect -- restore after OAuth redirect */
         setForm(JSON.parse(saved) as TrimFormState)
+        /* eslint-enable react-hooks/set-state-in-effect */
         localStorage.removeItem(AUTOSAVE_KEY)
       }
     } catch { /* ignore */ }
   }, [])
 
-  // Persist form to localStorage on page navigation (beforeunload unreliable on mobile)
   useEffect(() => {
     const handler = () => {
       try {
@@ -60,19 +66,19 @@ export function TrimForm({
     return () => window.removeEventListener('pagehide', handler)
   }, [])
 
-  // Auto-set name when segment changes, but don't overwrite if user has already entered one
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect -- sync suggested name from segment / defaultName */
     if (defaultName) {
       setForm((prev) => (prev.name ? prev : { ...prev, name: defaultName }))
       setSaveError(null)
-      return
+    } else if (trimSegment) {
+      setForm((prev) => {
+        if (prev.name) return prev
+        return { ...prev, name: trimSegment.ride.name + ' Trail' }
+      })
+      setSaveError(null)
     }
-    if (!trimSegment) return
-    setForm((prev) => {
-      if (prev.name) return prev
-      return { ...prev, name: trimSegment.ride.name + ' Trail' }
-    })
-    setSaveError(null)
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [trimSegment, defaultName])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -91,8 +97,7 @@ export function TrimForm({
 
   return (
     <form onSubmit={handleSubmit} className={`flex flex-col gap-3${disabled ? ' opacity-50' : ''}`}>
-      {/* Read-only stats */}
-      <div className="flex gap-3 text-xs text-zinc-500">
+      <div className="flex gap-3 font-mono text-xs text-muted-foreground">
         {trimSegment ? (
           <>
             <span>{trimSegment.distanceKm.toFixed(2)} km</span>
@@ -105,12 +110,10 @@ export function TrimForm({
 
       <TrailFormFields form={form} onChange={setForm} disabled={disabled} />
 
-      {/* Network search */}
       <div className="relative">
-        <label className="block text-xs text-zinc-500 mb-1">Network</label>
+        <Label className="mb-1 text-[11px]">Network</Label>
         <div className="flex items-center gap-1">
-          <input
-            ref={networkInputRef}
+          <Input
             type="text"
             placeholder="Search networks…"
             disabled={disabled}
@@ -122,13 +125,13 @@ export function TrimForm({
             }}
             onFocus={() => setShowDropdown(true)}
             onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-            className="flex-1 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:border-zinc-400 disabled:opacity-50"
+            className="h-8 flex-1 text-xs"
           />
           {form.networkId && (
             <button
               type="button"
               onClick={() => { setNetworkQuery(''); setForm((f) => ({ ...f, networkId: undefined })) }}
-              className="text-zinc-400 hover:text-zinc-600 px-1"
+              className="px-1 text-muted-foreground hover:text-foreground"
               title="Clear network"
             >
               ×
@@ -141,7 +144,7 @@ export function TrimForm({
           )
           if (!matches.length) return null
           return (
-            <ul className="absolute z-50 w-full mt-0.5 bg-white border border-zinc-200 rounded shadow-md max-h-36 overflow-y-auto text-xs">
+            <ul className="absolute z-50 mt-0.5 max-h-36 w-full overflow-y-auto border-2 border-foreground bg-card text-xs shadow-[3px_3px_0_0_var(--foreground)]">
               {matches.map((n) => (
                 <li
                   key={n.id}
@@ -150,7 +153,10 @@ export function TrimForm({
                     setNetworkQuery(n.name)
                     setShowDropdown(false)
                   }}
-                  className={`px-2 py-1.5 cursor-pointer hover:bg-zinc-50 ${form.networkId === n.id ? 'font-medium text-orange-600' : ''}`}
+                  className={cn(
+                    'cursor-pointer px-2 py-1.5 hover:bg-mud/80',
+                    form.networkId === n.id && 'bg-primary/20 font-bold text-primary'
+                  )}
                 >
                   {n.name}
                 </li>
@@ -160,33 +166,30 @@ export function TrimForm({
         })()}
       </div>
 
-      {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+      {saveError && <p className="text-xs font-semibold text-destructive">{saveError}</p>}
 
-      <div className="flex items-center gap-2">
-        <div className="flex gap-2 flex-1">
-          <button
+      <div className="flex flex-1 items-center gap-2">
+        <div className="flex flex-1 gap-2">
+          <Button
             type="submit"
+            variant="catalog"
+            className="flex-1"
             disabled={disabled || saving || !form.name.trim()}
-            className="flex-1 py-2 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {saving ? 'Saving...' : 'Save Trail'}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
-          >
+          </Button>
+          <Button type="button" variant="outlineThick" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
       {canPublish && (
-        <label className="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer select-none">
+        <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-muted-foreground">
           <input
             type="checkbox"
             checked={publishOnSave}
             onChange={(e) => setPublishOnSave(e.target.checked)}
-            className="accent-orange-500"
+            className="size-3.5 accent-primary"
           />
           Publish to public map
         </label>

@@ -3,6 +3,8 @@
 import { useState } from "react";
 import type { AnnouncementBioData } from "@/lib/announcement";
 import ContactModal from "@/components/ContactModal";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 interface AnnouncementBioProps {
   bio: AnnouncementBioData;
@@ -17,44 +19,41 @@ export default function AnnouncementBio({
 
   return (
     <>
-      <div className='flex flex-col sm:flex-row gap-4 sm:gap-6'>
-        {/* Photo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:gap-6">
         {bio.profilePic && (
           <img
             src={bio.profilePic}
             alt={bio.name}
-            className='w-16 h-16 sm:w-28 sm:h-28 rounded-xl object-cover shrink-0 self-start'
+            className="h-16 w-16 shrink-0 self-start rounded-md border-2 border-foreground object-cover shadow-[3px_3px_0_0_var(--foreground)] sm:h-28 sm:w-28"
           />
         )}
 
-        {/* Text */}
-        <div className='flex flex-col justify-between flex-1 min-w-0'>
-          <div className='flex flex-col gap-3'>
+        <div className="flex min-w-0 flex-1 flex-col justify-between">
+          <div className="flex flex-col gap-3">
             <div>
-              <p className='text-base font-semibold text-zinc-900'>
+              <p className="font-display text-lg font-normal uppercase tracking-wide text-foreground">
                 {bio.name}
               </p>
-              <p className='text-sm text-zinc-500'>{bio.title}</p>
+              <p className="text-sm text-muted-foreground">{bio.title}</p>
             </div>
 
-            {/* Positions */}
-            <div className='flex flex-col gap-2'>
+            <div className="flex flex-col gap-2">
               {bio.positions.map((pos, i) => (
                 <div key={i}>
-                  <div className='flex items-baseline justify-between gap-2'>
-                    <span className='text-sm font-medium text-zinc-700'>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-semibold text-foreground">
                       {pos.role}
-                      <div className='flex items-center gap-2'>
-                        <p className='text-xs text-zinc-500 mb-0.5'>
+                      <div className="flex items-center gap-2">
+                        <p className="mb-0.5 text-xs text-muted-foreground">
                           {pos.company}
                         </p>
 
                         {pos.link && (
                           <a
                             href={pos.link}
-                            target='_blank'
-                            rel='noopener noreferrer'
-                            className='text-xs text-blue-500 hover:text-blue-700 transition-colors'
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-bold uppercase tracking-wide text-electric underline-offset-2 hover:underline"
                           >
                             Website
                           </a>
@@ -62,40 +61,39 @@ export default function AnnouncementBio({
                       </div>
                     </span>
 
-                    <span className='text-xs text-zinc-400 shrink-0'>
+                    <span className="shrink-0 text-xs text-muted-foreground">
                       {pos.dates}
                     </span>
                   </div>
 
-                  <p className='text-xs text-zinc-500 mb-1'>{pos.summary}</p>
-                  <div className='flex flex-wrap gap-1'>
+                  <p className="mb-1 text-xs text-muted-foreground">{pos.summary}</p>
+                  <div className="flex flex-wrap gap-1">
                     {pos.skills.map((skill) => (
-                      <span
+                      <Badge
                         key={skill}
-                        className='text-xs bg-zinc-100 text-zinc-600 px-1.5 py-0.5 rounded'
+                        variant="outline"
+                        className="normal-case font-medium tracking-normal text-[11px]"
                       >
                         {skill}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 </div>
               ))}
             </div>
 
-            {/* Project note */}
-            <p className='text-xs text-zinc-500 leading-relaxed italic whitespace-pre-wrap'>
+            <p className="text-xs leading-relaxed text-muted-foreground italic whitespace-pre-wrap">
               {bio.project}
             </p>
 
-            {/* Links */}
-            <div className='flex flex-wrap gap-x-4 gap-y-1'>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
               {bio.links.map((link) =>
                 link.action === "contact-modal" ? (
                   <button
                     key={link.label}
-                    type='button'
+                    type="button"
                     onClick={() => setContactOpen(true)}
-                    className='text-xs text-blue-500 hover:text-blue-700 transition-colors'
+                    className="text-xs font-bold uppercase tracking-wide text-electric underline-offset-2 hover:underline"
                   >
                     {link.label}
                   </button>
@@ -103,9 +101,9 @@ export default function AnnouncementBio({
                   <a
                     key={link.label}
                     href={link.href}
-                    target='_blank'
-                    rel='noopener noreferrer'
-                    className='text-xs text-blue-500 hover:text-blue-700 transition-colors'
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-bold uppercase tracking-wide text-electric underline-offset-2 hover:underline"
                   >
                     {link.label}
                   </a>
@@ -114,13 +112,10 @@ export default function AnnouncementBio({
             </div>
           </div>
 
-          <div className='flex justify-end pt-2'>
-            <button
-              onClick={onClose}
-              className='py-2 px-5 rounded-md bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors'
-            >
+          <div className="flex justify-end pt-2">
+            <Button type="button" variant="catalog" onClick={onClose}>
               Got it
-            </button>
+            </Button>
           </div>
         </div>
       </div>

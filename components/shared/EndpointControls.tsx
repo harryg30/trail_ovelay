@@ -8,13 +8,15 @@ export function EndpointControls({
   onClear: (which: 'start' | 'end') => void
 }) {
   const stepBtn =
-    'w-7 h-7 flex items-center justify-center rounded border border-zinc-200 text-zinc-600 text-xs hover:bg-zinc-50 active:bg-zinc-100 transition-colors'
+    'flex h-7 w-7 items-center justify-center rounded-sm border-2 border-border text-xs font-bold text-foreground transition-colors hover:bg-mud/80 active:bg-mud'
   const clearBtn =
-    'ml-auto px-2 h-7 flex items-center rounded border border-zinc-200 text-zinc-400 text-xs hover:border-red-300 hover:text-red-500 transition-colors'
+    'ml-auto flex h-7 items-center rounded-sm border-2 border-border px-2 text-xs text-muted-foreground transition-colors hover:border-destructive hover:text-destructive'
 
   const row = (label: string, which: 'start' | 'end') => (
     <div className="flex items-center gap-1.5">
-      <span className="text-xs text-zinc-500 w-8 shrink-0">{label}</span>
+      <span className="w-8 shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
       <button type="button" className={stepBtn} onClick={() => onStep(which, -1)} title="Step back">
         ←
       </button>
@@ -28,7 +30,7 @@ export function EndpointControls({
   )
 
   return (
-    <div className="flex flex-col gap-1.5 py-2 px-2.5 rounded-md bg-zinc-50 border border-zinc-100">
+    <div className="flex flex-col gap-1.5 rounded-md border-2 border-border bg-mud/35 px-2.5 py-2">
       {row('Start', 'start')}
       {row('End', 'end')}
     </div>

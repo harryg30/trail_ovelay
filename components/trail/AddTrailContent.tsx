@@ -50,10 +50,10 @@ export function AddTrailContent({
   return (
     <div className="flex flex-col gap-3">
       {!trimStart && (
-        <p className="text-xs text-zinc-500">Click a ride on the map to set the start point.</p>
+        <p className="text-xs text-muted-foreground">Click a ride on the map to set the start point.</p>
       )}
       {trimStart && !trimSegment && (
-        <p className="text-xs text-orange-600 font-medium">
+        <p className="text-xs font-bold uppercase tracking-wide text-primary">
           Start set — click to set the end point.
         </p>
       )}
@@ -61,7 +61,7 @@ export function AddTrailContent({
         <EndpointControls onStep={onStepTrimPoint} onClear={onClearTrimPoint} />
       )}
       {trimSegment && (
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <label htmlFor="corridor-slider" className="shrink-0">Corridor</label>
           <input
             id="corridor-slider"
@@ -77,7 +77,7 @@ export function AddTrailContent({
         </div>
       )}
       {trimSegment && (
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <label htmlFor="spacing-slider" className="shrink-0">Resolution</label>
           <input
             id="spacing-slider"
@@ -102,14 +102,14 @@ export function AddTrailContent({
               <button
                 type="button"
                 onClick={() => { setPendingCorridorFetch(false); onFetchHighResForCorridor() }}
-                className="flex-1 py-1 rounded bg-blue-500 text-white text-xs font-medium hover:bg-blue-600 transition-colors"
+                className="flex-1 py-1 rounded bg-primary/100 text-white text-xs font-medium hover:brightness-105 transition-colors"
               >
                 Fetch
               </button>
               <button
                 type="button"
                 onClick={() => setPendingCorridorFetch(false)}
-                className="px-3 py-1 rounded border border-zinc-200 text-xs text-zinc-600 hover:bg-zinc-50 transition-colors"
+                className="px-3 py-1 rounded border border-border text-xs text-muted-foreground hover:bg-mud/45 transition-colors"
               >
                 Cancel
               </button>
@@ -120,7 +120,7 @@ export function AddTrailContent({
             type="button"
             disabled={fetchingHighResForCorridor}
             onClick={() => setPendingCorridorFetch(true)}
-            className="w-full py-1.5 rounded-md border border-blue-200 text-xs text-blue-600 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            className="w-full py-1.5 rounded-md border border-blue-200 text-xs text-blue-600 hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {fetchingHighResForCorridor ? 'Fetching from Strava…' : '↑ Improve from Strava'}
           </button>

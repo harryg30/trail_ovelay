@@ -5,19 +5,28 @@ import dynamic from 'next/dynamic'
 import LeftDrawer from '@/components/LeftDrawer'
 import AnnouncementModal from '@/components/AnnouncementModal'
 import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
-import type { Ride, Trail, Network, TrimSegment, TrimFormState, SaveTrailResponse, RidePhoto, DraftTrail } from '@/lib/types'
+import type { Ride, Trail, Network, TrimSegment, TrimFormState, SaveTrailResponse, RidePhoto, DraftTrail, TrailPhoto } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
-import { polylineDistanceKm, estimatedElevationGainFt, generateAveragedTrail, clipPolylineToCorridor } from '@/lib/geo-utils'
+import {
+  polylineDistanceKm,
+  estimatedElevationGainFt,
+  generateAveragedTrail,
+  clipPolylineToCorridor,
+  trailPhotoMapPoint,
+} from '@/lib/geo-utils'
 import type { MapBounds } from '@/lib/geo-utils'
 import { insertPointAfter, removePointAt } from '@/lib/geo-edit'
 import { useEditMode } from '@/hooks/useEditMode'
 import { loadDemoRides } from '@/lib/demo-rides'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faBars, faCamera } from '@fortawesome/free-solid-svg-icons'
+import ThemeToggle from '@/components/ThemeToggle'
 
 const LeafletMap = dynamic(() => import('@/components/LeafletMap'), {
   ssr: false,
   loading: () => (
-    <div className="flex-1 h-full flex items-center justify-center bg-zinc-100">
-      <p className="text-zinc-500 text-sm">Loading map...</p>
+    <div className="flex h-full flex-1 items-center justify-center bg-mud/50">
+      <p className="font-display text-sm uppercase tracking-wide text-muted-foreground">Loading map…</p>
     </div>
   ),
 })
@@ -38,6 +47,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [hiddenNetworkIds, setHiddenNetworkIds] = useState<Set<string>>(new Set())
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showAnnouncement, setShowAnnouncement] = useState(false)
+  const [photoLightboxSrc, setPhotoLightboxSrc] = useState<string | null>(null)
 
   useEffect(() => {
     setShowAnnouncement(localStorage.getItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`) !== 'true')
@@ -174,8 +184,98 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [photosVisibleRideIds, setPhotosVisibleRideIds] = useState<Set<string>>(new Set())
   const [fetchingPhotosId, setFetchingPhotosId] = useState<string | null>(null)
   const [placingPhoto, setPlacingPhoto] = useState<RidePhoto | null>(null)
+  const [placingTrailPhoto, setPlacingTrailPhoto] = useState<TrailPhoto | null>(null)
+  /** Community-visible pins (server: accepted + on trail). */
+  const [communityTrailPhotos, setCommunityTrailPhotos] = useState<TrailPhoto[]>([])
+  /** Logged-in user’s unpinned / in-progress uploads (private). */
+  const [myUnpinnedTrailPhotos, setMyUnpinnedTrailPhotos] = useState<TrailPhoto[]>([])
+  /** Demo-only photos (object URLs; never POST). */
+  const [localTrailPhotos, setLocalTrailPhotos] = useState<TrailPhoto[]>([])
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null)
   const [showOnMapOnly, setShowOnMapOnly] = useState(false)
+  const [photoModeCenter, setPhotoModeCenter] = useState<{ lat: number; lon: number; t: number } | null>(null)
+  const [mapFlyToRequest, setMapFlyToRequest] = useState<{
+    seq: number
+    kind: 'trail' | 'network'
+    id: string
+  } | null>(null)
+
+  const requestFlyToTrail = useCallback((trail: Trail) => {
+    setMapFlyToRequest((prev) => ({
+      seq: (prev?.seq ?? 0) + 1,
+      kind: 'trail',
+      id: trail.id,
+    }))
+  }, [])
+
+  const requestFlyToNetwork = useCallback((network: Network) => {
+    setMapFlyToRequest((prev) => ({
+      seq: (prev?.seq ?? 0) + 1,
+      kind: 'network',
+      id: network.id,
+    }))
+  }, [])
+
+  const loadMyUnpinnedTrailPhotos = useCallback(() => {
+    if (!user) return
+    fetch('/api/trail-photos/mine')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data?.photos) return
+        setMyUnpinnedTrailPhotos(data.photos as TrailPhoto[])
+      })
+      .catch(() => {})
+  }, [user])
+
+  useEffect(() => {
+    if (!user) {
+      setMyUnpinnedTrailPhotos([])
+      return
+    }
+    loadMyUnpinnedTrailPhotos()
+  }, [loadMyUnpinnedTrailPhotos, user])
+
+  // Community trail photo pins for the current map bounds (pinned-to-trail only on server)
+  useEffect(() => {
+    if (!mapBounds) return
+    let cancelled = false
+    const { north, south, east, west } = mapBounds
+    fetch(`/api/trail-photos?north=${north}&south=${south}&east=${east}&west=${west}&limit=500`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled || !data?.photos) return
+        const photos = Array.isArray(data.photos) ? (data.photos as TrailPhoto[]) : []
+        setCommunityTrailPhotos(
+          [...photos].sort((a, b) => {
+            const at = new Date(a.createdAt).getTime()
+            const bt = new Date(b.createdAt).getTime()
+            return bt - at
+          })
+        )
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [mapBounds])
+
+  const mapTrailPhotos = useMemo(() => {
+    const byId = new Map<string, TrailPhoto>()
+    for (const p of communityTrailPhotos) byId.set(p.id, p)
+    for (const p of myUnpinnedTrailPhotos) {
+      const pt = trailPhotoMapPoint(p)
+      if (pt != null) byId.set(p.id, p)
+    }
+    for (const p of localTrailPhotos) {
+      const pt = trailPhotoMapPoint(p)
+      if (pt != null) byId.set(p.id, p)
+    }
+    return Array.from(byId.values()).sort((a, b) => {
+      const at = new Date(a.createdAt).getTime()
+      const bt = new Date(b.createdAt).getTime()
+      return bt - at
+    })
+  }, [communityTrailPhotos, myUnpinnedTrailPhotos, localTrailPhotos])
 
   useEffect(() => {
     fetch('/api/trails')
@@ -406,6 +506,37 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   // Mode transitions now handled by useEditMode — setMode does cleanup automatically
   const handleEditModeChange = setMode
+
+  const handleEnterAddTrailPhoto = useCallback(() => {
+    // IMPORTANT: request geolocation from a user gesture so the browser shows the permission prompt.
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setPhotoModeCenter({
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+            t: Date.now(),
+          })
+          setMode('add-trail-photo')
+        },
+        () => {
+          // If denied/unavailable, still enter the mode (user can place manually).
+          setMode('add-trail-photo')
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 15_000 }
+      )
+      return
+    }
+    setMode('add-trail-photo')
+  }, [setMode])
+
+  const handleToggleAddTrailPhoto = useCallback(() => {
+    if (editMode === 'add-trail-photo') {
+      setMode(null)
+      return
+    }
+    handleEnterAddTrailPhoto()
+  }, [editMode, handleEnterAddTrailPhoto, setMode])
 
   const handleTrailSelected = useCallback((trail: Trail) => {
     setSelectedTrail(trail)
@@ -877,11 +1008,82 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   }, [])
 
   const handlePlacePhoto = useCallback((photo: RidePhoto) => {
+    setPlacingTrailPhoto(null)
     setPlacingPhoto(photo)
+    // Mobile: collapse drawer so the map is visible for trail tap-to-pin.
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches) {
+      setMobileMenuOpen(false)
+    }
+  }, [])
+
+  const handlePlaceTrailPhoto = useCallback((photo: TrailPhoto) => {
+    setPlacingPhoto(null)
+    setPlacingTrailPhoto(photo)
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches) {
+      setMobileMenuOpen(false)
+    }
   }, [])
 
   const handleCancelPlace = useCallback(() => {
     setPlacingPhoto(null)
+    setPlacingTrailPhoto(null)
+  }, [])
+
+  const handleTrailPhotoCreated = useCallback((photo: TrailPhoto) => {
+    if (photo.isLocal) {
+      setLocalTrailPhotos((prev) => [photo, ...prev.filter((p) => p.id !== photo.id)])
+      return
+    }
+    setMyUnpinnedTrailPhotos((prev) => [photo, ...prev.filter((p) => p.id !== photo.id)])
+  }, [])
+
+  const handleAcceptTrailPhoto = useCallback(async (
+    photoId: string,
+    trailId: string,
+    trailLat: number,
+    trailLon: number
+  ) => {
+    if (photoId.startsWith('local-')) {
+      setLocalTrailPhotos((prev) =>
+        prev.map((p) =>
+          p.id === photoId
+            ? {
+                ...p,
+                trailId,
+                trailLat,
+                trailLon,
+                accepted: true,
+                lat: trailLat,
+                lon: trailLon,
+              }
+            : p
+        )
+      )
+      setPlacingTrailPhoto(null)
+      return
+    }
+
+    const res = await fetch(`/api/trail-photos/${photoId}/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trailId, trailLat, trailLon }),
+    })
+    const data = await res.json()
+    if (data.photo) {
+      const updated = data.photo as TrailPhoto
+      setMyUnpinnedTrailPhotos((prev) => prev.filter((p) => p.id !== updated.id))
+      setCommunityTrailPhotos((prev) => {
+        const byId = new Map<string, TrailPhoto>()
+        for (const p of prev) byId.set(p.id, p)
+        byId.set(updated.id, updated)
+        return Array.from(byId.values()).sort((a, b) => {
+          const at = new Date(a.createdAt).getTime()
+          const bt = new Date(b.createdAt).getTime()
+          return bt - at
+        })
+      })
+      setPlacingTrailPhoto(null)
+    }
   }, [])
 
   const handleCloseAnnouncement = useCallback(() => {
@@ -891,6 +1093,14 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const handleOpenAnnouncement = useCallback(() => {
     setShowAnnouncement(true)
+  }, [])
+
+  const handleOpenPhotoLightbox = useCallback((src: string) => {
+    setPhotoLightboxSrc(src)
+  }, [])
+
+  const handleClosePhotoLightbox = useCallback(() => {
+    setPhotoLightboxSrc(null)
   }, [])
 
   return (
@@ -976,20 +1186,48 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           mapBounds={mapBounds}
           showOnMapOnly={showOnMapOnly}
           onToggleShowOnMapOnly={() => setShowOnMapOnly(v => !v)}
+          onTrailPhotoCreated={handleTrailPhotoCreated}
+          onEnterAddTrailPhoto={handleEnterAddTrailPhoto}
+          communityTrailPhotos={communityTrailPhotos}
+          unpinnedTrailPhotos={[...myUnpinnedTrailPhotos, ...localTrailPhotos]}
+          placingPhoto={placingPhoto}
+          placingTrailPhoto={placingTrailPhoto}
+          onPlaceRidePhoto={handlePlacePhoto}
+          onPlaceTrailPhoto={handlePlaceTrailPhoto}
+          onCancelPinOnMap={handleCancelPlace}
+          onOpenPhotoLightbox={handleOpenPhotoLightbox}
+          onFlyToTrail={requestFlyToTrail}
+          onFlyToNetwork={requestFlyToNetwork}
         />
       </div>
 
-      {/* Hamburger button — mobile only, shown when drawer is closed */}
+      {/* Mobile quick actions — shown when drawer is closed */}
       {!mobileMenuOpen && (
-        <button
-          className="sm:hidden fixed top-4 right-4 z-1001 bg-white rounded-lg shadow-md p-2.5"
-          onClick={() => setMobileMenuOpen(true)}
-          aria-label="Open menu"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5 text-zinc-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-          </svg>
-        </button>
+        <div className="sm:hidden fixed top-4 right-4 z-1001 flex items-center gap-2">
+          <ThemeToggle className="w-52 shrink-0" size="sm" />
+          <button
+            type="button"
+            className={`rounded-lg border-2 p-2.5 shadow-[2px_2px_0_0_var(--foreground)] transition-colors ${
+              editMode === 'add-trail-photo'
+                ? 'border-forest bg-forest/15 text-forest'
+                : 'border-transparent bg-card text-foreground'
+            }`}
+            onClick={handleToggleAddTrailPhoto}
+            aria-label={editMode === 'add-trail-photo' ? 'Exit add photo mode' : 'Add photo'}
+            title={editMode === 'add-trail-photo' ? 'Cancel' : 'Add photo'}
+          >
+            <FontAwesomeIcon icon={faCamera} className="w-5 h-5" />
+          </button>
+
+          <button
+            type="button"
+            className="rounded-lg border-2 border-foreground bg-card p-2.5 shadow-[2px_2px_0_0_var(--foreground)]"
+            onClick={() => setMobileMenuOpen(true)}
+            aria-label="Open menu"
+          >
+            <FontAwesomeIcon icon={faBars} className="h-5 w-5 text-foreground" />
+          </button>
+        </div>
       )}
 
       <LeafletMap
@@ -998,6 +1236,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         trails={trails}
         draftTrails={draftTrails}
         editMode={editMode}
+        onEditModeChange={handleEditModeChange}
+        photoModeCenter={photoModeCenter}
         trimMode={trimMode}
         trimStart={trimStart}
         trimSegment={trimSegment}
@@ -1020,9 +1260,11 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         ridePhotos={ridePhotos}
         photosVisibleRideIds={photosVisibleRideIds}
         placingPhoto={placingPhoto}
+        placingTrailPhoto={placingTrailPhoto}
         onAcceptPhoto={handleAcceptPhoto}
-        onPlacePhoto={handlePlacePhoto}
         onCancelPlace={handleCancelPlace}
+        trailPhotos={mapTrailPhotos}
+        onAcceptTrailPhoto={handleAcceptTrailPhoto}
         drawTrailMode={drawTrailMode}
         drawTrailPoints={drawTrailPoints}
         onDrawTrailPointAdded={handleDrawTrailPointAdded}
@@ -1033,7 +1275,46 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         trailEditTool={trailEditTool}
         onRefinePointRemoved={handleRefinePointRemoved}
         onRefineInsertAfter={handleRefineInsertAfter}
+        onOpenPhotoLightbox={handleOpenPhotoLightbox}
+        flyToRequest={mapFlyToRequest}
       />
+
+      {photoLightboxSrc && (
+        <div
+          className="fixed inset-0 z-[5005] flex items-center justify-center bg-black/45 p-6 md:p-10"
+          role="presentation"
+          onClick={handleClosePhotoLightbox}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Full-size photo"
+            className="flex max-h-full w-full max-w-[min(96rem,calc(100vw-3rem))] flex-col overflow-hidden rounded-xl border-2 border-border bg-card shadow-[3px_3px_0_0_var(--foreground)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 justify-end border-b-2 border-border px-3 py-2">
+              <button
+                type="button"
+                onClick={handleClosePhotoLightbox}
+                className="text-sm font-medium text-foreground underline-offset-2 hover:underline"
+                aria-label="Close full image"
+              >
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
+              <div className="flex min-h-[12rem] items-center justify-center">
+                <img
+                  src={photoLightboxSrc}
+                  alt=""
+                  className="max-h-[min(85vh,calc(100dvh-8rem))] max-w-full object-contain"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <AnnouncementModal isOpen={showAnnouncement} onClose={handleCloseAnnouncement} content={ANNOUNCEMENT} />
     </div>
   )
