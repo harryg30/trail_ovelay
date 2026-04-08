@@ -143,10 +143,13 @@ export async function POST(request: NextRequest) {
     const lat = parseOptionalNumber(form.get('lat'))
     const lon = parseOptionalNumber(form.get('lon'))
     const takenAtRaw = form.get('takenAt')
-    const takenAt =
-      typeof takenAtRaw === 'string' && takenAtRaw.trim()
-        ? new Date(takenAtRaw).toISOString()
-        : null
+    let takenAt: string | null = null
+    if (typeof takenAtRaw === 'string' && takenAtRaw.trim()) {
+      const parsedTakenAt = new Date(takenAtRaw)
+      if (Number.isFinite(parsedTakenAt.getTime())) {
+        takenAt = parsedTakenAt.toISOString()
+      }
+    }
 
     const trailIdRaw = form.get('trailId')
     const trailId =

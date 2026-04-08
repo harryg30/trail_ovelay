@@ -66,7 +66,6 @@ export interface LeafletMapProps {
   trailPhotos: TrailPhoto[]
   onAcceptTrailPhoto: (photoId: string, trailId: string, trailLat: number, trailLon: number) => Promise<void>
   onEditModeChange?: (mode: EditMode) => void
-  canAddTrailPhotos?: boolean
   photoModeCenter?: { lat: number; lon: number; t: number } | null
   draftTrails: DraftTrail[]
   drawTrailMode: boolean
@@ -117,7 +116,6 @@ export default function LeafletMap({
   trailPhotos,
   onAcceptTrailPhoto,
   onEditModeChange,
-  canAddTrailPhotos,
   photoModeCenter,
   draftTrails,
   drawTrailMode,

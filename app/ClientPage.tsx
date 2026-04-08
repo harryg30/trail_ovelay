@@ -238,23 +238,25 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   // Community trail photo pins for the current map bounds (pinned-to-trail only on server)
   useEffect(() => {
     if (!mapBounds) return
+    let cancelled = false
     const { north, south, east, west } = mapBounds
     fetch(`/api/trail-photos?north=${north}&south=${south}&east=${east}&west=${west}&limit=500`)
       .then((r) => r.json())
       .then((data) => {
-        if (!data?.photos) return
-        setCommunityTrailPhotos((prev) => {
-          const byId = new Map<string, TrailPhoto>()
-          for (const p of prev) byId.set(p.id, p)
-          for (const p of data.photos as TrailPhoto[]) byId.set(p.id, p)
-          return Array.from(byId.values()).sort((a, b) => {
+        if (cancelled || !data?.photos) return
+        const photos = Array.isArray(data.photos) ? (data.photos as TrailPhoto[]) : []
+        setCommunityTrailPhotos(
+          [...photos].sort((a, b) => {
             const at = new Date(a.createdAt).getTime()
             const bt = new Date(b.createdAt).getTime()
             return bt - at
           })
-        })
+        )
       })
       .catch(() => {})
+    return () => {
+      cancelled = true
+    }
   }, [mapBounds])
 
   const mapTrailPhotos = useMemo(() => {
@@ -1235,7 +1237,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         draftTrails={draftTrails}
         editMode={editMode}
         onEditModeChange={handleEditModeChange}
-        canAddTrailPhotos={true}
         photoModeCenter={photoModeCenter}
         trimMode={trimMode}
         trimStart={trimStart}
