@@ -10,6 +10,10 @@ The current mode controls:
 - Which **sidebar panel** is rendered in LeftDrawer
 - Which **state** is alive vs. cleared on transition
 
+Notes:
+- The **map cursor** may be further specialized by the active tool/phase (for example, draw/edit pencil vs eraser).
+- While drawing/refining geometry, background **trails/networks/ride hit areas** are intentionally non-interactive so the cursor and clicks clearly reflect the active operation.
+
 ---
 
 ## Current Modes

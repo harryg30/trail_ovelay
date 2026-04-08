@@ -89,6 +89,22 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const editNetworkMode = editMode === 'edit-network'
   const drawTrailMode = editMode === 'draw-trail'
 
+  // Keep latest values in refs so event handlers can read synchronously without
+  // relying on state-updater closures (which are double-invoked in dev StrictMode).
+  const drawTrailPointsRef = useRef(drawTrailPoints)
+  drawTrailPointsRef.current = drawTrailPoints
+  const drawTrailHistoryPastRef = useRef(drawTrailHistoryPast)
+  drawTrailHistoryPastRef.current = drawTrailHistoryPast
+  const drawTrailHistoryFutureRef = useRef(drawTrailHistoryFuture)
+  drawTrailHistoryFutureRef.current = drawTrailHistoryFuture
+
+  const refinedPolylineRef = useRef(refinedPolyline)
+  refinedPolylineRef.current = refinedPolyline
+  const refineTrailHistoryPastRef = useRef(refineTrailHistoryPast)
+  refineTrailHistoryPastRef.current = refineTrailHistoryPast
+  const refineTrailHistoryFutureRef = useRef(refineTrailHistoryFuture)
+  refineTrailHistoryFutureRef.current = refineTrailHistoryFuture
+
   const lastEditTrailIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (editMode !== 'edit-trail') {
@@ -115,25 +131,37 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   }, [])
 
   const applyDrawTrailEdit = useCallback((updater: (prev: [number, number][]) => [number, number][]) => {
-    setDrawTrailPoints((prev) => {
-      const next = updater(prev)
-      if (polylinesEqual(prev, next)) return prev
-      setDrawTrailHistoryPast((past) => [...past, prev])
-      setDrawTrailHistoryFuture([])
-      return next
-    })
-  }, [polylinesEqual, setDrawTrailHistoryFuture, setDrawTrailHistoryPast, setDrawTrailPoints])
+    // IMPORTANT: keep this side-effect free from inside React state updaters.
+    // In dev/StrictMode, updater functions can be invoked more than once.
+    const prev = drawTrailPointsRef.current
+    const next = updater(prev)
+    if (polylinesEqual(prev, next)) return
+    setDrawTrailHistoryPast([...drawTrailHistoryPastRef.current, prev])
+    setDrawTrailHistoryFuture([])
+    setDrawTrailPoints(next)
+  }, [
+    polylinesEqual,
+    setDrawTrailHistoryFuture,
+    setDrawTrailHistoryPast,
+    setDrawTrailPoints,
+  ])
 
   const applyRefineTrailEdit = useCallback((updater: (prev: [number, number][]) => [number, number][]) => {
-    setRefinedPolyline((prevMaybe) => {
-      const prev = prevMaybe ?? (selectedTrail ? [...selectedTrail.polyline] : [])
-      const next = updater(prev)
-      if (polylinesEqual(prev, next)) return prevMaybe
-      setRefineTrailHistoryPast((past) => [...past, prev])
-      setRefineTrailHistoryFuture([])
-      return next
-    })
-  }, [polylinesEqual, selectedTrail, setRefineTrailHistoryFuture, setRefineTrailHistoryPast, setRefinedPolyline])
+    const prev =
+      refinedPolylineRef.current ??
+      (selectedTrail ? [...selectedTrail.polyline] : [])
+    const next = updater(prev)
+    if (polylinesEqual(prev, next)) return
+    setRefineTrailHistoryPast([...refineTrailHistoryPastRef.current, prev])
+    setRefineTrailHistoryFuture([])
+    setRefinedPolyline(next)
+  }, [
+    polylinesEqual,
+    selectedTrail,
+    setRefineTrailHistoryFuture,
+    setRefineTrailHistoryPast,
+    setRefinedPolyline,
+  ])
 
   const [averagedTrimPolyline, setAveragedTrimPolyline] = useState<[number, number][] | null>(null)
   const [averagedRideCount, setAveragedRideCount] = useState(0)
@@ -629,50 +657,80 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   }, [applyDrawTrailEdit])
 
   const handleDrawTrailUndo = useCallback(() => {
-    setDrawTrailHistoryPast((past) => {
-      if (past.length === 0) return past
-      const prev = past[past.length - 1]
-      setDrawTrailHistoryFuture((future) => [drawTrailPoints, ...future])
-      setDrawTrailPoints(prev)
-      return past.slice(0, -1)
-    })
-  }, [drawTrailPoints, setDrawTrailHistoryFuture, setDrawTrailHistoryPast, setDrawTrailPoints])
+    const past = drawTrailHistoryPastRef.current
+    if (past.length === 0) return
+    const current = drawTrailPointsRef.current
+    const prev = past[past.length - 1]
+    setDrawTrailHistoryPast(past.slice(0, -1))
+    setDrawTrailHistoryFuture([current, ...drawTrailHistoryFutureRef.current])
+    setDrawTrailPoints(prev)
+  }, [
+    drawTrailHistoryFuture.length,
+    drawTrailHistoryPast.length,
+    drawTrailPoints.length,
+    setDrawTrailHistoryFuture,
+    setDrawTrailHistoryPast,
+    setDrawTrailPoints,
+  ])
 
   const handleDrawTrailRedo = useCallback(() => {
-    setDrawTrailHistoryFuture((future) => {
-      if (future.length === 0) return future
-      const next = future[0]
-      setDrawTrailHistoryPast((past) => [...past, drawTrailPoints])
-      setDrawTrailPoints(next)
-      return future.slice(1)
-    })
-  }, [drawTrailPoints, setDrawTrailHistoryFuture, setDrawTrailHistoryPast, setDrawTrailPoints])
+    const future = drawTrailHistoryFutureRef.current
+    if (future.length === 0) return
+    const current = drawTrailPointsRef.current
+    const next = future[0]
+    setDrawTrailHistoryFuture(future.slice(1))
+    setDrawTrailHistoryPast([...drawTrailHistoryPastRef.current, current])
+    setDrawTrailPoints(next)
+  }, [
+    drawTrailHistoryFuture.length,
+    drawTrailHistoryPast.length,
+    drawTrailPoints.length,
+    setDrawTrailHistoryFuture,
+    setDrawTrailHistoryPast,
+    setDrawTrailPoints,
+  ])
 
   const handleDrawTrailClear = useCallback(() => {
     applyDrawTrailEdit(() => [])
   }, [applyDrawTrailEdit])
 
   const handleRefineUndo = useCallback(() => {
-    setRefineTrailHistoryPast((past) => {
-      if (past.length === 0) return past
-      const prev = past[past.length - 1]
-      const current = refinedPolyline ?? (selectedTrail ? [...selectedTrail.polyline] : prev)
-      setRefineTrailHistoryFuture((future) => [current, ...future])
-      setRefinedPolyline(prev)
-      return past.slice(0, -1)
-    })
-  }, [refinedPolyline, selectedTrail, setRefineTrailHistoryFuture, setRefineTrailHistoryPast, setRefinedPolyline])
+    const past = refineTrailHistoryPastRef.current
+    if (past.length === 0) return
+    const prev = past[past.length - 1]
+    const current =
+      refinedPolylineRef.current ?? (selectedTrail ? [...selectedTrail.polyline] : prev)
+    setRefineTrailHistoryPast(past.slice(0, -1))
+    setRefineTrailHistoryFuture([current, ...refineTrailHistoryFutureRef.current])
+    setRefinedPolyline(prev)
+  }, [
+    refinedPolyline,
+    refineTrailHistoryFuture.length,
+    refineTrailHistoryPast.length,
+    selectedTrail,
+    setRefineTrailHistoryFuture,
+    setRefineTrailHistoryPast,
+    setRefinedPolyline,
+  ])
 
   const handleRefineRedo = useCallback(() => {
-    setRefineTrailHistoryFuture((future) => {
-      if (future.length === 0) return future
-      const next = future[0]
-      const current = refinedPolyline ?? (selectedTrail ? [...selectedTrail.polyline] : next)
-      setRefineTrailHistoryPast((past) => [...past, current])
-      setRefinedPolyline(next)
-      return future.slice(1)
-    })
-  }, [refinedPolyline, selectedTrail, setRefineTrailHistoryFuture, setRefineTrailHistoryPast, setRefinedPolyline])
+    const future = refineTrailHistoryFutureRef.current
+    if (future.length === 0) return
+    const next = future[0]
+    const current =
+      refinedPolylineRef.current ?? (selectedTrail ? [...selectedTrail.polyline] : next)
+    setRefineTrailHistoryFuture(future.slice(1))
+    setRefineTrailHistoryPast([...refineTrailHistoryPastRef.current, current])
+    setRefinedPolyline(next)
+  }, [
+    refinedPolyline,
+    refineTrailHistoryFuture.length,
+    refineTrailHistoryPast.length,
+    selectedTrail,
+    setRefineTrailHistoryFuture,
+    setRefineTrailHistoryPast,
+    setRefinedPolyline,
+  ])
 
   const handleRefineClear = useCallback(() => {
     if (!selectedTrail) return
