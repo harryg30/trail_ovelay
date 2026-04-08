@@ -66,7 +66,6 @@ export interface LeafletMapProps {
   trailPhotos: TrailPhoto[]
   onAcceptTrailPhoto: (photoId: string, trailId: string, trailLat: number, trailLon: number) => Promise<void>
   onEditModeChange?: (mode: EditMode) => void
-  photoModeCenter?: { lat: number; lon: number; t: number } | null
   draftTrails: DraftTrail[]
   drawTrailMode: boolean
   drawTrailPoints: [number, number][]
@@ -116,7 +115,6 @@ export default function LeafletMap({
   trailPhotos,
   onAcceptTrailPhoto,
   onEditModeChange,
-  photoModeCenter,
   draftTrails,
   drawTrailMode,
   drawTrailPoints,
@@ -602,18 +600,6 @@ export default function LeafletMap({
       drawTrailLayerRef.current = null
     }
   }, [])
-
-  // Center map from a user-gesture-triggered location request (avoids blocked permission prompts).
-  useEffect(() => {
-    if (!mapRef.current) return
-    if (!photoModeCenter) return
-    setUserLocation({ lat: photoModeCenter.lat, lon: photoModeCenter.lon })
-    mapRef.current.flyTo(
-      [photoModeCenter.lat, photoModeCenter.lon],
-      Math.max(mapRef.current.getZoom(), 15),
-      { duration: 0.8 }
-    )
-  }, [photoModeCenter?.t])
 
   // Render "you are here" marker if location is known
   useEffect(() => {
