@@ -1,0 +1,41 @@
+# Run production DB migrations after merge to main.
+# Configure secrets (see README or comment block below): gh secrets set ...
+name: Production DB migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'migrations/**'
+      - 'scripts/migrate.mjs'
+  workflow_dispatch:
+
+concurrency:
+  group: db-migrate-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Run pending migrations
+        env:
+          TRAIL_DB_PGHOST: ${{ secrets.TRAIL_DB_PGHOST }}
+          TRAIL_DB_PGUSER: ${{ secrets.TRAIL_DB_PGUSER }}
+          TRAIL_DB_PGPASSWORD: ${{ secrets.TRAIL_DB_PGPASSWORD }}
+          TRAIL_DB_PGDATABASE: ${{ secrets.TRAIL_DB_PGDATABASE }}
+          TRAIL_DB_PGPORT: ${{ secrets.TRAIL_DB_PGPORT }}
+          TRAIL_DB_PGSSLMODE: ${{ secrets.TRAIL_DB_PGSSLMODE }}
+          TRAIL_DB_SSL: ${{ secrets.TRAIL_DB_SSL }}
+        run: npm run db:migrate:prod
