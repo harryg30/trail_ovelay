@@ -1,5 +1,8 @@
 'use client'
 
+import { buttonVariants } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+
 interface AuthButtonProps {
   user: { name: string; profilePicture: string | null } | null
 }
@@ -9,7 +12,7 @@ export default function AuthButton({ user }: AuthButtonProps) {
     return (
       <a
         href="/api/auth/strava"
-        className="mt-2 flex items-center justify-center gap-2 w-full py-1.5 px-3 rounded-md bg-orange-500 text-white text-xs font-medium hover:bg-orange-600 transition-colors"
+        className={cn(buttonVariants({ variant: 'catalog', size: 'sm' }), 'mt-2 w-full justify-center')}
       >
         Connect with Strava
       </a>
@@ -28,13 +31,14 @@ export default function AuthButton({ user }: AuthButtonProps) {
         <img
           src={user.profilePicture}
           alt={user.name}
-          className="w-6 h-6 rounded-full shrink-0 object-cover"
+          className="h-7 w-7 shrink-0 rounded-full border-2 border-foreground object-cover"
         />
       )}
-      <span className="text-xs text-zinc-700 truncate flex-1">{user.name}</span>
+      <span className="flex-1 truncate text-xs font-semibold text-foreground">{user.name}</span>
       <button
+        type="button"
         onClick={handleSignOut}
-        className="shrink-0 text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+        className="shrink-0 text-xs font-bold uppercase tracking-wide text-electric underline-offset-2 hover:underline"
       >
         Sign out
       </button>

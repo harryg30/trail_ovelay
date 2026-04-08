@@ -186,9 +186,14 @@ export default function LeafletMap() {
 ```bash
 # .env.local
 DATABASE_URL=postgres://user:pass@localhost:5432/traildb
+
+# Optional — first-load basemap (Catalog is the default; set osm for Classic)
+# NEXT_PUBLIC_MAP_BASE_STYLE=osm
 ```
 
 `DATABASE_URL` has no `NEXT_PUBLIC_` prefix — server-only. Set it in the Vercel dashboard for production.
+
+`NEXT_PUBLIC_MAP_BASE_STYLE` — omit (or `stylized`) for **Catalog** as the first-load default; `osm` selects **Classic**. Both modes use **standard OpenStreetMap** raster tiles; Catalog only adds a light warm CSS filter so the base sits closer to the app’s paper/forest palette ([`lib/map-basemap.ts`](lib/map-basemap.ts)). **Classic / Catalog** is chosen from the layers tool button under **zoom to my location** (top-left) and persists in `localStorage` (`trail-overlay-basemap-style`), overriding the env default on return visits until cleared.
 
 ---
 

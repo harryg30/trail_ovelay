@@ -47,16 +47,16 @@ export function DrawNetworkContent({
     if (err) { setSaveError(err); setSaving(false) }
   }
 
-  const inputCls = 'w-full rounded border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-sm text-zinc-800 focus:outline-none focus:border-blue-400'
+  const inputCls = 'w-full rounded border border-border bg-mud/45 px-2 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring'
 
   if (phase === 'draw') {
     return (
       <div className="flex flex-col gap-3">
-        <div className="py-2 px-2.5 rounded-md bg-blue-50 border border-blue-100">
+        <div className="py-2 px-2.5 rounded-md bg-primary/10 border border-blue-100">
           <p className="text-xs font-medium text-blue-800 mb-0.5">
             {isRedraw ? `Redrawing "${selectedNetwork.name}"` : 'Draw network boundary'}
           </p>
-          <p className="text-xs text-blue-700">Click on the map to place polygon vertices.</p>
+          <p className="text-xs text-electric">Click on the map to place polygon vertices.</p>
           {drawNetworkPoints.length > 0 && (
             <p className="text-xs text-blue-600 mt-1">{drawNetworkPoints.length} point{drawNetworkPoints.length !== 1 ? 's' : ''} placed</p>
           )}
@@ -66,14 +66,14 @@ export function DrawNetworkContent({
             type="button"
             onClick={() => setPhase('name')}
             disabled={!canClose}
-            className="flex-1 py-2 rounded-md bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="flex-1 py-2 rounded-md bg-primary/100 text-white text-sm font-medium hover:brightness-105 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
             {canClose ? 'Name Network →' : `Need ${3 - drawNetworkPoints.length} more point${3 - drawNetworkPoints.length !== 1 ? 's' : ''}`}
           </button>
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
+            className="px-3 py-2 rounded-md border border-border text-sm text-muted-foreground hover:bg-mud/45 transition-colors"
           >
             Cancel
           </button>
@@ -85,7 +85,7 @@ export function DrawNetworkContent({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-zinc-500">Network name *</label>
+        <label className="text-xs text-muted-foreground">Network name *</label>
         <input
           type="text"
           value={name}
@@ -97,35 +97,35 @@ export function DrawNetworkContent({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <label className="text-xs text-zinc-500">Trails in this network</label>
+        <label className="text-xs text-muted-foreground">Trails in this network</label>
         {trails.length === 0 ? (
-          <p className="text-xs text-zinc-400">No trails yet.</p>
+          <p className="text-xs text-muted-foreground">No trails yet.</p>
         ) : (
           <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto">
             {trails.map((trail) => (
-              <label key={trail.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-zinc-50 cursor-pointer">
+              <label key={trail.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-mud/45 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={selectedTrailIds.has(trail.id)}
                   onChange={() => toggleTrail(trail.id)}
-                  className="accent-blue-500"
+                  className="accent-primary"
                 />
-                <span className="text-xs text-zinc-700 truncate">{trail.name}</span>
-                <span className="text-xs text-zinc-400 ml-auto shrink-0">{trail.distanceKm.toFixed(1)} km</span>
+                <span className="text-xs text-foreground truncate">{trail.name}</span>
+                <span className="text-xs text-muted-foreground ml-auto shrink-0">{trail.distanceKm.toFixed(1)} km</span>
               </label>
             ))}
           </div>
         )}
       </div>
 
-      {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+      {saveError && <p className="text-xs text-destructive">{saveError}</p>}
 
       <div className="flex gap-2">
         <button
           type="button"
           onClick={handleSave}
           disabled={!name.trim() || saving}
-          className="flex-1 py-2 rounded-md bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="flex-1 py-2 rounded-md bg-primary/100 text-white text-sm font-medium hover:brightness-105 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? 'Saving…' : isRedraw ? 'Update Network' : 'Save Network'}
         </button>
@@ -133,7 +133,7 @@ export function DrawNetworkContent({
           type="button"
           onClick={() => setPhase('draw')}
           disabled={saving}
-          className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
+          className="px-3 py-2 rounded-md border border-border text-sm text-muted-foreground hover:bg-mud/45 transition-colors"
         >
           ← Back
         </button>

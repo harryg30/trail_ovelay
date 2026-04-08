@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 
 /**
  * Two-stage delete button. First click shows "Confirm Delete", second click
@@ -34,29 +35,25 @@ export function ConfirmDeleteButton({
       setDeleting(false)
       setConfirming(false)
     }
-    // On success the caller unmounts this component, so no reset needed.
   }
 
   return (
     <div className="flex flex-col gap-1">
-      {error && <p className="text-xs text-red-500">{error}</p>}
-      <button
+      {error && <p className="text-xs font-semibold text-destructive">{error}</p>}
+      <Button
         type="button"
+        variant={confirming ? 'destructive' : 'outlineThick'}
+        className={confirming ? 'border-destructive bg-destructive text-destructive-foreground hover:brightness-110' : 'border-destructive/50 text-destructive'}
         onClick={handleClick}
         disabled={disabled || deleting}
-        className={`w-full py-2 rounded-md text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-          confirming
-            ? 'bg-red-600 text-white hover:bg-red-700'
-            : 'border border-red-200 text-red-500 hover:bg-red-50'
-        }`}
       >
         {deleting ? `Deleting…` : confirming ? 'Confirm Delete' : `Delete ${entityLabel}`}
-      </button>
+      </Button>
       {confirming && !deleting && (
         <button
           type="button"
           onClick={() => setConfirming(false)}
-          className="text-xs text-zinc-400 hover:text-zinc-600 text-center -mt-0.5"
+          className="-mt-0.5 text-center text-xs font-semibold text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
         >
           Cancel delete
         </button>

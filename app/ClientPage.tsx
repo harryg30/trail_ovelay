@@ -20,12 +20,13 @@ import { useEditMode } from '@/hooks/useEditMode'
 import { loadDemoRides } from '@/lib/demo-rides'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBars, faCamera } from '@fortawesome/free-solid-svg-icons'
+import ThemeToggle from '@/components/ThemeToggle'
 
 const LeafletMap = dynamic(() => import('@/components/LeafletMap'), {
   ssr: false,
   loading: () => (
-    <div className="flex-1 h-full flex items-center justify-center bg-zinc-100">
-      <p className="text-zinc-500 text-sm">Loading map...</p>
+    <div className="flex h-full flex-1 items-center justify-center bg-mud/50">
+      <p className="font-display text-sm uppercase tracking-wide text-muted-foreground">Loading map…</p>
     </div>
   ),
 })
@@ -46,6 +47,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [hiddenNetworkIds, setHiddenNetworkIds] = useState<Set<string>>(new Set())
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showAnnouncement, setShowAnnouncement] = useState(false)
+  const [photoLightboxSrc, setPhotoLightboxSrc] = useState<string | null>(null)
 
   useEffect(() => {
     setShowAnnouncement(localStorage.getItem(`announcement_dismissed_v${ANNOUNCEMENT_VERSION}`) !== 'true')
@@ -192,6 +194,27 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null)
   const [showOnMapOnly, setShowOnMapOnly] = useState(false)
   const [photoModeCenter, setPhotoModeCenter] = useState<{ lat: number; lon: number; t: number } | null>(null)
+  const [mapFlyToRequest, setMapFlyToRequest] = useState<{
+    seq: number
+    kind: 'trail' | 'network'
+    id: string
+  } | null>(null)
+
+  const requestFlyToTrail = useCallback((trail: Trail) => {
+    setMapFlyToRequest((prev) => ({
+      seq: (prev?.seq ?? 0) + 1,
+      kind: 'trail',
+      id: trail.id,
+    }))
+  }, [])
+
+  const requestFlyToNetwork = useCallback((network: Network) => {
+    setMapFlyToRequest((prev) => ({
+      seq: (prev?.seq ?? 0) + 1,
+      kind: 'network',
+      id: network.id,
+    }))
+  }, [])
 
   const loadMyUnpinnedTrailPhotos = useCallback(() => {
     if (!user) return
@@ -1070,6 +1093,14 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     setShowAnnouncement(true)
   }, [])
 
+  const handleOpenPhotoLightbox = useCallback((src: string) => {
+    setPhotoLightboxSrc(src)
+  }, [])
+
+  const handleClosePhotoLightbox = useCallback(() => {
+    setPhotoLightboxSrc(null)
+  }, [])
+
   return (
     <div className="flex h-screen relative">
       {/* Mobile backdrop */}
@@ -1162,18 +1193,22 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onPlaceRidePhoto={handlePlacePhoto}
           onPlaceTrailPhoto={handlePlaceTrailPhoto}
           onCancelPinOnMap={handleCancelPlace}
+          onOpenPhotoLightbox={handleOpenPhotoLightbox}
+          onFlyToTrail={requestFlyToTrail}
+          onFlyToNetwork={requestFlyToNetwork}
         />
       </div>
 
       {/* Mobile quick actions — shown when drawer is closed */}
       {!mobileMenuOpen && (
         <div className="sm:hidden fixed top-4 right-4 z-1001 flex items-center gap-2">
+          <ThemeToggle className="w-52 shrink-0" size="sm" />
           <button
             type="button"
-            className={`bg-white rounded-lg shadow-md p-2.5 border transition-colors ${
+            className={`rounded-lg border-2 p-2.5 shadow-[2px_2px_0_0_var(--foreground)] transition-colors ${
               editMode === 'add-trail-photo'
-                ? 'border-emerald-600 text-emerald-700'
-                : 'border-transparent text-zinc-700'
+                ? 'border-forest bg-forest/15 text-forest'
+                : 'border-transparent bg-card text-foreground'
             }`}
             onClick={handleToggleAddTrailPhoto}
             aria-label={editMode === 'add-trail-photo' ? 'Exit add photo mode' : 'Add photo'}
@@ -1184,11 +1219,11 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
           <button
             type="button"
-            className="bg-white rounded-lg shadow-md p-2.5"
+            className="rounded-lg border-2 border-foreground bg-card p-2.5 shadow-[2px_2px_0_0_var(--foreground)]"
             onClick={() => setMobileMenuOpen(true)}
             aria-label="Open menu"
           >
-            <FontAwesomeIcon icon={faBars} className="w-5 h-5 text-zinc-700" />
+            <FontAwesomeIcon icon={faBars} className="h-5 w-5 text-foreground" />
           </button>
         </div>
       )}
@@ -1239,7 +1274,46 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         trailEditTool={trailEditTool}
         onRefinePointRemoved={handleRefinePointRemoved}
         onRefineInsertAfter={handleRefineInsertAfter}
+        onOpenPhotoLightbox={handleOpenPhotoLightbox}
+        flyToRequest={mapFlyToRequest}
       />
+
+      {photoLightboxSrc && (
+        <div
+          className="fixed inset-0 z-[5005] flex items-center justify-center bg-black/45 p-6 md:p-10"
+          role="presentation"
+          onClick={handleClosePhotoLightbox}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Full-size photo"
+            className="flex max-h-full w-full max-w-[min(96rem,calc(100vw-3rem))] flex-col overflow-hidden rounded-xl border-2 border-border bg-card shadow-[3px_3px_0_0_var(--foreground)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex shrink-0 justify-end border-b-2 border-border px-3 py-2">
+              <button
+                type="button"
+                onClick={handleClosePhotoLightbox}
+                className="text-sm font-medium text-foreground underline-offset-2 hover:underline"
+                aria-label="Close full image"
+              >
+                Close
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
+              <div className="flex min-h-[12rem] items-center justify-center">
+                <img
+                  src={photoLightboxSrc}
+                  alt=""
+                  className="max-h-[min(85vh,calc(100dvh-8rem))] max-w-full object-contain"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <AnnouncementModal isOpen={showAnnouncement} onClose={handleCloseAnnouncement} content={ANNOUNCEMENT} />
     </div>
   )

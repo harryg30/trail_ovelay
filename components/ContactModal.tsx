@@ -1,6 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 const DISCORD_INVITE = "https://discord.gg/uqfASaVkVD";
 
@@ -16,25 +27,14 @@ export default function ContactModal({ isOpen, onClose }: ContactModalProps) {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
 
   useEffect(() => {
-    if (!isOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, onClose]);
-
-  // Reset form when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setName("");
-      setEmail("");
-      setMessage("");
-      setStatus("idle");
-    }
+    if (!isOpen) return
+    /* eslint-disable react-hooks/set-state-in-effect -- reset when modal opens */
+    setName("");
+    setEmail("");
+    setMessage("");
+    setStatus("idle");
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, [isOpen]);
-
-  if (!isOpen) return null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -53,126 +53,107 @@ export default function ContactModal({ isOpen, onClose }: ContactModalProps) {
   }
 
   return (
-    <div
-      className='fixed inset-0 z-3000 flex items-end sm:items-center justify-center sm:bg-black/50'
-      onClick={onClose}
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
     >
-      <div
-        className='bg-white sm:rounded-xl shadow-2xl w-full sm:w-[480px] flex flex-col rounded-t-xl overflow-hidden'
-        style={{ maxHeight: "95vh" }}
-        onClick={(e) => e.stopPropagation()}
+      <DialogContent
+        className="flex max-h-[95vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-md"
+        showCloseButton
       >
-        {/* Mobile drag handle */}
-        <div className='sm:hidden flex justify-center pt-3 pb-1 shrink-0'>
-          <div className='w-10 h-1 rounded-full bg-zinc-300' />
+        <div className="flex justify-center pt-2 pb-1 sm:hidden shrink-0">
+          <div className="h-1 w-10 rounded-sm bg-foreground/35" aria-hidden />
         </div>
+        <DialogHeader className="shrink-0">
+          <DialogTitle>Contact</DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            Send a message or{" "}
+            <a
+              href={DISCORD_INVITE}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-electric underline-offset-2 hover:underline"
+            >
+              join the Discord server
+            </a>
+            .
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className='overflow-y-auto px-5 sm:px-8 pt-4 sm:pt-6 pb-6 flex flex-col gap-4'>
-          <div>
-            <h2 className='text-lg font-semibold text-zinc-900'>Contact</h2>
-            <p className='text-sm text-zinc-500 mt-0.5'>
-              Send a message or{" "}
-              <a
-                href={DISCORD_INVITE}
-                target='_blank'
-                rel='noopener noreferrer'
-                className='text-blue-500 hover:text-blue-700 transition-colors'
-              >
-                join the Discord server
-              </a>
-              .
-            </p>
-          </div>
-
+        <div className="min-h-0 overflow-y-auto px-4 pb-6 pt-4 sm:px-6">
           {status === "success" ? (
-            <div className='flex flex-col gap-4'>
-              <p className='text-sm text-zinc-700'>
+            <div className="flex flex-col gap-4">
+              <p className="text-sm text-foreground">
                 Message sent! I&apos;ll get back to you on Discord.
               </p>
-              <div className='flex justify-end'>
-                <button
-                  onClick={onClose}
-                  className='py-2 px-5 rounded-md bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors'
-                >
+              <div className="flex justify-end">
+                <Button type="button" variant="catalog" size="default" onClick={onClose}>
                   Close
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className='flex flex-col gap-3'>
-              <div className='flex flex-col gap-1'>
-                <label className='text-xs font-medium text-zinc-700' htmlFor='contact-name'>
-                  Name
-                </label>
-                <input
-                  id='contact-name'
-                  type='text'
+            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="contact-name">Name</Label>
+                <Input
+                  id="contact-name"
+                  type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   maxLength={100}
                   required
-                  placeholder='Your name'
-                  className='border border-zinc-300 rounded-md px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                  placeholder="Your name"
                 />
               </div>
 
-              <div className='flex flex-col gap-1'>
-                <label className='text-xs font-medium text-zinc-700' htmlFor='contact-email'>
-                  Email <span className='text-zinc-400 font-normal'>(optional)</span>
-                </label>
-                <input
-                  id='contact-email'
-                  type='email'
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="contact-email">
+                  Email <span className="font-normal normal-case tracking-normal text-muted-foreground">(optional)</span>
+                </Label>
+                <Input
+                  id="contact-email"
+                  type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   maxLength={254}
-                  placeholder='you@example.com'
-                  className='border border-zinc-300 rounded-md px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent'
+                  placeholder="you@example.com"
                 />
               </div>
 
-              <div className='flex flex-col gap-1'>
-                <label className='text-xs font-medium text-zinc-700' htmlFor='contact-message'>
-                  Message
-                </label>
-                <textarea
-                  id='contact-message'
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="contact-message">Message</Label>
+                <Textarea
+                  id="contact-message"
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   maxLength={2000}
                   required
                   rows={4}
-                  placeholder='Your message…'
-                  className='border border-zinc-300 rounded-md px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none'
+                  placeholder="Your message…"
                 />
               </div>
 
               {status === "error" && (
-                <p className='text-xs text-red-500'>
+                <p className="text-xs font-semibold text-destructive">
                   Something went wrong. Try again or reach out on Discord.
                 </p>
               )}
 
-              <div className='flex justify-end gap-2 pt-1'>
-                <button
-                  type='button'
-                  onClick={onClose}
-                  className='py-2 px-4 rounded-md text-sm text-zinc-600 hover:bg-zinc-100 transition-colors'
-                >
+              <div className="flex justify-end gap-2 pt-1">
+                <Button type="button" variant="outlineThick" onClick={onClose}>
                   Cancel
-                </button>
-                <button
-                  type='submit'
-                  disabled={status === "loading"}
-                  className='py-2 px-5 rounded-md bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors disabled:opacity-50'
-                >
+                </Button>
+                <Button type="submit" variant="catalog" disabled={status === "loading"}>
                   {status === "loading" ? "Sending…" : "Send"}
-                </button>
+                </Button>
               </div>
             </form>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

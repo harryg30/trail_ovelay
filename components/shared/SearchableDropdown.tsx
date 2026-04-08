@@ -80,7 +80,7 @@ export function SearchableDropdown<T extends { id: string }>({
           <button
             type="button"
             onClick={handleClear}
-            className="px-2 rounded border border-zinc-200 text-zinc-400 text-xs hover:border-red-300 hover:text-red-500 transition-colors"
+            className="px-2 rounded border border-border text-muted-foreground text-xs hover:border-red-300 hover:text-destructive transition-colors"
             title="Clear selection"
           >
             ✕
@@ -88,7 +88,7 @@ export function SearchableDropdown<T extends { id: string }>({
         )}
       </div>
       {open && filtered.length > 0 && (
-        <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-zinc-200 bg-white shadow-md">
+        <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-border bg-card shadow-md">
           {filtered.map((item) => (
             <li key={item.id}>
               <button
@@ -103,7 +103,7 @@ export function SearchableDropdown<T extends { id: string }>({
         </ul>
       )}
       {open && query.trim() !== '' && filtered.length === 0 && (
-        <div className="absolute z-10 mt-1 w-full rounded-md border border-zinc-200 bg-white shadow-md px-3 py-2 text-xs text-zinc-400">
+        <div className="absolute z-10 mt-1 w-full rounded-md border border-border bg-card shadow-md px-3 py-2 text-xs text-muted-foreground">
           No results match &ldquo;{query}&rdquo;
         </div>
       )}

@@ -1,6 +1,7 @@
 "use client";
 
 import type { AnnouncementItem } from "@/lib/announcement";
+import { Badge } from "@/components/ui/badge";
 
 function itemKey(item: AnnouncementItem, index: number): string {
   const base = [item.title, item.summary, item.notionUrl ?? ""].join("|");
@@ -27,7 +28,7 @@ function ItemBody({ item }: { item: AnnouncementItem }) {
         href={item.notionUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-blue-500 hover:text-blue-700 underline-offset-2 hover:underline"
+        className="font-semibold text-electric underline-offset-2 hover:underline"
       >
         {text}
       </a>
@@ -49,35 +50,37 @@ export default function AnnouncementWhatsNew({
   return (
     <div className="flex flex-col sm:flex-row gap-4 sm:gap-8">
       <div className="flex-1">
-        <h3 className="text-sm font-semibold text-zinc-700 mb-2">
+        <h3 className="font-display mb-2 text-xs font-normal uppercase tracking-[0.2em] text-foreground">
           What&apos;s New
         </h3>
         <ul className="flex flex-col gap-1.5">
           {whatsNew.map((item, i) => (
             <li
               key={itemKey(item, i)}
-              className="flex gap-2 text-sm text-zinc-600 leading-relaxed"
+              className="flex gap-2 text-sm leading-relaxed text-muted-foreground"
             >
-              <span className="text-green-500 mt-0.5 shrink-0">✓</span>
+              <span className="mt-0.5 shrink-0 text-forest">✓</span>
               <ItemBody item={item} />
             </li>
           ))}
         </ul>
       </div>
       <div className="flex-1">
-        <h3 className="text-sm font-semibold text-zinc-700 mb-2">Upcoming</h3>
+        <h3 className="font-display mb-2 text-xs font-normal uppercase tracking-[0.2em] text-foreground">
+          Upcoming
+        </h3>
         <ul className="flex flex-col gap-1.5">
           {upcoming.map((item, i) => (
             <li
               key={itemKey(item, i)}
-              className="flex gap-2 text-sm text-zinc-500 leading-relaxed"
+              className="flex gap-2 text-sm leading-relaxed text-muted-foreground"
             >
-              <span className="text-zinc-300 mt-0.5 shrink-0">◦</span>
+              <span className="mt-0.5 shrink-0 text-foreground/35">◦</span>
               <span className="min-w-0">
                 {publicStatusLabel(item.status) ? (
-                  <span className="inline-block text-[10px] font-medium uppercase tracking-wide text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded mr-1.5 align-middle">
+                  <Badge variant="trail" className="mr-1.5 align-middle">
                     {publicStatusLabel(item.status)}
-                  </span>
+                  </Badge>
                 ) : null}
                 <ItemBody item={item} />
               </span>

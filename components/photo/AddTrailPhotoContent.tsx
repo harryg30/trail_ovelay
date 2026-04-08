@@ -103,7 +103,7 @@ export function AddTrailPhotoContent(props: {
         }}
       />
 
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-muted-foreground">
         {user
           ? 'Take or choose a photo. You can pin it to a trail later from “My trail photos”. GPS is optional.'
           : 'Try the workflow locally: photos are not saved for others until you sign in with Strava.'}
@@ -133,7 +133,7 @@ export function AddTrailPhotoContent(props: {
         type="button"
         onClick={onCancel}
         disabled={uploading}
-        className="w-full py-2 px-3 rounded-md border border-zinc-200 text-zinc-700 text-sm hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        className="w-full py-2 px-3 rounded-md border border-border text-foreground text-sm hover:bg-mud/45 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         Cancel
       </button>

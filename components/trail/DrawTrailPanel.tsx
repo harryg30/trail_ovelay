@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from 'react'
 import type { TrimFormState, Network } from '@/lib/types'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
+import { Button } from '@/components/ui/button'
 import { polylineDistanceKm } from '@/lib/geo-utils'
+import { cn } from '@/lib/utils'
 
 const AUTOSAVE_KEY = 'draw_form_autosave'
 
@@ -38,14 +40,19 @@ export function DrawTrailPanel({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const formRef = useRef(form)
-  formRef.current = form
+
+  useEffect(() => {
+    formRef.current = form
+  }, [form])
 
   // Restore form from autosave (survives Strava OAuth redirect)
   useEffect(() => {
     try {
       const saved = localStorage.getItem(AUTOSAVE_KEY)
       if (saved) {
+        /* eslint-disable react-hooks/set-state-in-effect -- restore after OAuth redirect */
         setForm(JSON.parse(saved) as TrimFormState)
+        /* eslint-enable react-hooks/set-state-in-effect */
         localStorage.removeItem(AUTOSAVE_KEY)
       }
     } catch { /* ignore */ }
@@ -81,38 +88,35 @@ export function DrawTrailPanel({
   if (!finished) {
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-muted-foreground">
           Click on the map to plot trail points.
         </p>
-        <div className="flex items-center justify-between text-xs text-zinc-400">
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>{drawPoints.length} point{drawPoints.length !== 1 ? 's' : ''} placed</span>
           {distanceKm > 0 && <span>{distanceKm.toFixed(2)} km</span>}
         </div>
         <div className="flex gap-2">
-          <button
+          <Button
             type="button"
+            variant="catalog"
+            className="flex-1"
             disabled={drawPoints.length < 2}
             onClick={onFinish}
-            className="flex-1 py-2 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             Finish Drawing
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="outlineThick"
             disabled={drawPoints.length === 0}
             onClick={onUndo}
-            className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 disabled:opacity-40 transition-colors"
             title="Undo last point"
           >
             ↩
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
-          >
+          </Button>
+          <Button type="button" variant="outlineThick" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     )
@@ -120,7 +124,7 @@ export function DrawTrailPanel({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-      <div className="flex gap-3 text-xs text-zinc-500">
+      <div className="flex gap-3 text-xs text-muted-foreground">
         <span>{distanceKm.toFixed(2)} km</span>
         <span>{drawPoints.length} points</span>
       </div>
@@ -129,7 +133,7 @@ export function DrawTrailPanel({
 
       {/* Network search */}
       <div className="relative">
-        <label className="block text-xs text-zinc-500 mb-1">Network</label>
+        <label className="block text-xs text-muted-foreground mb-1">Network</label>
         <div className="flex items-center gap-1">
           <input
             type="text"
@@ -143,13 +147,13 @@ export function DrawTrailPanel({
             }}
             onFocus={() => setShowDropdown(true)}
             onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
-            className="flex-1 px-2 py-1 text-xs border border-zinc-200 rounded focus:outline-none focus:border-zinc-400 disabled:opacity-50"
+            className="h-8 flex-1 rounded-md border-2 border-foreground bg-card px-2 py-1 text-xs shadow-[inset_2px_2px_0_0_var(--mud)] focus:outline-none focus:ring-2 focus:ring-ring/45 disabled:opacity-50"
           />
           {form.networkId && (
             <button
               type="button"
               onClick={() => { setNetworkQuery(''); setForm((f) => ({ ...f, networkId: undefined })) }}
-              className="text-zinc-400 hover:text-zinc-600 px-1"
+              className="text-muted-foreground hover:text-muted-foreground px-1"
               title="Clear network"
             >
               ×
@@ -162,7 +166,7 @@ export function DrawTrailPanel({
           )
           if (!matches.length) return null
           return (
-            <ul className="absolute z-50 w-full mt-0.5 bg-white border border-zinc-200 rounded shadow-md max-h-36 overflow-y-auto text-xs">
+            <ul className="absolute z-50 mt-0.5 max-h-36 w-full overflow-y-auto border-2 border-foreground bg-card text-xs shadow-[3px_3px_0_0_var(--foreground)]">
               {matches.map((n) => (
                 <li
                   key={n.id}
@@ -171,7 +175,10 @@ export function DrawTrailPanel({
                     setNetworkQuery(n.name)
                     setShowDropdown(false)
                   }}
-                  className={`px-2 py-1.5 cursor-pointer hover:bg-zinc-50 ${form.networkId === n.id ? 'font-medium text-orange-600' : ''}`}
+                  className={cn(
+                    'cursor-pointer px-2 py-1.5 hover:bg-mud/45',
+                    form.networkId === n.id && 'bg-primary/20 font-bold text-primary'
+                  )}
                 >
                   {n.name}
                 </li>
@@ -181,31 +188,28 @@ export function DrawTrailPanel({
         })()}
       </div>
 
-      {saveError && <p className="text-xs text-red-500">{saveError}</p>}
+      {saveError && <p className="text-xs text-destructive">{saveError}</p>}
 
       <div className="flex gap-2">
-        <button
+        <Button
           type="submit"
+          variant="catalog"
+          className="flex-1"
           disabled={saving || !form.name.trim()}
-          className="flex-1 py-2 rounded-md bg-orange-500 text-white text-sm font-medium hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {saving ? 'Saving...' : 'Save Trail'}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="px-3 py-2 rounded-md border border-zinc-200 text-sm text-zinc-600 hover:bg-zinc-50 transition-colors"
-        >
+        </Button>
+        <Button type="button" variant="outlineThick" onClick={onCancel}>
           Cancel
-        </button>
+        </Button>
       </div>
       {canPublish && (
-        <label className="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer select-none">
+        <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
           <input
             type="checkbox"
             checked={publishOnSave}
             onChange={(e) => setPublishOnSave(e.target.checked)}
-            className="accent-orange-500"
+            className="accent-primary size-3.5"
           />
           Publish to public map
         </label>
