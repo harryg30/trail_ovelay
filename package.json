@@ -17,6 +17,9 @@
   },
   "dependencies": {
     "@aws-sdk/rds-signer": "^3.1017.0",
+    "@fortawesome/fontawesome-svg-core": "^7.2.0",
+    "@fortawesome/free-solid-svg-icons": "^7.2.0",
+    "@fortawesome/react-fontawesome": "^3.3.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.3.1",
     "@vercel/functions": "^3.4.3",

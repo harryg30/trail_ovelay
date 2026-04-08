@@ -3,10 +3,12 @@
 import { useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, Network, EditMode, RidePhoto } from '@/lib/types'
+import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, Network, EditMode, RidePhoto, TrailPhoto } from '@/lib/types'
 import type { TrailEditTool } from '@/lib/modes/types'
 import { resolveMapCursor } from '@/lib/modes/map-cursor'
 import { snapToNearestTrailPoint } from '@/lib/geo-utils'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faCamera } from '@fortawesome/free-solid-svg-icons'
 
 export interface LeafletMapProps {
   rides: Ride[]
@@ -38,6 +40,11 @@ export interface LeafletMapProps {
   onAcceptPhoto: (photoId: string, trailId: string, trailLat: number, trailLon: number) => Promise<void>
   onPlacePhoto: (photo: RidePhoto) => void
   onCancelPlace: () => void
+  trailPhotos: TrailPhoto[]
+  onAcceptTrailPhoto: (photoId: string, trailId: string, trailLat: number, trailLon: number) => Promise<void>
+  onEditModeChange?: (mode: EditMode) => void
+  canAddTrailPhotos?: boolean
+  photoModeCenter?: { lat: number; lon: number; t: number } | null
   draftTrails: DraftTrail[]
   drawTrailMode: boolean
   drawTrailPoints: [number, number][]
@@ -81,6 +88,11 @@ export default function LeafletMap({
   onAcceptPhoto,
   onPlacePhoto,
   onCancelPlace,
+  trailPhotos,
+  onAcceptTrailPhoto,
+  onEditModeChange,
+  canAddTrailPhotos,
+  photoModeCenter,
   draftTrails,
   drawTrailMode,
   drawTrailPoints,
@@ -98,6 +110,8 @@ export default function LeafletMap({
 
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
+  const locateControlRef = useRef<L.Control | null>(null)
+  const userLocationLayerRef = useRef<L.LayerGroup | null>(null)
   const ridesLayerRef = useRef<L.LayerGroup | null>(null)
   const trailsLayerRef = useRef<L.LayerGroup | null>(null)
   const trimLayerRef = useRef<L.LayerGroup | null>(null)
@@ -108,11 +122,14 @@ export default function LeafletMap({
   const averagedTrimLayerRef = useRef<L.LayerGroup | null>(null)
   const hoverLayerRef = useRef<L.LayerGroup | null>(null)
   const photoMarkersLayerRef = useRef<L.LayerGroup | null>(null)
+  const trailPhotoMarkersLayerRef = useRef<L.LayerGroup | null>(null)
   const draftTrailsLayerRef = useRef<L.LayerGroup | null>(null)
   const drawTrailLayerRef = useRef<L.LayerGroup | null>(null)
 
   const [zoom, setZoom] = useState(5)
   const LABEL_ZOOM_THRESHOLD = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches ? 14 : 15
+  const isCoarsePointer = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+  const [userLocation, setUserLocation] = useState<{ lat: number; lon: number; accuracyM?: number } | null>(null)
 
   // Mutable refs — updated in component body so click handlers always read current values
   const trimModeRef = useRef(trimMode)
@@ -146,6 +163,8 @@ export default function LeafletMap({
   onAcceptPhotoRef.current = onAcceptPhoto
   onCancelPlaceRef.current = onCancelPlace
   trailsRef.current = trails
+  const onAcceptTrailPhotoRef = useRef(onAcceptTrailPhoto)
+  onAcceptTrailPhotoRef.current = onAcceptTrailPhoto
   trimModeRef.current = trimMode
   editTrailModeRef.current = editTrailMode
   onTrimPointSelectedRef.current = onTrimPointSelected
@@ -190,6 +209,8 @@ export default function LeafletMap({
     averagedTrimLayerRef.current = L.layerGroup().addTo(map)
     hoverLayerRef.current = L.layerGroup().addTo(map)
     photoMarkersLayerRef.current = L.layerGroup().addTo(map)
+    trailPhotoMarkersLayerRef.current = L.layerGroup().addTo(map)
+    userLocationLayerRef.current = L.layerGroup().addTo(map)
     selectedTrailLayerRef.current = L.layerGroup().addTo(map)
     refineLayerRef.current = L.layerGroup().addTo(map)
     drawNetworkLayerRef.current = L.layerGroup().addTo(map)
@@ -278,9 +299,57 @@ export default function LeafletMap({
 
     mapRef.current = map
 
+    // Add a "zoom to my location" control just under Leaflet's zoom buttons.
+    const locateControl = new L.Control({ position: 'topleft' })
+    ;(locateControl as any).onAdd = () => {
+      const container = L.DomUtil.create('div')
+      container.style.cssText = 'margin-top:44px'
+
+      const btn = L.DomUtil.create('button', '', container) as HTMLButtonElement
+      btn.type = 'button'
+      btn.title = 'Zoom to my location'
+      btn.setAttribute('aria-label', 'Zoom to my location')
+      btn.style.cssText =
+        'width:30px;height:30px;border-radius:4px;background:white;border:2px solid rgba(0,0,0,0.2);' +
+        'box-shadow:0 1px 3px rgba(0,0,0,0.25);cursor:pointer;display:flex;align-items:center;justify-content:center'
+      btn.innerHTML =
+        '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 20 20" fill="none">' +
+        '<path d="M10 2v2" stroke="#0f172a" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M10 16v2" stroke="#0f172a" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M2 10h2" stroke="#0f172a" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M16 10h2" stroke="#0f172a" stroke-width="2" stroke-linecap="round"/>' +
+        '<path d="M10 14a4 4 0 1 0 0-8a4 4 0 0 0 0 8Z" stroke="#0f172a" stroke-width="2"/>' +
+        '</svg>'
+
+      L.DomEvent.disableClickPropagation(container)
+      L.DomEvent.disableScrollPropagation(container)
+
+      btn.onclick = () => {
+        if (!('geolocation' in navigator)) return
+        navigator.geolocation.getCurrentPosition(
+          (pos) => {
+            const lat = pos.coords.latitude
+            const lon = pos.coords.longitude
+            const accuracyM = pos.coords.accuracy
+            setUserLocation({ lat, lon, accuracyM })
+            map.flyTo([lat, lon], Math.max(map.getZoom(), 15), { duration: 0.8 })
+          },
+          () => {
+            // ignore errors (denied/unavailable)
+          },
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 15_000 }
+        )
+      }
+
+      return container
+    }
+    locateControl.addTo(map)
+    locateControlRef.current = locateControl
+
     return () => {
       map.remove()
       mapRef.current = null
+      locateControlRef.current = null
       ridesLayerRef.current = null
       trailsLayerRef.current = null
       trimLayerRef.current = null
@@ -291,10 +360,63 @@ export default function LeafletMap({
       drawNetworkLayerRef.current = null
       hoverLayerRef.current = null
       photoMarkersLayerRef.current = null
+      trailPhotoMarkersLayerRef.current = null
+      userLocationLayerRef.current = null
       draftTrailsLayerRef.current = null
       drawTrailLayerRef.current = null
     }
   }, [])
+
+  // Center map from a user-gesture-triggered location request (avoids blocked permission prompts).
+  useEffect(() => {
+    if (!mapRef.current) return
+    if (!photoModeCenter) return
+    setUserLocation({ lat: photoModeCenter.lat, lon: photoModeCenter.lon })
+    mapRef.current.flyTo(
+      [photoModeCenter.lat, photoModeCenter.lon],
+      Math.max(mapRef.current.getZoom(), 15),
+      { duration: 0.8 }
+    )
+  }, [photoModeCenter?.t])
+
+  // Render "you are here" marker if location is known
+  useEffect(() => {
+    if (!userLocationLayerRef.current) return
+    userLocationLayerRef.current.clearLayers()
+    if (!userLocation) return
+
+    const pt: [number, number] = [userLocation.lat, userLocation.lon]
+
+    if (typeof userLocation.accuracyM === 'number' && Number.isFinite(userLocation.accuracyM)) {
+      L.circle(pt, {
+        radius: userLocation.accuracyM,
+        color: '#2563eb',
+        weight: 1,
+        opacity: 0.5,
+        fillColor: '#60a5fa',
+        fillOpacity: 0.15,
+        interactive: false,
+      }).addTo(userLocationLayerRef.current)
+    }
+
+    L.circleMarker(pt, {
+      radius: 7,
+      color: '#1d4ed8',
+      weight: 2,
+      fillColor: '#3b82f6',
+      fillOpacity: 1,
+      interactive: false,
+    }).addTo(userLocationLayerRef.current)
+
+    L.circleMarker(pt, {
+      radius: 2,
+      color: '#ffffff',
+      weight: 0,
+      fillColor: '#ffffff',
+      fillOpacity: 1,
+      interactive: false,
+    }).addTo(userLocationLayerRef.current)
+  }, [userLocation])
 
   // Effect 2: initial fit-to-bounds — fires once when trails first load
   useEffect(() => {
@@ -916,6 +1038,73 @@ export default function LeafletMap({
     }
   }, [ridePhotos, photosVisibleRideIds])
 
+  // Effect 10b: public trail photo pins
+  useEffect(() => {
+    if (!trailPhotoMarkersLayerRef.current || !mapRef.current) return
+    trailPhotoMarkersLayerRef.current.clearLayers()
+
+    for (const photo of trailPhotos) {
+      const displayLat = photo.accepted && photo.trailLat != null ? photo.trailLat : photo.lat
+      const displayLon = photo.accepted && photo.trailLon != null ? photo.trailLon : photo.lon
+      if (displayLat == null || displayLon == null) continue
+
+      const thumbSrc = photo.thumbnailUrl || photo.blobUrl
+      const icon = L.divIcon({
+        className: '',
+        html: `<div style="width:38px;height:38px;border-radius:6px;border:2px solid #059669;box-shadow:0 1px 4px rgba(0,0,0,.35);overflow:hidden;background:#d4d4d8">
+          <img src="${thumbSrc}" style="width:100%;height:100%;object-fit:cover" />
+        </div>`,
+        iconSize: [38, 38],
+        iconAnchor: [19, 19],
+      })
+
+      const marker = L.marker([displayLat, displayLon], { icon })
+
+      if (!photo.accepted) {
+        const popupContent = document.createElement('div')
+        popupContent.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:160px'
+        const img = document.createElement('img')
+        img.src = thumbSrc
+        img.style.cssText = 'width:160px;height:120px;object-fit:cover;border-radius:4px'
+        popupContent.appendChild(img)
+
+        const label = document.createElement('p')
+        label.style.cssText = 'font-size:12px;color:#52525b;margin:0'
+        label.textContent = 'Accept — snap to nearest trail'
+        popupContent.appendChild(label)
+
+        const btnRow = document.createElement('div')
+        btnRow.style.cssText = 'display:flex;gap:6px'
+        const acceptBtn = document.createElement('button')
+        acceptBtn.textContent = 'Accept'
+        acceptBtn.style.cssText = 'flex:1;padding:4px 8px;background:#059669;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer'
+        const dismissBtn = document.createElement('button')
+        dismissBtn.textContent = 'Dismiss'
+        dismissBtn.style.cssText = 'padding:4px 8px;border:1px solid #d4d4d8;border-radius:4px;font-size:12px;cursor:pointer;background:#fff'
+        btnRow.appendChild(acceptBtn)
+        btnRow.appendChild(dismissBtn)
+        popupContent.appendChild(btnRow)
+
+        marker.bindPopup(popupContent)
+
+        acceptBtn.onclick = () => {
+          marker.closePopup()
+          const snap = snapToNearestTrailPoint(displayLat, displayLon, trailsRef.current)
+          if (snap) {
+            onAcceptTrailPhotoRef.current(photo.id, snap.trail.id, snap.lat, snap.lon)
+          }
+        }
+        dismissBtn.onclick = () => marker.closePopup()
+      } else {
+        marker.bindPopup(`<div style="display:flex;flex-direction:column;gap:8px;min-width:160px">
+          <img src="${thumbSrc}" style="width:160px;height:120px;object-fit:cover;border-radius:4px" />
+          <p style="margin:0;font-size:12px;color:#52525b">Pinned to trail</p>
+        </div>`)
+      }
+      marker.addTo(trailPhotoMarkersLayerRef.current)
+    }
+  }, [trailPhotos])
+
   // Collect no-GPS unaccepted photos for the floating tray
   const trayPhotos: RidePhoto[] = []
   for (const [rideId, photos] of Object.entries(ridePhotos)) {
@@ -931,6 +1120,25 @@ export default function LeafletMap({
       <div className="absolute bottom-2 right-2 z-1000 bg-white/80 text-xs font-mono px-1.5 py-0.5 rounded pointer-events-none">
         z{zoom}
       </div>
+
+      {/* Mobile floating action button: enter add-trail-photo mode even when drawer is closed */}
+      {isCoarsePointer && onEditModeChange && (
+        <button
+          type="button"
+          onClick={() => {
+            onEditModeChange(editMode === 'add-trail-photo' ? null : 'add-trail-photo')
+          }}
+          aria-label={editMode === 'add-trail-photo' ? 'Exit add photo mode' : 'Add photo'}
+          className={`sm:hidden absolute bottom-6 right-4 z-1000 w-12 h-12 rounded-full shadow-lg border transition-colors flex items-center justify-center ${
+            editMode === 'add-trail-photo'
+              ? 'bg-emerald-700 text-white border-emerald-700'
+              : 'bg-white text-emerald-700 border-zinc-200'
+          }`}
+          title={editMode === 'add-trail-photo' ? 'Cancel' : 'Add trail photo'}
+        >
+          <FontAwesomeIcon icon={faCamera} className="w-6 h-6" />
+        </button>
+      )}
 
       {/* Floating tray for no-GPS photos */}
       {trayPhotos.length > 0 && (

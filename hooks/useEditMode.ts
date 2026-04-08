@@ -56,6 +56,7 @@ export function useEditMode() {
       setTrimStart(null)
       setTrimEnd(null)
     }
+    // Photo mode should not require trail-edit state; switching away from edit-trail must clear it.
     if (mode !== 'edit-trail') {
       setSelectedTrail(null)
     }

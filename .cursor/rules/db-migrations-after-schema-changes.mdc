@@ -1,0 +1,19 @@
+---
+description: Ensure local DB migrations are applied after schema changes
+alwaysApply: true
+---
+
+# DB schema changes require migrations
+
+When making any database schema change (adding/modifying tables/columns/indexes/constraints), treat the migration as part of the change.
+
+- **If you add or edit a file in `migrations/`**:
+  - Run `npm run db:migrate` locally before considering the work complete.
+  - If the app fails with 500s on DB writes after deployment, suspect **prod migrations not applied** first.
+
+- **If you change API routes that write to new tables/columns** (e.g. `app/api/**/route.ts`):
+  - Ensure there is a corresponding migration.
+  - Ensure the migration is the next numbered file in `migrations/` and is idempotent where appropriate.
+
+- **Verification**:
+  - Prefer a quick “smoke” verification by running the relevant write path after `npm run db:migrate`.

@@ -6,42 +6,8 @@ import type { TrailEditTool } from '@/lib/modes/types'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
 import { ConfirmDeleteButton } from '@/components/shared/ConfirmDeleteButton'
 import { polylineDistanceKm } from '@/lib/geo-utils'
-
-function PencilIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 11.5-11.5z" />
-    </svg>
-  )
-}
-
-function EraserIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M20 20H11" />
-      <path d="M5.5 13.5 14 5a2.8 2.8 0 0 1 4 4l-7.5 7.5a2.8 2.8 0 0 1-4 0l-1-1a2.8 2.8 0 0 1 0-4z" />
-    </svg>
-  )
-}
-
-function UndoIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M9 14 4 9l5-5" />
-      <path d="M4 9h9a7 7 0 1 1 0 14h-1" />
-    </svg>
-  )
-}
-
-function RedoIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M15 14l5-5-5-5" />
-      <path d="M20 9H11a7 7 0 1 0 0 14h1" />
-    </svg>
-  )
-}
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faEraser, faPencil, faRotateLeft, faRotateRight } from '@fortawesome/free-solid-svg-icons'
 
 const toolBtnActive = 'bg-zinc-900 text-white border-zinc-900'
 const toolBtnIdle = 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
@@ -166,7 +132,7 @@ export function TrailEditDrawer({
             onClick={() => onSetTool('pencil')}
             className={`${toolBase} ${trailEditTool === 'pencil' ? toolBtnActive : toolBtnIdle}`}
           >
-            <PencilIcon className="w-4 h-4" />
+            <FontAwesomeIcon icon={faPencil} className="w-4 h-4" />
           </button>
           <button
             type="button"
@@ -176,13 +142,13 @@ export function TrailEditDrawer({
             onClick={() => onSetTool('eraser')}
             className={`${toolBase} ${trailEditTool === 'eraser' ? toolBtnActive : toolBtnIdle}`}
           >
-            <EraserIcon className="w-4 h-4" />
+            <FontAwesomeIcon icon={faEraser} className="w-4 h-4" />
           </button>
           <button type="button" className={iconActionBtn} onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo">
-            <UndoIcon className="w-4 h-4" />
+            <FontAwesomeIcon icon={faRotateLeft} className="w-4 h-4" />
           </button>
           <button type="button" className={iconActionBtn} onClick={onRedo} disabled={!canRedo} title="Redo" aria-label="Redo">
-            <RedoIcon className="w-4 h-4" />
+            <FontAwesomeIcon icon={faRotateRight} className="w-4 h-4" />
           </button>
           <button
             type="button"
