@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
 import { query, queryOne } from '@/lib/db'
+import { getSessionUserId } from '@/lib/auth'
 import type { TrailPhoto } from '@/lib/types'
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10MB
@@ -64,16 +65,21 @@ export async function GET(request: NextRequest) {
   // If bounds are omitted, return a small recent sample rather than the whole world.
   const hasBounds = [north, south, east, west].every((n) => Number.isFinite(n))
 
+  /** Community-visible: pinned to a trail only (not other users' unpinned uploads). */
+  const visibilitySql = `status = 'published'
+           AND accepted = true
+           AND trail_id IS NOT NULL
+           AND trail_lat IS NOT NULL AND trail_lon IS NOT NULL`
+
   const rows = hasBounds
     ? await query<TrailPhotoRow>(
         `SELECT
            id, blob_url, thumbnail_url, lat, lon, taken_at,
            trail_id, trail_lat, trail_lon, accepted, status, created_by_user_id, created_at
          FROM trail_photos
-         WHERE status = 'published'
-           AND lat IS NOT NULL AND lon IS NOT NULL
-           AND lat <= $1 AND lat >= $2
-           AND lon <= $3 AND lon >= $4
+         WHERE ${visibilitySql}
+           AND trail_lat <= $1 AND trail_lat >= $2
+           AND trail_lon <= $3 AND trail_lon >= $4
          ORDER BY created_at DESC
          LIMIT $5`,
         [north, south, east, west, limit]
@@ -83,7 +89,7 @@ export async function GET(request: NextRequest) {
            id, blob_url, thumbnail_url, lat, lon, taken_at,
            trail_id, trail_lat, trail_lon, accepted, status, created_by_user_id, created_at
          FROM trail_photos
-         WHERE status = 'published'
+         WHERE ${visibilitySql}
          ORDER BY created_at DESC
          LIMIT $1`,
         [Math.min(limit, 100)]
@@ -94,14 +100,22 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // No auth required: anyone can add photos.
-    // Best-effort global rate limit to reduce abuse (not a substitute for moderation tooling).
+    const userId = await getSessionUserId()
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Sign in with Strava to upload trail photos to the server.' },
+        { status: 401 }
+      )
+    }
+
     const recent = await queryOne<{ c: string }>(
       `SELECT COUNT(*)::text AS c
        FROM trail_photos
-       WHERE created_at > now() - interval '1 minute'`
+       WHERE created_by_user_id = $1
+         AND created_at > now() - interval '1 minute'`,
+      [userId]
     )
-    if (recent && Number(recent.c) >= 200) {
+    if (recent && Number(recent.c) >= 30) {
       return NextResponse.json({ error: 'Rate limit: too many uploads, try again in a minute' }, { status: 429 })
     }
 
@@ -134,6 +148,18 @@ export async function POST(request: NextRequest) {
         ? new Date(takenAtRaw).toISOString()
         : null
 
+    const trailIdRaw = form.get('trailId')
+    const trailId =
+      typeof trailIdRaw === 'string' && trailIdRaw.trim().length > 0 ? trailIdRaw.trim() : null
+    const trailLat = parseOptionalNumber(form.get('trailLat'))
+    const trailLon = parseOptionalNumber(form.get('trailLon'))
+    const pinInOneShot =
+      trailId != null &&
+      trailLat != null &&
+      trailLon != null &&
+      Number.isFinite(trailLat) &&
+      Number.isFinite(trailLon)
+
     const ext =
       file.type === 'image/jpeg' ? 'jpg' :
       file.type === 'image/png' ? 'png' :
@@ -148,15 +174,36 @@ export async function POST(request: NextRequest) {
       contentType: file.type,
     })
 
-    const row = await queryOne<TrailPhotoRow>(
-      `INSERT INTO trail_photos (
-         blob_url, thumbnail_url, lat, lon, taken_at, created_by_user_id
-       ) VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING
-         id, blob_url, thumbnail_url, lat, lon, taken_at,
-         trail_id, trail_lat, trail_lon, accepted, status, created_by_user_id, created_at`,
-      [blob.url, null, lat, lon, takenAt, null]
-    )
+    const row = pinInOneShot
+      ? await queryOne<TrailPhotoRow>(
+          `INSERT INTO trail_photos (
+             blob_url, thumbnail_url, lat, lon, taken_at, created_by_user_id,
+             trail_id, trail_lat, trail_lon, accepted
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+           RETURNING
+             id, blob_url, thumbnail_url, lat, lon, taken_at,
+             trail_id, trail_lat, trail_lon, accepted, status, created_by_user_id, created_at`,
+          [
+            blob.url,
+            null,
+            lat ?? trailLat,
+            lon ?? trailLon,
+            takenAt,
+            userId,
+            trailId,
+            trailLat,
+            trailLon,
+          ]
+        )
+      : await queryOne<TrailPhotoRow>(
+          `INSERT INTO trail_photos (
+             blob_url, thumbnail_url, lat, lon, taken_at, created_by_user_id
+           ) VALUES ($1, $2, $3, $4, $5, $6)
+           RETURNING
+             id, blob_url, thumbnail_url, lat, lon, taken_at,
+             trail_id, trail_lat, trail_lon, accepted, status, created_by_user_id, created_at`,
+          [blob.url, null, lat, lon, takenAt, userId]
+        )
 
     if (!row) {
       return NextResponse.json({ error: 'Failed to create trail photo' }, { status: 500 })

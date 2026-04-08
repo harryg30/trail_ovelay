@@ -2,24 +2,28 @@
 
 import { useRef, useState } from 'react'
 import type { TrailPhoto } from '@/lib/types'
+import type { SessionUser } from '@/lib/auth'
 
 export function AddTrailPhotoContent(props: {
+  user: SessionUser | null
   onCreated: (photo: TrailPhoto) => void
   onCancel: () => void
 }) {
-  const { onCreated, onCancel } = props
-  const inputRef = useRef<HTMLInputElement>(null)
+  const { user, onCreated, onCancel } = props
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  const galleryInputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const takePhoto = () => inputRef.current?.click()
+  const pickCamera = () => cameraInputRef.current?.click()
+  const pickGallery = () => galleryInputRef.current?.click()
 
   const handleFile = async (file: File) => {
     setUploading(true)
     setError(null)
     try {
-      let lat: number | null = null
-      let lon: number | null = null
+      let lat: number | undefined
+      let lon: number | undefined
       if (typeof navigator !== 'undefined' && 'geolocation' in navigator) {
         try {
           const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
@@ -32,8 +36,25 @@ export function AddTrailPhotoContent(props: {
           lat = pos.coords.latitude
           lon = pos.coords.longitude
         } catch {
-          // user denied or unavailable; fall back to manual placement
+          // optional GPS
         }
+      }
+
+      if (!user) {
+        const blobUrl = URL.createObjectURL(file)
+        const photo: TrailPhoto = {
+          id: `local-${crypto.randomUUID()}`,
+          blobUrl,
+          takenAt: new Date(),
+          accepted: false,
+          status: 'published',
+          createdAt: new Date(),
+          isLocal: true,
+          lat,
+          lon,
+        }
+        onCreated(photo)
+        return
       }
 
       const fd = new FormData()
@@ -53,17 +74,28 @@ export function AddTrailPhotoContent(props: {
       setError('Network error — upload failed')
     } finally {
       setUploading(false)
-      if (inputRef.current) inputRef.current.value = ''
+      if (cameraInputRef.current) cameraInputRef.current.value = ''
+      if (galleryInputRef.current) galleryInputRef.current.value = ''
     }
   }
 
   return (
     <div className="flex flex-col gap-2">
       <input
-        ref={inputRef}
+        ref={cameraInputRef}
         type="file"
-        accept="image/*"
+        accept="image/jpeg,image/png,image/webp"
         capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) void handleFile(f)
+        }}
+      />
+      <input
+        ref={galleryInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0]
@@ -72,18 +104,29 @@ export function AddTrailPhotoContent(props: {
       />
 
       <p className="text-xs text-zinc-500">
-        Take a photo, then place it on the map (we’ll try to use your GPS if available).
+        {user
+          ? 'Take or choose a photo. You can pin it to a trail later from “My trail photos”. GPS is optional.'
+          : 'Try the workflow locally: photos are not saved for others until you sign in with Strava.'}
       </p>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
 
       <button
         type="button"
-        onClick={takePhoto}
+        onClick={pickCamera}
         disabled={uploading}
         className="w-full py-2 px-3 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
-        {uploading ? 'Uploading…' : 'Take photo'}
+        {uploading ? 'Working…' : 'Take photo'}
+      </button>
+
+      <button
+        type="button"
+        onClick={pickGallery}
+        disabled={uploading}
+        className="w-full py-2 px-3 rounded-md border border-emerald-600 text-emerald-700 text-sm font-medium hover:bg-emerald-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        Choose from library
       </button>
 
       <button
@@ -97,4 +140,3 @@ export function AddTrailPhotoContent(props: {
     </div>
   )
 }
-

@@ -7,7 +7,13 @@ import AnnouncementModal from '@/components/AnnouncementModal'
 import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
 import type { Ride, Trail, Network, TrimSegment, TrimFormState, SaveTrailResponse, RidePhoto, DraftTrail, TrailPhoto } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
-import { polylineDistanceKm, estimatedElevationGainFt, generateAveragedTrail, clipPolylineToCorridor } from '@/lib/geo-utils'
+import {
+  polylineDistanceKm,
+  estimatedElevationGainFt,
+  generateAveragedTrail,
+  clipPolylineToCorridor,
+  trailPhotoMapPoint,
+} from '@/lib/geo-utils'
 import type { MapBounds } from '@/lib/geo-utils'
 import { insertPointAfter, removePointAt } from '@/lib/geo-edit'
 import { useEditMode } from '@/hooks/useEditMode'
@@ -176,12 +182,37 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [photosVisibleRideIds, setPhotosVisibleRideIds] = useState<Set<string>>(new Set())
   const [fetchingPhotosId, setFetchingPhotosId] = useState<string | null>(null)
   const [placingPhoto, setPlacingPhoto] = useState<RidePhoto | null>(null)
-  const [trailPhotos, setTrailPhotos] = useState<TrailPhoto[]>([])
+  const [placingTrailPhoto, setPlacingTrailPhoto] = useState<TrailPhoto | null>(null)
+  /** Community-visible pins (server: accepted + on trail). */
+  const [communityTrailPhotos, setCommunityTrailPhotos] = useState<TrailPhoto[]>([])
+  /** Logged-in user’s unpinned / in-progress uploads (private). */
+  const [myUnpinnedTrailPhotos, setMyUnpinnedTrailPhotos] = useState<TrailPhoto[]>([])
+  /** Demo-only photos (object URLs; never POST). */
+  const [localTrailPhotos, setLocalTrailPhotos] = useState<TrailPhoto[]>([])
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null)
   const [showOnMapOnly, setShowOnMapOnly] = useState(false)
   const [photoModeCenter, setPhotoModeCenter] = useState<{ lat: number; lon: number; t: number } | null>(null)
 
-  // Fetch public trail photo pins for the current map bounds
+  const loadMyUnpinnedTrailPhotos = useCallback(() => {
+    if (!user) return
+    fetch('/api/trail-photos/mine')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data?.photos) return
+        setMyUnpinnedTrailPhotos(data.photos as TrailPhoto[])
+      })
+      .catch(() => {})
+  }, [user])
+
+  useEffect(() => {
+    if (!user) {
+      setMyUnpinnedTrailPhotos([])
+      return
+    }
+    loadMyUnpinnedTrailPhotos()
+  }, [loadMyUnpinnedTrailPhotos, user])
+
+  // Community trail photo pins for the current map bounds (pinned-to-trail only on server)
   useEffect(() => {
     if (!mapBounds) return
     const { north, south, east, west } = mapBounds
@@ -189,7 +220,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       .then((r) => r.json())
       .then((data) => {
         if (!data?.photos) return
-        setTrailPhotos((prev) => {
+        setCommunityTrailPhotos((prev) => {
           const byId = new Map<string, TrailPhoto>()
           for (const p of prev) byId.set(p.id, p)
           for (const p of data.photos as TrailPhoto[]) byId.set(p.id, p)
@@ -200,10 +231,26 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           })
         })
       })
-      .catch(() => {
-        // ignore bounds fetch errors (noisy on poor connections)
-      })
+      .catch(() => {})
   }, [mapBounds])
+
+  const mapTrailPhotos = useMemo(() => {
+    const byId = new Map<string, TrailPhoto>()
+    for (const p of communityTrailPhotos) byId.set(p.id, p)
+    for (const p of myUnpinnedTrailPhotos) {
+      const pt = trailPhotoMapPoint(p)
+      if (pt != null) byId.set(p.id, p)
+    }
+    for (const p of localTrailPhotos) {
+      const pt = trailPhotoMapPoint(p)
+      if (pt != null) byId.set(p.id, p)
+    }
+    return Array.from(byId.values()).sort((a, b) => {
+      const at = new Date(a.createdAt).getTime()
+      const bt = new Date(b.createdAt).getTime()
+      return bt - at
+    })
+  }, [communityTrailPhotos, myUnpinnedTrailPhotos, localTrailPhotos])
 
   useEffect(() => {
     fetch('/api/trails')
@@ -936,15 +983,33 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   }, [])
 
   const handlePlacePhoto = useCallback((photo: RidePhoto) => {
+    setPlacingTrailPhoto(null)
     setPlacingPhoto(photo)
+    // Mobile: collapse drawer so the map is visible for trail tap-to-pin.
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches) {
+      setMobileMenuOpen(false)
+    }
+  }, [])
+
+  const handlePlaceTrailPhoto = useCallback((photo: TrailPhoto) => {
+    setPlacingPhoto(null)
+    setPlacingTrailPhoto(photo)
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches) {
+      setMobileMenuOpen(false)
+    }
   }, [])
 
   const handleCancelPlace = useCallback(() => {
     setPlacingPhoto(null)
+    setPlacingTrailPhoto(null)
   }, [])
 
   const handleTrailPhotoCreated = useCallback((photo: TrailPhoto) => {
-    setTrailPhotos((prev) => [photo, ...prev])
+    if (photo.isLocal) {
+      setLocalTrailPhotos((prev) => [photo, ...prev.filter((p) => p.id !== photo.id)])
+      return
+    }
+    setMyUnpinnedTrailPhotos((prev) => [photo, ...prev.filter((p) => p.id !== photo.id)])
   }, [])
 
   const handleAcceptTrailPhoto = useCallback(async (
@@ -953,6 +1018,26 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     trailLat: number,
     trailLon: number
   ) => {
+    if (photoId.startsWith('local-')) {
+      setLocalTrailPhotos((prev) =>
+        prev.map((p) =>
+          p.id === photoId
+            ? {
+                ...p,
+                trailId,
+                trailLat,
+                trailLon,
+                accepted: true,
+                lat: trailLat,
+                lon: trailLon,
+              }
+            : p
+        )
+      )
+      setPlacingTrailPhoto(null)
+      return
+    }
+
     const res = await fetch(`/api/trail-photos/${photoId}/accept`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -960,7 +1045,19 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     })
     const data = await res.json()
     if (data.photo) {
-      setTrailPhotos((prev) => prev.map((p) => (p.id === data.photo.id ? data.photo : p)))
+      const updated = data.photo as TrailPhoto
+      setMyUnpinnedTrailPhotos((prev) => prev.filter((p) => p.id !== updated.id))
+      setCommunityTrailPhotos((prev) => {
+        const byId = new Map<string, TrailPhoto>()
+        for (const p of prev) byId.set(p.id, p)
+        byId.set(updated.id, updated)
+        return Array.from(byId.values()).sort((a, b) => {
+          const at = new Date(a.createdAt).getTime()
+          const bt = new Date(b.createdAt).getTime()
+          return bt - at
+        })
+      })
+      setPlacingTrailPhoto(null)
     }
   }, [])
 
@@ -1058,6 +1155,13 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onToggleShowOnMapOnly={() => setShowOnMapOnly(v => !v)}
           onTrailPhotoCreated={handleTrailPhotoCreated}
           onEnterAddTrailPhoto={handleEnterAddTrailPhoto}
+          communityTrailPhotos={communityTrailPhotos}
+          unpinnedTrailPhotos={[...myUnpinnedTrailPhotos, ...localTrailPhotos]}
+          placingPhoto={placingPhoto}
+          placingTrailPhoto={placingTrailPhoto}
+          onPlaceRidePhoto={handlePlacePhoto}
+          onPlaceTrailPhoto={handlePlaceTrailPhoto}
+          onCancelPinOnMap={handleCancelPlace}
         />
       </div>
 
@@ -1120,10 +1224,10 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         ridePhotos={ridePhotos}
         photosVisibleRideIds={photosVisibleRideIds}
         placingPhoto={placingPhoto}
+        placingTrailPhoto={placingTrailPhoto}
         onAcceptPhoto={handleAcceptPhoto}
-        onPlacePhoto={handlePlacePhoto}
         onCancelPlace={handleCancelPlace}
-        trailPhotos={trailPhotos}
+        trailPhotos={mapTrailPhotos}
         onAcceptTrailPhoto={handleAcceptTrailPhoto}
         drawTrailMode={drawTrailMode}
         drawTrailPoints={drawTrailPoints}

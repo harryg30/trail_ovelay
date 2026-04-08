@@ -37,8 +37,8 @@ export interface LeafletMapProps {
   ridePhotos: Record<string, RidePhoto[]>
   photosVisibleRideIds: Set<string>
   placingPhoto: RidePhoto | null
+  placingTrailPhoto: TrailPhoto | null
   onAcceptPhoto: (photoId: string, trailId: string, trailLat: number, trailLon: number) => Promise<void>
-  onPlacePhoto: (photo: RidePhoto) => void
   onCancelPlace: () => void
   trailPhotos: TrailPhoto[]
   onAcceptTrailPhoto: (photoId: string, trailId: string, trailLat: number, trailLon: number) => Promise<void>
@@ -85,8 +85,8 @@ export default function LeafletMap({
   ridePhotos,
   photosVisibleRideIds,
   placingPhoto,
+  placingTrailPhoto,
   onAcceptPhoto,
-  onPlacePhoto,
   onCancelPlace,
   trailPhotos,
   onAcceptTrailPhoto,
@@ -156,10 +156,12 @@ export default function LeafletMap({
   const onBoundsChangeRef = useRef(onBoundsChange)
   onBoundsChangeRef.current = onBoundsChange
   const placingPhotoRef = useRef(placingPhoto)
+  const placingTrailPhotoRef = useRef(placingTrailPhoto)
   const onAcceptPhotoRef = useRef(onAcceptPhoto)
   const onCancelPlaceRef = useRef(onCancelPlace)
   const trailsRef = useRef(trails)
   placingPhotoRef.current = placingPhoto
+  placingTrailPhotoRef.current = placingTrailPhoto
   onAcceptPhotoRef.current = onAcceptPhoto
   onCancelPlaceRef.current = onCancelPlace
   trailsRef.current = trails
@@ -235,11 +237,36 @@ export default function LeafletMap({
       if (placingPhotoRef.current) {
         const { lat, lng } = e.latlng
         const snap = snapToNearestTrailPoint(lat, lng, trailsRef.current)
-        const pinLat = snap ? snap.lat : lat
-        const pinLon = snap ? snap.lon : lng
-        const trailName = snap ? snap.trail.name : null
-
         const photo = placingPhotoRef.current
+
+        if (!snap) {
+          const msg =
+            trailsRef.current.length === 0
+              ? 'Load trails on the map first, then tap on or near a trail line.'
+              : 'No trail close to this tap. Zoom in and tap on or near a trail line.'
+          const popupContent = document.createElement('div')
+          popupContent.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:180px'
+          const label = document.createElement('p')
+          label.style.cssText = 'font-size:12px;color:#52525b;margin:0'
+          label.textContent = msg
+          popupContent.appendChild(label)
+          const okBtn = document.createElement('button')
+          okBtn.textContent = 'OK'
+          okBtn.style.cssText =
+            'padding:4px 8px;background:#f59e0b;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer'
+          popupContent.appendChild(okBtn)
+          const popup = L.popup({ closeButton: false })
+            .setLatLng([lat, lng])
+            .setContent(popupContent)
+            .openOn(map)
+          okBtn.onclick = () => popup.close()
+          return
+        }
+
+        const pinLat = snap.lat
+        const pinLon = snap.lon
+        const trailName = snap.trail.name
+
         const popupContent = document.createElement('div')
         popupContent.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:160px'
         if (photo.thumbnailUrl || photo.blobUrl) {
@@ -250,18 +277,18 @@ export default function LeafletMap({
         }
         const label = document.createElement('p')
         label.style.cssText = 'font-size:12px;color:#52525b;margin:0'
-        label.textContent = snap
-          ? `Snap to: ${trailName}`
-          : 'No trail nearby — pin at this location'
+        label.textContent = `Pin to trail: ${trailName}`
         popupContent.appendChild(label)
         const btnRow = document.createElement('div')
         btnRow.style.cssText = 'display:flex;gap:6px'
         const acceptBtn = document.createElement('button')
-        acceptBtn.textContent = snap ? 'Accept' : 'Pin here'
-        acceptBtn.style.cssText = 'flex:1;padding:4px 8px;background:#f59e0b;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer'
+        acceptBtn.textContent = 'Accept'
+        acceptBtn.style.cssText =
+          'flex:1;padding:4px 8px;background:#f59e0b;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer'
         const cancelBtn = document.createElement('button')
         cancelBtn.textContent = 'Cancel'
-        cancelBtn.style.cssText = 'padding:4px 8px;border:1px solid #d4d4d8;border-radius:4px;font-size:12px;cursor:pointer;background:#fff'
+        cancelBtn.style.cssText =
+          'padding:4px 8px;border:1px solid #d4d4d8;border-radius:4px;font-size:12px;cursor:pointer;background:#fff'
         btnRow.appendChild(acceptBtn)
         btnRow.appendChild(cancelBtn)
         popupContent.appendChild(btnRow)
@@ -273,12 +300,81 @@ export default function LeafletMap({
 
         acceptBtn.onclick = () => {
           popup.close()
-          onAcceptPhotoRef.current(
-            photo.id,
-            snap?.trail.id ?? '',
-            pinLat,
-            pinLon
-          )
+          onAcceptPhotoRef.current(photo.id, snap.trail.id, pinLat, pinLon)
+        }
+        cancelBtn.onclick = () => {
+          popup.close()
+          onCancelPlaceRef.current()
+        }
+        return
+      }
+      if (placingTrailPhotoRef.current) {
+        const { lat, lng } = e.latlng
+        const snap = snapToNearestTrailPoint(lat, lng, trailsRef.current)
+        const photo = placingTrailPhotoRef.current
+
+        if (!snap) {
+          const msg =
+            trailsRef.current.length === 0
+              ? 'Load trails on the map first, then tap on or near a trail line.'
+              : 'No trail close to this tap. Zoom in and tap on or near a trail line.'
+          const popupContent = document.createElement('div')
+          popupContent.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:180px'
+          const label = document.createElement('p')
+          label.style.cssText = 'font-size:12px;color:#52525b;margin:0'
+          label.textContent = msg
+          popupContent.appendChild(label)
+          const okBtn = document.createElement('button')
+          okBtn.textContent = 'OK'
+          okBtn.style.cssText =
+            'padding:4px 8px;background:#059669;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer'
+          popupContent.appendChild(okBtn)
+          const popup = L.popup({ closeButton: false })
+            .setLatLng([lat, lng])
+            .setContent(popupContent)
+            .openOn(map)
+          okBtn.onclick = () => popup.close()
+          return
+        }
+
+        const pinLat = snap.lat
+        const pinLon = snap.lon
+        const trailName = snap.trail.name
+
+        const popupContent = document.createElement('div')
+        popupContent.style.cssText = 'display:flex;flex-direction:column;gap:8px;min-width:160px'
+        if (photo.thumbnailUrl || photo.blobUrl) {
+          const img = document.createElement('img')
+          img.src = photo.thumbnailUrl || photo.blobUrl
+          img.style.cssText = 'width:160px;height:120px;object-fit:cover;border-radius:4px'
+          popupContent.appendChild(img)
+        }
+        const label = document.createElement('p')
+        label.style.cssText = 'font-size:12px;color:#52525b;margin:0'
+        label.textContent = `Pin to trail: ${trailName}`
+        popupContent.appendChild(label)
+        const btnRow = document.createElement('div')
+        btnRow.style.cssText = 'display:flex;gap:6px'
+        const acceptBtn = document.createElement('button')
+        acceptBtn.textContent = 'Accept'
+        acceptBtn.style.cssText =
+          'flex:1;padding:4px 8px;background:#059669;color:#fff;border:none;border-radius:4px;font-size:12px;cursor:pointer'
+        const cancelBtn = document.createElement('button')
+        cancelBtn.textContent = 'Cancel'
+        cancelBtn.style.cssText =
+          'padding:4px 8px;border:1px solid #d4d4d8;border-radius:4px;font-size:12px;cursor:pointer;background:#fff'
+        btnRow.appendChild(acceptBtn)
+        btnRow.appendChild(cancelBtn)
+        popupContent.appendChild(btnRow)
+
+        const popup = L.popup({ closeButton: false })
+          .setLatLng([pinLat, pinLon])
+          .setContent(popupContent)
+          .openOn(map)
+
+        acceptBtn.onclick = () => {
+          popup.close()
+          void onAcceptTrailPhotoRef.current(photo.id, snap.trail.id, pinLat, pinLon)
         }
         cancelBtn.onclick = () => {
           popup.close()
@@ -439,7 +535,8 @@ export default function LeafletMap({
     rides.filter((r) => !hiddenRideIds.has(r.id)).forEach((ride) => {
       const ridePopupContent = `<strong>${ride.name}</strong><br/>${(ride.distance / 1000).toFixed(1)} km`
 
-      const rideHitInteractive = trimMode || !mapDrawingSurface
+      const rideHitInteractive =
+        trimMode || (!mapDrawingSurface && !placingPhoto && !placingTrailPhoto)
 
       // Visible line — not interactive so the wide hit area beneath handles all events
       L.polyline(ride.polyline, {
@@ -505,7 +602,7 @@ export default function LeafletMap({
     if (allPoints.length > 0 && !trimModeRef.current && !editTrailModeRef.current) {
       mapRef.current.fitBounds(L.latLngBounds(allPoints), { padding: [40, 40] })
     }
-  }, [rides, hiddenRideIds, trimMode, mapDrawingSurface])
+  }, [rides, hiddenRideIds, trimMode, mapDrawingSurface, placingPhoto, placingTrailPhoto])
 
   // Effect 4: trails layer
   useEffect(() => {
@@ -559,7 +656,11 @@ export default function LeafletMap({
       })
       pl.addTo(trailsLayerRef.current!)
 
-      const trailHitInteractive = !trimMode && (editTrailMode || !mapDrawingSurface)
+      const trailHitInteractive =
+        !trimMode &&
+        (editTrailMode || !mapDrawingSurface) &&
+        !placingPhoto &&
+        !placingTrailPhoto
 
       // Wide invisible hit area handles all mouse events for this trail
       // Non-interactive in trim mode so clicks fall through to ride lines beneath
@@ -598,7 +699,7 @@ export default function LeafletMap({
         }).addTo(trailsLayerRef.current!)
       }
     })
-  }, [trails, editTrailMode, trimMode, zoom, mapDrawingSurface])
+  }, [trails, editTrailMode, trimMode, zoom, mapDrawingSurface, placingPhoto, placingTrailPhoto])
 
   // Map container cursor: mode + trail picker vs geometry + pencil vs eraser
   useEffect(() => {
@@ -772,7 +873,8 @@ export default function LeafletMap({
       if (hiddenNetworkIds.has(network.id)) return
       if (network.polygon.length < 3) return
       const isSelected = network.id === selectedNetworkId
-      const interactive = !trimMode && !editTrailMode && !placingPhoto && !mapDrawingSurface
+      const interactive =
+        !trimMode && !editTrailMode && !placingPhoto && !placingTrailPhoto && !mapDrawingSurface
       const polygon = L.polygon(network.polygon as L.LatLngExpression[], {
         color: '#3b82f6',
         weight: isSelected ? 3 : 2,
@@ -810,7 +912,17 @@ export default function LeafletMap({
         labelMarker.addTo(networksLayerRef.current!)
       }
     })
-  }, [networks, hiddenNetworkIds, selectedNetworkId, trimMode, editTrailMode, placingPhoto, zoom, mapDrawingSurface])
+  }, [
+    networks,
+    hiddenNetworkIds,
+    selectedNetworkId,
+    trimMode,
+    editTrailMode,
+    placingPhoto,
+    placingTrailPhoto,
+    zoom,
+    mapDrawingSurface,
+  ])
 
   // Effect: draw network polygon preview
   useEffect(() => {
@@ -1070,7 +1182,9 @@ export default function LeafletMap({
 
         const label = document.createElement('p')
         label.style.cssText = 'font-size:12px;color:#52525b;margin:0'
-        label.textContent = 'Accept — snap to nearest trail'
+        label.textContent = photo.isLocal
+          ? 'Pin to trail (demo — sign in with Strava to save for everyone)'
+          : 'Accept — snap to nearest trail'
         popupContent.appendChild(label)
 
         const btnRow = document.createElement('div')
@@ -1091,10 +1205,15 @@ export default function LeafletMap({
           marker.closePopup()
           const snap = snapToNearestTrailPoint(displayLat, displayLon, trailsRef.current)
           if (snap) {
-            onAcceptTrailPhotoRef.current(photo.id, snap.trail.id, snap.lat, snap.lon)
+            void onAcceptTrailPhotoRef.current(photo.id, snap.trail.id, snap.lat, snap.lon)
           }
         }
         dismissBtn.onclick = () => marker.closePopup()
+      } else if (photo.isLocal) {
+        marker.bindPopup(`<div style="display:flex;flex-direction:column;gap:8px;min-width:160px">
+          <img src="${thumbSrc}" style="width:160px;height:120px;object-fit:cover;border-radius:4px" />
+          <p style="margin:0;font-size:12px;color:#52525b">Demo preview — sign in to share this pin with everyone.</p>
+        </div>`)
       } else {
         marker.bindPopup(`<div style="display:flex;flex-direction:column;gap:8px;min-width:160px">
           <img src="${thumbSrc}" style="width:160px;height:120px;object-fit:cover;border-radius:4px" />
@@ -1105,21 +1224,41 @@ export default function LeafletMap({
     }
   }, [trailPhotos])
 
-  // Collect no-GPS unaccepted photos for the floating tray
-  const trayPhotos: RidePhoto[] = []
-  for (const [rideId, photos] of Object.entries(ridePhotos)) {
-    if (!photosVisibleRideIds.has(rideId)) continue
-    for (const photo of photos) {
-      if (!photo.accepted && photo.lat == null) trayPhotos.push(photo)
-    }
-  }
-
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full" />
       <div className="absolute bottom-2 right-2 z-1000 bg-white/80 text-xs font-mono px-1.5 py-0.5 rounded pointer-events-none">
         z{zoom}
       </div>
+
+      {(placingPhoto || placingTrailPhoto) && (
+        <div
+          className={`absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2 rounded-full border px-3 py-1.5 shadow-md max-w-[min(90vw,22rem)] ${
+            placingTrailPhoto && !placingPhoto
+              ? 'border-emerald-300 bg-emerald-50'
+              : 'border-amber-300 bg-amber-50'
+          }`}
+        >
+          <p
+            className={`text-xs font-medium truncate ${
+              placingTrailPhoto && !placingPhoto ? 'text-emerald-900' : 'text-amber-900'
+            }`}
+          >
+            Tap on or near a trail line to pin
+          </p>
+          <button
+            type="button"
+            onClick={onCancelPlace}
+            className={`text-xs font-semibold underline shrink-0 ${
+              placingTrailPhoto && !placingPhoto
+                ? 'text-emerald-800 hover:text-emerald-950'
+                : 'text-amber-800 hover:text-amber-950'
+            }`}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {/* Mobile floating action button: enter add-trail-photo mode even when drawer is closed */}
       {isCoarsePointer && onEditModeChange && (
@@ -1138,47 +1277,6 @@ export default function LeafletMap({
         >
           <FontAwesomeIcon icon={faCamera} className="w-6 h-6" />
         </button>
-      )}
-
-      {/* Floating tray for no-GPS photos */}
-      {trayPhotos.length > 0 && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-1000 bg-white rounded-lg shadow-lg border border-zinc-200 p-2 flex flex-col gap-2 max-w-xs w-full">
-          {placingPhoto ? (
-            <div className="flex items-center justify-between gap-2 px-1">
-              <p className="text-xs text-amber-700 font-medium">Click on the map to place this photo</p>
-              <button
-                type="button"
-                onClick={onCancelPlace}
-                className="text-xs text-zinc-500 hover:text-zinc-700 shrink-0"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <p className="text-xs text-zinc-500 px-1">Photos without location — click to place on map</p>
-          )}
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {trayPhotos.map((photo) => (
-              <button
-                key={photo.id}
-                type="button"
-                onClick={() => onPlacePhoto(photo)}
-                title="Click to place on map"
-                className={`shrink-0 w-16 h-16 rounded overflow-hidden border-2 transition-all ${
-                  placingPhoto?.id === photo.id
-                    ? 'border-amber-500 ring-2 ring-amber-300'
-                    : 'border-transparent hover:border-amber-400'
-                }`}
-              >
-                <img
-                  src={photo.thumbnailUrl || photo.blobUrl}
-                  className="w-full h-full object-cover"
-                  alt=""
-                />
-              </button>
-            ))}
-          </div>
-        </div>
       )}
     </div>
   )

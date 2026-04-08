@@ -1,10 +1,10 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network, RidePhoto, TrailPhoto } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import type { MapBounds } from '@/lib/geo-utils'
-import { polylineInBounds } from '@/lib/geo-utils'
+import { polylineInBounds, pointInBounds, trailPhotoMapPoint } from '@/lib/geo-utils'
 import AuthButton from '@/components/AuthButton'
 import { AddTrailContent } from '@/components/trail/AddTrailContent'
 import { TrailEditDrawer } from '@/components/trail/TrailEditDrawer'
@@ -18,6 +18,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   faCamera,
   faCheck,
+  faChevronDown,
+  faChevronRight,
   faDownload,
   faEye,
   faEyeSlash,
@@ -101,6 +103,15 @@ interface LeftDrawerProps {
   onToggleShowOnMapOnly: () => void
   onTrailPhotoCreated: (photo: TrailPhoto) => void
   onEnterAddTrailPhoto: () => void
+  /** Public pinned photos (for trail rows + reference). */
+  communityTrailPhotos: TrailPhoto[]
+  /** Current user’s unpinned + local demo photos. */
+  unpinnedTrailPhotos: TrailPhoto[]
+  placingPhoto: RidePhoto | null
+  placingTrailPhoto: TrailPhoto | null
+  onPlaceRidePhoto: (photo: RidePhoto) => void
+  onPlaceTrailPhoto: (photo: TrailPhoto) => void
+  onCancelPinOnMap: () => void
 }
 
 export default function LeftDrawer({
@@ -176,6 +187,13 @@ export default function LeftDrawer({
   onToggleShowOnMapOnly,
   onTrailPhotoCreated,
   onEnterAddTrailPhoto,
+  communityTrailPhotos,
+  unpinnedTrailPhotos,
+  placingPhoto,
+  placingTrailPhoto,
+  onPlaceRidePhoto,
+  onPlaceTrailPhoto,
+  onCancelPinOnMap,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -198,6 +216,26 @@ export default function LeftDrawer({
     return saved ? Number(saved) : 10
   })
   const [trailsPage, setTrailsPage] = useState(0)
+  /** Ride photo chosen in drawer — prompt View vs Pin to map */
+  const [ridePhotoForAction, setRidePhotoForAction] = useState<RidePhoto | null>(null)
+  const [ridePhotoLightboxSrc, setRidePhotoLightboxSrc] = useState<string | null>(null)
+
+  const ridePhotoNeedsMapPin = (p: RidePhoto) => !p.accepted && p.lat == null
+  const trailPhotoNeedsMapPin = (p: TrailPhoto) => !p.accepted
+
+  const [trailPhotoForAction, setTrailPhotoForAction] = useState<TrailPhoto | null>(null)
+  const [expandedTrailPhotoTrails, setExpandedTrailPhotoTrails] = useState<Set<string>>(() => new Set())
+
+  const visibleUnpinnedForPin = useMemo(() => {
+    const pending = unpinnedTrailPhotos.filter((p) => trailPhotoNeedsMapPin(p))
+    const activeBounds = showOnMapOnly && mapBounds ? mapBounds : null
+    if (!activeBounds) return pending
+    return pending.filter((p) => {
+      const pt = trailPhotoMapPoint(p)
+      return pt != null && pointInBounds(pt, activeBounds)
+    })
+  }, [unpinnedTrailPhotos, showOnMapOnly, mapBounds])
+  const [trailPhotoLightboxSrc, setTrailPhotoLightboxSrc] = useState<string | null>(null)
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -489,12 +527,48 @@ export default function LeftDrawer({
 
         {editMode === 'add-trail-photo' && (
           <AddTrailPhotoContent
+            user={user}
             onCreated={(photo) => {
               onTrailPhotoCreated(photo)
               onEditModeChange(null)
             }}
             onCancel={() => onEditModeChange(null)}
           />
+        )}
+
+        {visibleUnpinnedForPin.length > 0 && (
+          <div className="flex flex-col gap-2 px-4 py-3 border-t border-zinc-100">
+            <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+              {user ? 'My trail photos — pin on map' : 'Demo trail photos — pin on map'}
+            </p>
+            <p className="text-xs text-zinc-500">
+              Tap a thumbnail, then tap a trail on the map. Demo photos are not saved for others.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {visibleUnpinnedForPin.map((photo) => (
+                  <button
+                    key={photo.id}
+                    type="button"
+                    onClick={() => setTrailPhotoForAction(photo)}
+                    title="View or pin to trail"
+                    className={`relative w-14 h-14 rounded-md overflow-hidden border-2 shrink-0 transition-all ${
+                      placingTrailPhoto?.id === photo.id
+                        ? 'border-emerald-500 ring-2 ring-emerald-200'
+                        : 'border-zinc-200 hover:border-zinc-400'
+                    }`}
+                  >
+                    <img
+                      src={photo.thumbnailUrl || photo.blobUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                    <span className="absolute bottom-0 inset-x-0 bg-emerald-600/95 text-white text-[9px] font-medium text-center py-0.5 leading-none">
+                      Pin
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </div>
         )}
 
         {editMode === 'edit-trail' && !selectedTrail && (
@@ -570,41 +644,100 @@ export default function LeftDrawer({
                     )
                   }
                   const { trail } = row
+                  const trailPub = communityTrailPhotos.filter(
+                    (p) => p.trailId === trail.id && p.accepted
+                  )
+                  const visibleTrailPub = activeBounds
+                    ? trailPub.filter((p) => {
+                        const pt = trailPhotoMapPoint(p)
+                        return pt != null && pointInBounds(pt, activeBounds)
+                      })
+                    : trailPub
+                  const expanded = expandedTrailPhotoTrails.has(trail.id)
+                  const hasPhotos = trailPub.length > 0
                   return (
-                    <li
-                      key={`t-${trail.id}-${row.networkId ?? 'u'}`}
-                      className={`flex items-center justify-between py-2 px-3 ml-3 rounded-md bg-zinc-50 text-sm ${
-                        selectedTrail?.id === trail.id && editMode === 'edit-trail' ? 'ring-1 ring-orange-400' : ''
-                      }`}
-                    >
-                      <span className="text-zinc-800 truncate pr-2">{trail.name}</span>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-zinc-400 text-xs">{trail.distanceKm.toFixed(1)} km</span>
-                        {trail.difficulty !== 'not_set' && (
-                          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
-                            trail.difficulty === 'easy' ? 'bg-green-100 text-green-700' :
-                            trail.difficulty === 'intermediate' ? 'bg-blue-100 text-blue-700' :
-                            trail.difficulty === 'hard' ? 'bg-zinc-800 text-white' :
-                            'bg-black text-white'
-                          }`}>
-                            {trail.difficulty === 'easy' ? '● Green' :
-                             trail.difficulty === 'intermediate' ? '■ Blue' :
-                             trail.difficulty === 'hard' ? '◆ Black' :
-                             '◆◆ Dbl'}
-                          </span>
-                        )}
-                        {user && (
+                    <Fragment key={`t-wrap-${trail.id}-${row.networkId ?? 'u'}-${i}`}>
+                      <li
+                        className={`flex items-center gap-2 py-2 px-2 ml-3 rounded-md bg-zinc-50 text-sm ${
+                          selectedTrail?.id === trail.id && editMode === 'edit-trail' ? 'ring-1 ring-orange-400' : ''
+                        }`}
+                      >
+                        {hasPhotos ? (
                           <button
                             type="button"
-                            onClick={() => { onSelectTrail(trail); onEditModeChange('edit-trail') }}
-                            title="Edit trail"
-                            className="text-zinc-400 hover:text-zinc-700 transition-colors"
+                            className="text-zinc-400 hover:text-zinc-600 p-0.5 shrink-0"
+                            aria-expanded={expanded}
+                            title={expanded ? 'Hide photos' : 'Show photos on this trail'}
+                            onClick={() => {
+                              setExpandedTrailPhotoTrails((prev) => {
+                                const n = new Set(prev)
+                                if (n.has(trail.id)) n.delete(trail.id)
+                                else n.add(trail.id)
+                                return n
+                              })
+                            }}
                           >
-                            <FontAwesomeIcon icon={faPenToSquare} className="w-3.5 h-3.5" />
+                            <FontAwesomeIcon icon={expanded ? faChevronDown : faChevronRight} className="w-3 h-3" />
                           </button>
+                        ) : (
+                          <span className="w-4 shrink-0" aria-hidden />
                         )}
-                      </div>
-                    </li>
+                        <span className="text-zinc-800 truncate flex-1 min-w-0">{trail.name}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-zinc-400 text-xs">{trail.distanceKm.toFixed(1)} km</span>
+                          {trail.difficulty !== 'not_set' && (
+                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${
+                              trail.difficulty === 'easy' ? 'bg-green-100 text-green-700' :
+                              trail.difficulty === 'intermediate' ? 'bg-blue-100 text-blue-700' :
+                              trail.difficulty === 'hard' ? 'bg-zinc-800 text-white' :
+                              'bg-black text-white'
+                            }`}>
+                              {trail.difficulty === 'easy' ? '● Green' :
+                               trail.difficulty === 'intermediate' ? '■ Blue' :
+                               trail.difficulty === 'hard' ? '◆ Black' :
+                               '◆◆ Dbl'}
+                            </span>
+                          )}
+                          {user && (
+                            <button
+                              type="button"
+                              onClick={() => { onSelectTrail(trail); onEditModeChange('edit-trail') }}
+                              title="Edit trail"
+                              className="text-zinc-400 hover:text-zinc-700 transition-colors"
+                            >
+                              <FontAwesomeIcon icon={faPenToSquare} className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </li>
+                      {expanded && hasPhotos && (
+                        <li className="ml-6 mr-1 mb-1">
+                          <div className="rounded-md border border-zinc-100 bg-white px-2 py-2">
+                            {visibleTrailPub.length === 0 ? (
+                              <p className="text-xs text-zinc-400">No photos in current map view.</p>
+                            ) : (
+                              <div className="flex flex-wrap gap-1.5">
+                                {visibleTrailPub.map((photo) => (
+                                  <button
+                                    key={photo.id}
+                                    type="button"
+                                    className="w-12 h-12 rounded overflow-hidden border border-zinc-200 shrink-0"
+                                    onClick={() => setTrailPhotoForAction(photo)}
+                                    title="View photo"
+                                  >
+                                    <img
+                                      src={photo.thumbnailUrl || photo.blobUrl}
+                                      alt=""
+                                      className="w-full h-full object-cover"
+                                    />
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      )}
+                    </Fragment>
                   )
                 })}
               </ul>
@@ -757,6 +890,22 @@ export default function LeftDrawer({
             </select>
           </div>
         </div>
+        {(placingPhoto || placingTrailPhoto) && (
+          <div className="mx-4 mb-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 flex items-center justify-between gap-2">
+            <p className="text-xs text-amber-900">
+              {placingTrailPhoto && !placingPhoto
+                ? 'Tap the map on or near a trail line to pin this trail photo.'
+                : 'Tap the map on or near a trail line to pin this photo.'}
+            </p>
+            <button
+              type="button"
+              onClick={onCancelPinOnMap}
+              className="text-xs font-medium text-amber-900 hover:text-amber-950 shrink-0"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
         {rides.length === 0 ? (
           <p className="text-xs text-zinc-400">No rides uploaded yet.</p>
         ) : (() => {
@@ -850,6 +999,43 @@ export default function LeftDrawer({
                             </button>
                           </div>
                         </div>
+                        {photosVisible && photosLoaded && photos.length > 0 && (
+                          <div className="px-3 pb-2 pt-1 border-t border-zinc-200/80">
+                            <p className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wide mb-1.5">
+                              Photos
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {photos.map((photo) => (
+                                <button
+                                  key={photo.id}
+                                  type="button"
+                                  onClick={() => setRidePhotoForAction(photo)}
+                                  title={
+                                    ridePhotoNeedsMapPin(photo)
+                                      ? 'View or pin to trail'
+                                      : 'View photo'
+                                  }
+                                  className={`relative w-14 h-14 rounded-md overflow-hidden border-2 shrink-0 transition-all ${
+                                    placingPhoto?.id === photo.id
+                                      ? 'border-amber-500 ring-2 ring-amber-200'
+                                      : 'border-zinc-200 hover:border-zinc-400'
+                                  }`}
+                                >
+                                  <img
+                                    src={photo.thumbnailUrl || photo.blobUrl}
+                                    alt=""
+                                    className="w-full h-full object-cover"
+                                  />
+                                  {ridePhotoNeedsMapPin(photo) && (
+                                    <span className="absolute bottom-0 inset-x-0 bg-amber-600/95 text-white text-[9px] font-medium text-center py-0.5 leading-none">
+                                      Pin
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         {isPending && (
                           <div className="px-3 pb-2 flex flex-col gap-1.5">
                             <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
@@ -905,6 +1091,190 @@ export default function LeftDrawer({
           )
         })()}
       </div>
+      )}
+
+      {ridePhotoForAction && (
+        <div
+          className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-black/40"
+          role="presentation"
+          onClick={() => setRidePhotoForAction(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ride-photo-action-title"
+            className="bg-white rounded-lg shadow-xl max-w-sm w-full p-4 flex flex-col gap-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex gap-3">
+              <img
+                src={ridePhotoForAction.thumbnailUrl || ridePhotoForAction.blobUrl}
+                alt=""
+                className="w-20 h-20 rounded-md object-cover shrink-0 border border-zinc-100"
+              />
+              <div className="min-w-0">
+                <p id="ride-photo-action-title" className="text-sm font-medium text-zinc-800">
+                  Ride photo
+                </p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  View full size, or pin to a trail on the map.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRidePhotoLightboxSrc(ridePhotoForAction.blobUrl)
+                  setRidePhotoForAction(null)
+                }}
+                className="w-full py-2 px-3 rounded-md bg-zinc-800 text-white text-sm font-medium hover:bg-zinc-900 transition-colors"
+              >
+                View
+              </button>
+              {ridePhotoNeedsMapPin(ridePhotoForAction) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onPlaceRidePhoto(ridePhotoForAction)
+                    setRidePhotoForAction(null)
+                  }}
+                  className="w-full py-2 px-3 rounded-md bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors"
+                >
+                  Pin to map…
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setRidePhotoForAction(null)}
+                className="w-full py-2 px-3 rounded-md border border-zinc-200 text-zinc-700 text-sm hover:bg-zinc-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {ridePhotoLightboxSrc && (
+        <div
+          className="fixed inset-0 z-[5001] bg-black/92 flex flex-col"
+          role="presentation"
+          onClick={() => setRidePhotoLightboxSrc(null)}
+        >
+          <div className="flex justify-end p-3">
+            <button
+              type="button"
+              onClick={() => setRidePhotoLightboxSrc(null)}
+              className="text-white text-sm font-medium px-3 py-1.5 rounded-md hover:bg-white/10 transition-colors"
+              aria-label="Close full image"
+            >
+              Close
+            </button>
+          </div>
+          <div
+            className="flex-1 flex items-center justify-center p-4 overflow-auto min-h-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={ridePhotoLightboxSrc}
+              alt=""
+              className="max-w-full max-h-[85vh] object-contain"
+            />
+          </div>
+        </div>
+      )}
+
+      {trailPhotoForAction && (
+        <div
+          className="fixed inset-0 z-[5002] flex items-center justify-center p-4 bg-black/40"
+          role="presentation"
+          onClick={() => setTrailPhotoForAction(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="trail-photo-action-title"
+            className="bg-white rounded-lg shadow-xl max-w-sm w-full p-4 flex flex-col gap-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex gap-3">
+              <img
+                src={trailPhotoForAction.thumbnailUrl || trailPhotoForAction.blobUrl}
+                alt=""
+                className="w-20 h-20 rounded-md object-cover shrink-0 border border-zinc-100"
+              />
+              <div className="min-w-0">
+                <p id="trail-photo-action-title" className="text-sm font-medium text-zinc-800">
+                  Trail photo
+                </p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  View full size, or pin to a trail on the map.
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setTrailPhotoLightboxSrc(trailPhotoForAction.blobUrl)
+                  setTrailPhotoForAction(null)
+                }}
+                className="w-full py-2 px-3 rounded-md bg-zinc-800 text-white text-sm font-medium hover:bg-zinc-900 transition-colors"
+              >
+                View
+              </button>
+              {trailPhotoNeedsMapPin(trailPhotoForAction) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onPlaceTrailPhoto(trailPhotoForAction)
+                    setTrailPhotoForAction(null)
+                  }}
+                  className="w-full py-2 px-3 rounded-md bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 transition-colors"
+                >
+                  Pin to map…
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setTrailPhotoForAction(null)}
+                className="w-full py-2 px-3 rounded-md border border-zinc-200 text-zinc-700 text-sm hover:bg-zinc-50 transition-colors"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {trailPhotoLightboxSrc && (
+        <div
+          className="fixed inset-0 z-[5003] bg-black/92 flex flex-col"
+          role="presentation"
+          onClick={() => setTrailPhotoLightboxSrc(null)}
+        >
+          <div className="flex justify-end p-3">
+            <button
+              type="button"
+              onClick={() => setTrailPhotoLightboxSrc(null)}
+              className="text-white text-sm font-medium px-3 py-1.5 rounded-md hover:bg-white/10 transition-colors"
+              aria-label="Close full image"
+            >
+              Close
+            </button>
+          </div>
+          <div
+            className="flex-1 flex items-center justify-center p-4 overflow-auto min-h-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={trailPhotoLightboxSrc}
+              alt=""
+              className="max-w-full max-h-[85vh] object-contain"
+            />
+          </div>
+        </div>
       )}
 
       {/* About footer */}

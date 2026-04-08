@@ -1,8 +1,8 @@
-import type { Ride, Trail } from "@/lib/types";
+import type { Ride, Trail, TrailPhoto } from "@/lib/types";
 
 export type MapBounds = { north: number; south: number; east: number; west: number }
 
-function pointInBounds([lat, lng]: [number, number], bounds: MapBounds): boolean {
+export function pointInBounds([lat, lng]: [number, number], bounds: MapBounds): boolean {
   return (
     lat <= bounds.north &&
     lat >= bounds.south &&
@@ -289,4 +289,14 @@ export function estimatedElevationGainFt(
   if (ride.pointCount <= 1) return 0;
   const fraction = (endIdx - startIdx) / ride.pointCount;
   return fraction * ride.elevation;
+}
+
+/** Map marker / list position — matches Leaflet trail photo layer. */
+export function trailPhotoMapPoint(photo: TrailPhoto): [number, number] | null {
+  const lat =
+    photo.accepted && photo.trailLat != null ? photo.trailLat : photo.lat
+  const lng =
+    photo.accepted && photo.trailLon != null ? photo.trailLon : photo.lon
+  if (lat == null || lng == null) return null
+  return [lat, lng]
 }

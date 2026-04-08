@@ -55,6 +55,8 @@ export async function POST(request: NextRequest) {
 - Body accessed via `.json()` or `.formData()`
 - No middleware chains — logic goes directly in route handler
 
+**Trail photos:** `POST /api/trail-photos` requires a Strava session. `GET /api/trail-photos` lists only community-visible pins (accepted and attached to a trail). `GET /api/trail-photos/mine` returns the signed-in user’s unpinned uploads. Without auth, the app keeps demo photos in the browser only (object URLs).
+
 ### Database Connection Pool
 
 ```typescript

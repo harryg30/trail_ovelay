@@ -48,6 +48,12 @@ Each file exports exactly one component. Helper functions and sub-hooks used onl
 ### Adding a new mode
 Place the sidebar component in `components/<mode-name>/`. See `docs/MODE_SYSTEM.md` for the full walkthrough.
 
+### Ride photos without a map pin
+When ride photos from Strava are visible for a ride, thumbnails render in **LeftDrawer** under that ride. A **Pin** strip labels items that still need a map location (`!accepted` and no `lat`). Tap opens a small dialog: **View** (full-screen image) or **Pin to map…**, which hands off to **LeafletMap**: the user taps on or near a trail polyline; the client snaps to the nearest trail vertex and **Accept** saves the association (orphan pins off-trail are not offered in this flow).
+
+### Community trail photos without GPS
+Uploads from **Add trail photo** (`AddTrailPhotoContent`) support **Take photo** (camera) or **Choose from library** (JPEG/PNG/WebP). If geolocation is missing, rows stay in **LeftDrawer** under **Trail photos — pin on map** with the same View / Pin-to-map dialog. Placement uses `placingTrailPhoto` on the map (trail snap required). Accepting a pin updates `trail_lat`/`trail_lon` and fills `lat`/`lon` when they were null so bounds queries still work.
+
 ---
 
 ## Shared Components

@@ -108,6 +108,8 @@ export interface TrailPhoto {
   status: 'published' | 'hidden' | 'flagged';
   createdByUserId?: string;
   createdAt: Date;
+  /** Client-only demo photo (not persisted). */
+  isLocal?: boolean;
 }
 
 export interface SaveTrailRequest {

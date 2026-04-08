@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queryOne } from '@/lib/db'
+import { getSessionUserId } from '@/lib/auth'
 import type { TrailPhoto } from '@/lib/types'
 
 interface AcceptBody {
@@ -47,6 +48,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   try {
+    const userId = await getSessionUserId()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { id } = await params
 
     let body: AcceptBody
@@ -63,16 +69,22 @@ export async function POST(
 
     const updated = await queryOne<TrailPhotoRow>(
       `UPDATE trail_photos
-       SET trail_id = $1, trail_lat = $2, trail_lon = $3, accepted = true
+       SET trail_id = $1,
+           trail_lat = $2,
+           trail_lon = $3,
+           lat = COALESCE(lat, $2),
+           lon = COALESCE(lon, $3),
+           accepted = true
        WHERE id = $4
+         AND created_by_user_id = $5
        RETURNING
          id, blob_url, thumbnail_url, lat, lon, taken_at,
          trail_id, trail_lat, trail_lon, accepted, status, created_by_user_id, created_at`,
-      [trailId, trailLat, trailLon, id]
+      [trailId, trailLat, trailLon, id, userId]
     )
 
     if (!updated) {
-      return NextResponse.json({ error: 'Photo not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Photo not found or not yours' }, { status: 404 })
     }
 
     return NextResponse.json({ photo: rowToTrailPhoto(updated) })
