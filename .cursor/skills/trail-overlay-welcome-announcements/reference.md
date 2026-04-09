@@ -44,6 +44,14 @@ Use `notion-fetch` on the database URL to read each `<data-source url="collectio
 
 - `filters` is **required** by the tool schema; use `{}` if no date or creator filter is needed.
 
+## Local git (workspace)
+
+After Notion research, **always** scan the working tree:
+
+- `git status --short` and `git diff` (plus `git diff --cached` when commits are staged).
+- Use the same “one short sentence / user outcome” rules as Notion rows; **dedupe** against existing `upcoming` summaries.
+- Do not add engineering-only noise (deps, formatting) unless it changes what riders see.
+
 ## Archive naming
 
 Use UTC and filesystem-safe characters, e.g.:

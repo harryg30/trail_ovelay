@@ -204,6 +204,25 @@ npm run dev
 # → http://localhost:3000
 ```
 
+### Production migrations (GitHub Actions)
+
+Pushes to `main` that change `migrations/**` or `scripts/migrate.mjs` run [`.github/workflows/db-migrate-production.yml`](.github/workflows/db-migrate-production.yml), which executes `npm run db:migrate:prod`. You can also run it manually: **Actions → Production DB migrations → Run workflow**.
+
+Create the same values you use in Vercel (see `TRAIL_DB_*` in the dashboard) as **repository secrets** — for example with [GitHub CLI](https://cli.github.com/). This workflow is currently wired for **password auth** (it fails fast if `TRAIL_DB_PGPASSWORD` is missing/empty).
+
+```bash
+gh secret set TRAIL_DB_PGHOST --body "your-host"
+gh secret set TRAIL_DB_PGUSER --body "your-user"
+gh secret set TRAIL_DB_PGPASSWORD --body "your-password"
+gh secret set TRAIL_DB_PGDATABASE --body "postgres"
+gh secret set TRAIL_DB_PGPORT --body "5432"
+# Optional — match Vercel (e.g. require / disable)
+gh secret set TRAIL_DB_PGSSLMODE --body "require"
+# gh secret set TRAIL_DB_SSL --body "false"
+```
+
+List configured names (not values): `gh secret list`
+
 ---
 
 ## Gotchas

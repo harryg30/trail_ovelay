@@ -1,6 +1,6 @@
 ---
 name: trail-overlay-welcome-announcements
-description: Refreshes Trail Overlay welcome/about announcements from Notion into announcements/latest.json with archive snapshots; short public summaries only (no per-item links). Use when updating the welcome modal, refreshing upcoming from the Notion work board, or the user mentions trail-overlay announcements.
+description: Refreshes Trail Overlay welcome/about announcements from Notion and local git-visible work into announcements/latest.json with archive snapshots; short public summaries only (no per-item links). Use when updating the welcome modal, refreshing upcoming from the Notion work board, or the user mentions trail-overlay announcements.
 ---
 
 # Trail Overlay welcome announcements (Notion → repo)
@@ -12,11 +12,11 @@ The welcome modal is a **lightweight progress update for riders and general user
 ## Goal
 
 1. Pull **Upcoming** (in flight / next) from Notion (configurable sources below). Use Notion only to **inform** concise summaries.
-2. **Summarize** each upcoming item in **one short sentence** of plain language. Do **not** paste Notion page bodies, checklists, or property dumps into `summary`.
-3. **Do not** set `notionUrl` on `whatsNew` or `upcoming` items for the welcome modal. Omit the field (or leave unset). Optional `notionUrl` exists in the type for rare cases but **defaults to unused** for this product.
-4. Write `announcements/latest.json` (overwrite).
+2. **Check local workspace changes** (see below): review `git` diffs for user-visible work in progress that may not appear on the board yet; merge into `upcoming` without duplicating Notion-backed lines.
+3. **Summarize** each upcoming item in **one short sentence** of plain language. Do **not** paste Notion page bodies, checklists, or property dumps into `summary`.
+4. **Do not** set `notionUrl` on `whatsNew` or `upcoming` items for the welcome modal. Omit the field (or leave unset). Optional `notionUrl` exists in the type for rare cases but **defaults to unused** for this product.
 5. **Before overwriting**, copy the existing `latest.json` to `announcements/archive/` using a filename like `YYYY-MM-DDTHH-mm-ssZ.json` (UTC, filesystem-safe).
-6. Set `updatedAt` in the new JSON to the current instant (ISO-8601). The app uses this as `ANNOUNCEMENT_VERSION` so users who dismissed an older announcement may see the modal again.
+6. Write `announcements/latest.json` (overwrite), with `updatedAt` set to the current instant (ISO-8601). The app uses this as `ANNOUNCEMENT_VERSION` so users who dismissed an older announcement may see the modal again.
 
 Do **not** hand-edit `latest.json` for routine updates; regenerate via this workflow.
 
@@ -63,6 +63,17 @@ Deduplicate by `title`+`summary`.
 
 - Kanban / board: `https://www.notion.so/71d8e1836c7347cfaf4205aa3c128abb`
 
+## Local workspace changes (git)
+
+Run in the repo root **before** finalizing `upcoming` (same session as Notion research):
+
+1. `git status --short` and `git diff` against the current branch tip (include `git diff --cached` if relevant).
+2. Skim for **user-visible** edits: map / Leaflet, drawer, photos, extension, auth, announcements modal, theming (`globals.css`, `theme-provider`, `ThemeToggle`), trail or network flows, etc. Skip noise (lockfiles-only, generated assets) unless they change shipped behavior.
+3. **Merge with Notion:** If local work implies an outcome **not** already covered by an `upcoming` `summary`, add **one** new line following the summary style rules, or **tighten** an existing line. Do **not** paste commit messages or file paths.
+4. If everything user-visible is already represented, **leave** `upcoming` as-is from the Notion pass (still bump `updatedAt` only when you actually write a new `latest.json` for another reason—or skip a no-op write).
+
+**`status`:** Use `"In progress"` for local-only hints only when the diff clearly shows active, unfinished UI/feature work matching that bullet; otherwise omit (same rule as Notion).
+
 ## Notion MCP workflow
 
 Use the **Notion** MCP (`plugin-notion-workspace-notion`). Always read tool schemas before calling (`notion-fetch`, `notion-search`, etc.).
@@ -82,14 +93,15 @@ Use the **Notion** MCP (`plugin-notion-workspace-notion`). Always read tool sche
 
 ### 3) What’s New items
 
-- **Preserve** the default two `whatsNew` bullets (see above) unless the user explicitly requests changes.
+- **Preserve** the default `whatsNew` bullets (see above) unless the user explicitly requests changes.
 
 ### 4) Compose and write
 
-1. Build the JSON object; validate against the contract and **summary style rules**.
-2. If [announcements/latest.json](../../../announcements/latest.json) exists, copy it to `announcements/archive/<timestamp>.json`.
-3. Write the new `latest.json`.
-4. Run `npx tsc --noEmit` (or project check) to ensure imports still typecheck.
+1. Apply the **Local workspace changes (git)** section, then merge with Notion-derived rows.
+2. Build the JSON object; validate against the contract and **summary style rules**.
+3. If [announcements/latest.json](../../../announcements/latest.json) exists, copy it to `announcements/archive/<timestamp>.json`.
+4. Write the new `latest.json`.
+5. Run `npx tsc --noEmit` (or project check) to ensure imports still typecheck.
 
 ## Verification
 

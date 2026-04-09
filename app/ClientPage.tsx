@@ -193,7 +193,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [localTrailPhotos, setLocalTrailPhotos] = useState<TrailPhoto[]>([])
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null)
   const [showOnMapOnly, setShowOnMapOnly] = useState(false)
-  const [photoModeCenter, setPhotoModeCenter] = useState<{ lat: number; lon: number; t: number } | null>(null)
   const [mapFlyToRequest, setMapFlyToRequest] = useState<{
     seq: number
     kind: 'trail' | 'network'
@@ -508,25 +507,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const handleEditModeChange = setMode
 
   const handleEnterAddTrailPhoto = useCallback(() => {
-    // IMPORTANT: request geolocation from a user gesture so the browser shows the permission prompt.
-    if ('geolocation' in navigator) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setPhotoModeCenter({
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude,
-            t: Date.now(),
-          })
-          setMode('add-trail-photo')
-        },
-        () => {
-          // If denied/unavailable, still enter the mode (user can place manually).
-          setMode('add-trail-photo')
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 15_000 }
-      )
-      return
-    }
     setMode('add-trail-photo')
   }, [setMode])
 
@@ -1237,7 +1217,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         draftTrails={draftTrails}
         editMode={editMode}
         onEditModeChange={handleEditModeChange}
-        photoModeCenter={photoModeCenter}
         trimMode={trimMode}
         trimStart={trimStart}
         trimSegment={trimSegment}

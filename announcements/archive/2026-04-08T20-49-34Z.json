@@ -1,15 +1,7 @@
 {
-  "updatedAt": "2026-04-08T20:51:54.000Z",
+  "updatedAt": "2026-04-08T12:00:00.000Z",
   "headline": "Welcome to Trail Overlay",
   "whatsNew": [
-    {
-      "title": "",
-      "summary": "Add and pin photos on the map, then view them full size with the app still visible around the image."
-    },
-    {
-      "title": "",
-      "summary": "Light and dark themes now span the site and map chrome so planning stays comfortable in any lighting."
-    },
     {
       "title": "",
       "summary": "Create and edit trails directly on the map with our new drawing tools."
@@ -26,13 +18,7 @@
   "upcoming": [
     {
       "title": "",
-      "status": "In progress",
-      "summary": "We’re rebuilding edit mode on the site so it’s simpler to refine trails and networks."
-    },
-    {
-      "title": "",
-      "status": "In progress",
-      "summary": "We’re updating how Trail Overlay talks to Strava as their API rules change."
+      "summary": "We’re making it easier to add and manage photos from Strava, the map, and the extension."
     },
     {
       "title": "",
@@ -45,6 +31,20 @@
     {
       "title": "",
       "summary": "We’re moving extension settings to a clearer spot on the plug-in icon."
+    },
+    {
+      "title": "",
+      "status": "In progress",
+      "summary": "We’re rebuilding edit mode on the site so it’s simpler to refine trails and networks."
+    },
+    {
+      "title": "",
+      "status": "In progress",
+      "summary": "We’re updating how Trail Overlay talks to Strava as their API rules change."
+    },
+    {
+      "title": "",
+      "summary": "We’re exploring smoother drawing tools in the extension for route edits."
     }
   ]
 }
