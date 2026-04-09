@@ -24,11 +24,28 @@ try {
 function poolSsl() {
   if (process.env.TRAIL_DB_SSL === 'false') return false
   const mode = (process.env.TRAIL_DB_PGSSLMODE || '').toLowerCase()
-  if (mode === 'disable' || mode === 'allow') return false
+  if (mode === 'disable') return false
+  if (mode === 'verify-ca' || mode === 'verify-full') {
+    return { rejectUnauthorized: true }
+  }
   return { rejectUnauthorized: false }
 }
 
 const hasPassword = Boolean(process.env.TRAIL_DB_PGPASSWORD?.length)
+
+const signer =
+  !hasPassword && process.env.TRAIL_DB_PGHOST && process.env.TRAIL_DB_PGUSER
+    ? new Signer({
+        hostname: process.env.TRAIL_DB_PGHOST,
+        port: Number(process.env.TRAIL_DB_PGPORT),
+        username: process.env.TRAIL_DB_PGUSER,
+        region: process.env.TRAIL_DB_AWS_REGION,
+        credentials: awsCredentialsProvider({
+          roleArn: process.env.TRAIL_DB_AWS_ROLE_ARN,
+          clientConfig: { region: process.env.TRAIL_DB_AWS_REGION },
+        }),
+      })
+    : null
 
 const pool = hasPassword
   ? new Pool({
@@ -43,17 +60,14 @@ const pool = hasPassword
       host: process.env.TRAIL_DB_PGHOST,
       user: process.env.TRAIL_DB_PGUSER,
       database: process.env.TRAIL_DB_PGDATABASE || 'postgres',
-      password: () =>
-        new Signer({
-          hostname: process.env.TRAIL_DB_PGHOST,
-          port: Number(process.env.TRAIL_DB_PGPORT),
-          username: process.env.TRAIL_DB_PGUSER,
-          region: process.env.TRAIL_DB_AWS_REGION,
-          credentials: awsCredentialsProvider({
-            roleArn: process.env.TRAIL_DB_AWS_ROLE_ARN,
-            clientConfig: { region: process.env.TRAIL_DB_AWS_REGION },
-          }),
-        }).getAuthToken(),
+      password: async () => {
+        if (!signer) {
+          throw new Error(
+            'Missing IAM signer config. Set TRAIL_DB_PGPASSWORD or provide TRAIL_DB_AWS_REGION and TRAIL_DB_AWS_ROLE_ARN.'
+          )
+        }
+        return signer.getAuthToken()
+      },
       port: Number(process.env.TRAIL_DB_PGPORT),
       ssl: poolSsl(),
     })

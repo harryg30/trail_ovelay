@@ -29,6 +29,30 @@ jobs:
 
       - run: npm ci
 
+      - name: Preflight secrets
+        env:
+          TRAIL_DB_PGHOST: ${{ secrets.TRAIL_DB_PGHOST }}
+          TRAIL_DB_PGUSER: ${{ secrets.TRAIL_DB_PGUSER }}
+          TRAIL_DB_PGPASSWORD: ${{ secrets.TRAIL_DB_PGPASSWORD }}
+          TRAIL_DB_PGDATABASE: ${{ secrets.TRAIL_DB_PGDATABASE }}
+          TRAIL_DB_PGPORT: ${{ secrets.TRAIL_DB_PGPORT }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for v in TRAIL_DB_PGHOST TRAIL_DB_PGUSER TRAIL_DB_PGDATABASE TRAIL_DB_PGPORT; do
+            if [ -z "${!v:-}" ]; then
+              echo "::error::Missing required secret: $v"
+              missing=1
+            fi
+          done
+          if [ -z "${TRAIL_DB_PGPASSWORD:-}" ]; then
+            echo "::error::Missing required secret: TRAIL_DB_PGPASSWORD (IAM auth is not wired for this workflow)."
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
       - name: Run pending migrations
         env:
           TRAIL_DB_PGHOST: ${{ secrets.TRAIL_DB_PGHOST }}
