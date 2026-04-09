@@ -19,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
 
@@ -36,6 +37,8 @@ jobs:
           TRAIL_DB_PGPASSWORD: ${{ secrets.TRAIL_DB_PGPASSWORD }}
           TRAIL_DB_PGDATABASE: ${{ secrets.TRAIL_DB_PGDATABASE }}
           TRAIL_DB_PGPORT: ${{ secrets.TRAIL_DB_PGPORT }}
+          TRAIL_DB_AWS_REGION: ${{ secrets.TRAIL_DB_AWS_REGION }}
+          AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
         run: |
           set -euo pipefail
           missing=0
@@ -46,12 +49,21 @@ jobs:
             fi
           done
           if [ -z "${TRAIL_DB_PGPASSWORD:-}" ]; then
-            echo "::error::Missing required secret: TRAIL_DB_PGPASSWORD (IAM auth is not wired for this workflow)."
-            missing=1
+            if [ -z "${TRAIL_DB_AWS_REGION:-}" ] || [ -z "${AWS_ROLE_TO_ASSUME:-}" ]; then
+              echo "::error::Missing auth secrets. Set TRAIL_DB_PGPASSWORD (password auth) OR set TRAIL_DB_AWS_REGION + AWS_ROLE_TO_ASSUME (IAM/GitHub OIDC auth)."
+              missing=1
+            fi
           fi
           if [ "$missing" -ne 0 ]; then
             exit 1
           fi
+
+      - name: Configure AWS credentials (GitHub OIDC)
+        if: ${{ secrets.TRAIL_DB_PGPASSWORD == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.TRAIL_DB_AWS_REGION }}
 
       - name: Run pending migrations
         env:
@@ -62,4 +74,5 @@ jobs:
           TRAIL_DB_PGPORT: ${{ secrets.TRAIL_DB_PGPORT }}
           TRAIL_DB_PGSSLMODE: ${{ secrets.TRAIL_DB_PGSSLMODE }}
           TRAIL_DB_SSL: ${{ secrets.TRAIL_DB_SSL }}
+          TRAIL_DB_AWS_REGION: ${{ secrets.TRAIL_DB_AWS_REGION }}
         run: npm run db:migrate:prod
