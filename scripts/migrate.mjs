@@ -3,6 +3,7 @@ import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { Signer } from '@aws-sdk/rds-signer'
 import { awsCredentialsProvider } from '@vercel/functions/oidc'
+import { defaultProvider } from '@aws-sdk/credential-provider-node'
 import { Pool } from 'pg'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -33,17 +34,29 @@ function poolSsl() {
 
 const hasPassword = Boolean(process.env.TRAIL_DB_PGPASSWORD?.length)
 
+const awsRegion =
+  process.env.TRAIL_DB_AWS_REGION ||
+  process.env.AWS_REGION ||
+  process.env.AWS_DEFAULT_REGION
+
+const awsCredentials =
+  // Vercel Functions provide an OIDC token in VERCEL_OIDC_TOKEN. Locally this can come from `.env.local`.
+  process.env.VERCEL_OIDC_TOKEN
+    ? awsCredentialsProvider({
+        roleArn: process.env.TRAIL_DB_AWS_ROLE_ARN,
+        clientConfig: { region: awsRegion },
+      })
+    : // GitHub Actions uses standard AWS_* env vars from `aws-actions/configure-aws-credentials`.
+      defaultProvider()
+
 const signer =
   !hasPassword && process.env.TRAIL_DB_PGHOST && process.env.TRAIL_DB_PGUSER
     ? new Signer({
         hostname: process.env.TRAIL_DB_PGHOST,
         port: Number(process.env.TRAIL_DB_PGPORT),
         username: process.env.TRAIL_DB_PGUSER,
-        region: process.env.TRAIL_DB_AWS_REGION,
-        credentials: awsCredentialsProvider({
-          roleArn: process.env.TRAIL_DB_AWS_ROLE_ARN,
-          clientConfig: { region: process.env.TRAIL_DB_AWS_REGION },
-        }),
+        region: awsRegion,
+        credentials: awsCredentials,
       })
     : null
 
@@ -63,7 +76,7 @@ const pool = hasPassword
       password: async () => {
         if (!signer) {
           throw new Error(
-            'Missing IAM signer config. Set TRAIL_DB_PGPASSWORD or provide TRAIL_DB_AWS_REGION and TRAIL_DB_AWS_ROLE_ARN.'
+            'Missing IAM signer config. Set TRAIL_DB_PGPASSWORD (password auth), or configure AWS credentials + TRAIL_DB_AWS_REGION (IAM auth).'
           )
         }
         return signer.getAuthToken()
