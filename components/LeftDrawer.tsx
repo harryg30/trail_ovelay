@@ -1,7 +1,19 @@
 'use client'
 
 import { Fragment, useMemo, useRef, useState } from 'react'
-import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network, RidePhoto, TrailPhoto } from '@/lib/types'
+import type {
+  Ride,
+  Trail,
+  DraftTrail,
+  TrimPoint,
+  TrimSegment,
+  TrimFormState,
+  EditMode,
+  Network,
+  RidePhoto,
+  TrailPhoto,
+  OfficialMapLayerPayload,
+} from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import type { MapBounds } from '@/lib/geo-utils'
 import { polylineInBounds, pointInBounds, trailPhotoMapPoint } from '@/lib/geo-utils'
@@ -121,6 +133,10 @@ interface LeftDrawerProps {
   onOpenPhotoLightbox: (src: string) => void
   onFlyToTrail: (trail: Trail) => void
   onFlyToNetwork: (network: Network) => void
+  onOfficialMapLayerChange: (layer: OfficialMapLayerPayload | null) => void
+  onAlignmentMapPickChange: (handler: null | ((latlng: [number, number]) => void)) => void
+  pendingDigitizationTask: { id: string; label: string } | null
+  onPendingDigitizationTaskChange: (task: { id: string; label: string } | null) => void
 }
 
 export default function LeftDrawer({
@@ -206,6 +222,10 @@ export default function LeftDrawer({
   onOpenPhotoLightbox,
   onFlyToTrail,
   onFlyToNetwork,
+  onOfficialMapLayerChange,
+  onAlignmentMapPickChange,
+  pendingDigitizationTask,
+  onPendingDigitizationTaskChange,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -497,6 +517,7 @@ export default function LeftDrawer({
               onCancel={() => onEditModeChange(null)}
               networks={networks}
               canPublish={!!user}
+              pendingDigitizationTask={pendingDigitizationTask}
             />
           </div>
         )}
@@ -631,8 +652,36 @@ export default function LeftDrawer({
             for (const t of unassigned) rows.push({ kind: 'trail', trail: t, networkId: null })
           }
 
+          const trailFolderSearchBar = (
+            <div className="flex items-center gap-2">
+              <Input
+                type="text"
+                value={trailsQuery}
+                onChange={(e) => { setTrailsQuery(e.target.value); setTrailsPage(0) }}
+                placeholder="Search trails…"
+                className="h-9 flex-1 min-w-0"
+              />
+              <select
+                value={trailsPageSize}
+                onChange={(e) => { const v = Number(e.target.value); setTrailsPageSize(v); localStorage.setItem('trailsPageSize', String(v)); setTrailsPage(0) }}
+                className="shrink-0 rounded-sm border-2 border-foreground bg-card px-1 py-0.5 text-xs font-semibold text-foreground shadow-[1px_1px_0_0_var(--foreground)]"
+              >
+                <option value={5}>5 / pg</option>
+                <option value={10}>10 / pg</option>
+                <option value={25}>25 / pg</option>
+              </select>
+            </div>
+          )
+
           if (rows.length === 0) {
-            return <p className="text-xs text-muted-foreground">{trails.length === 0 ? 'No trails saved yet.' : 'No trails match.'}</p>
+            return (
+              <>
+                {trailFolderSearchBar}
+                <p className="text-xs text-muted-foreground">
+                  {trails.length === 0 ? 'No trails saved yet.' : 'No trails match.'}
+                </p>
+              </>
+            )
           }
 
           const totalPages = Math.max(1, Math.ceil(rows.length / trailsPageSize))
@@ -641,24 +690,7 @@ export default function LeftDrawer({
 
           return (
             <>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  value={trailsQuery}
-                  onChange={(e) => { setTrailsQuery(e.target.value); setTrailsPage(0) }}
-                  placeholder="Search trails…"
-                  className="h-9 flex-1 min-w-0"
-                />
-                <select
-                  value={trailsPageSize}
-                  onChange={(e) => { const v = Number(e.target.value); setTrailsPageSize(v); localStorage.setItem('trailsPageSize', String(v)); setTrailsPage(0) }}
-                  className="shrink-0 rounded-sm border-2 border-foreground bg-card px-1 py-0.5 text-xs font-semibold text-foreground shadow-[1px_1px_0_0_var(--foreground)]"
-                >
-                  <option value={5}>5 / pg</option>
-                  <option value={10}>10 / pg</option>
-                  <option value={25}>25 / pg</option>
-                </select>
-              </div>
+              {trailFolderSearchBar}
               <ul className="flex flex-col gap-0.5">
                 {pagedRows.map((row, i) => {
                   if (row.kind === 'header') {
@@ -889,6 +921,11 @@ export default function LeftDrawer({
             onDelete={onDeleteNetwork}
             onRedraw={onStartRedrawNetwork}
             onCancel={() => { onSelectNetwork(null); onEditModeChange(null) }}
+            user={user}
+            onOfficialMapLayerChange={onOfficialMapLayerChange}
+            onAlignmentMapPickChange={onAlignmentMapPickChange}
+            pendingDigitizationTask={pendingDigitizationTask}
+            onPendingDigitizationTaskChange={onPendingDigitizationTaskChange}
           />
         )}
 

@@ -2,8 +2,11 @@
 
 import { useState, useEffect } from 'react'
 import type { Trail, Network } from '@/lib/types'
+import type { SessionUser } from '@/lib/auth'
+import type { OfficialMapLayerPayload } from '@/lib/types'
 import { ConfirmDeleteButton } from '@/components/shared/ConfirmDeleteButton'
 import { SearchableDropdown } from '@/components/shared/SearchableDropdown'
+import { OfficialMapAndTasksPanel } from '@/components/network/OfficialMapAndTasksPanel'
 
 export function EditNetworkContent({
   trails,
@@ -14,6 +17,11 @@ export function EditNetworkContent({
   onDelete,
   onRedraw,
   onCancel,
+  user,
+  onOfficialMapLayerChange,
+  onAlignmentMapPickChange,
+  pendingDigitizationTask,
+  onPendingDigitizationTaskChange,
 }: {
   trails: Trail[]
   networks: Network[]
@@ -23,6 +31,11 @@ export function EditNetworkContent({
   onDelete: () => Promise<string | null>
   onRedraw: () => void
   onCancel: () => void
+  user: SessionUser | null
+  onOfficialMapLayerChange: (layer: OfficialMapLayerPayload | null) => void
+  onAlignmentMapPickChange: (handler: null | ((latlng: [number, number]) => void)) => void
+  pendingDigitizationTask: { id: string; label: string } | null
+  onPendingDigitizationTaskChange: (task: { id: string; label: string } | null) => void
 }) {
   const [name, setName] = useState(selectedNetwork?.name ?? '')
   const [selectedTrailIds, setSelectedTrailIds] = useState<Set<string>>(
@@ -115,6 +128,18 @@ export function EditNetworkContent({
             </div>
           )}
         </div>
+
+        {selectedNetwork && (
+          <OfficialMapAndTasksPanel
+            networkId={selectedNetwork.id}
+            user={user}
+            trails={trails}
+            onOfficialMapLayerChange={onOfficialMapLayerChange}
+            onAlignmentMapPickChange={onAlignmentMapPickChange}
+            pendingDigitizationTask={pendingDigitizationTask}
+            onPendingDigitizationTaskChange={onPendingDigitizationTaskChange}
+          />
+        )}
 
         {saveError && <p className="text-xs text-destructive">{saveError}</p>}
 

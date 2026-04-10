@@ -1,5 +1,6 @@
 # Run production DB migrations after merge to main.
-# Configure secrets (see README or comment block below): gh secrets set ...
+# Secrets: either DATABASE_URL (recommended for Neon) or discrete TRAIL_DB_* + TRAIL_DB_PGPASSWORD.
+# Optional: DATABASE_URL_MIGRATE in CI overrides TRAIL_DB_* for a direct (non-pooler) connection.
 name: Production DB migrations
 
 on:
@@ -8,6 +9,8 @@ on:
     paths:
       - 'migrations/**'
       - 'scripts/migrate.mjs'
+      - 'scripts/db-script-pool.mjs'
+      - 'lib/pg-connection-env.mjs'
   workflow_dispatch:
 
 concurrency:
@@ -31,6 +34,8 @@ jobs:
 
       - name: Preflight secrets
         env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_MIGRATE: ${{ secrets.DATABASE_URL_MIGRATE }}
           TRAIL_DB_PGHOST: ${{ secrets.TRAIL_DB_PGHOST }}
           TRAIL_DB_PGUSER: ${{ secrets.TRAIL_DB_PGUSER }}
           TRAIL_DB_PGPASSWORD: ${{ secrets.TRAIL_DB_PGPASSWORD }}
@@ -39,14 +44,18 @@ jobs:
         run: |
           set -euo pipefail
           missing=0
+          if [ -n "${DATABASE_URL:-}" ] || [ -n "${DATABASE_URL_MIGRATE:-}" ]; then
+            echo "Using DATABASE_URL or DATABASE_URL_MIGRATE for migrations."
+            exit 0
+          fi
           for v in TRAIL_DB_PGHOST TRAIL_DB_PGUSER TRAIL_DB_PGDATABASE TRAIL_DB_PGPORT; do
             if [ -z "${!v:-}" ]; then
-              echo "::error::Missing required secret: $v"
+              echo "::error::Missing required secret: $v (or set DATABASE_URL)"
               missing=1
             fi
           done
           if [ -z "${TRAIL_DB_PGPASSWORD:-}" ]; then
-            echo "::error::Missing required secret: TRAIL_DB_PGPASSWORD (IAM auth is not wired for this workflow)."
+            echo "::error::Missing TRAIL_DB_PGPASSWORD (or set DATABASE_URL with password)"
             missing=1
           fi
           if [ "$missing" -ne 0 ]; then
@@ -55,6 +64,8 @@ jobs:
 
       - name: Run pending migrations
         env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL_MIGRATE: ${{ secrets.DATABASE_URL_MIGRATE }}
           TRAIL_DB_PGHOST: ${{ secrets.TRAIL_DB_PGHOST }}
           TRAIL_DB_PGUSER: ${{ secrets.TRAIL_DB_PGUSER }}
           TRAIL_DB_PGPASSWORD: ${{ secrets.TRAIL_DB_PGPASSWORD }}

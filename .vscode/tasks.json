@@ -38,7 +38,7 @@
     {
       "label": "Sync Prod → Local",
       "type": "shell",
-      "command": "source .env.local && echo \"Fetching $PROD_APP_URL/api/dev/dump...\" && curl -f --show-error -H \"x-dev-dump-secret: $DEV_DUMP_SECRET\" \"$PROD_APP_URL/api/dev/dump\" -o /tmp/seed-data.json && node scripts/seed-local.mjs /tmp/seed-data.json",
+      "command": "npm run db:pull-prod",
       "options": {
         "cwd": "${workspaceFolder}",
         "shell": {
