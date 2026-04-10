@@ -29,6 +29,7 @@ return apiSuccess({ trails }, CORS_HEADERS)
 
 **Do not change** the payload keys on public CORS routes (`/api/trails`, `/api/networks`).
 The browser extension reads `data.trails` and `data.networks` directly.
+`GET /api/networks` may add optional fields on each network (e.g. `hasOfficialMap`, `officialMapAligned`); clients that only need `id`, `name`, `polygon`, and `trailIds` should ignore extras.
 
 ---
 
@@ -76,7 +77,7 @@ Available mappers:
 | Function | Input | Output |
 |----------|-------|--------|
 | `rowToTrail(row: TrailRow)` | DB trail row | `Trail` |
-| `rowToNetwork(row: NetworkRow)` | DB network row (with `trail_ids`) | `Network` |
+| `rowToNetwork(row: NetworkRow)` | DB network row (with `trail_ids`, optional `has_official_map` / `official_map_aligned`) | `Network` |
 | `rowToRide(row: RideRow)` | DB ride row | `Ride` |
 
 ---

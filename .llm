@@ -17,6 +17,7 @@ app/
   layout.tsx
   api/
     auth/strava/        # OAuth init + callback (upserts user, sets cookie)
+    auth/dev-login/     # GET — development only: session as first user in DB
     auth/logout/
     upload/             # POST GPX/ZIP → parse → insert rides
     trails/             # GET (CORS-open), POST
@@ -68,7 +69,7 @@ Trail         { id, name, difficulty, direction, polyline, distanceKm, elevation
 Network       { id, name, polygon: [lat,lon][], trailIds, createdAt }
 TrimSegment   { ride, startIndex, endIndex, polyline, distanceKm, elevationGainFt }
 SessionUser   { id, name, profilePicture, stravaAthleteId }
-EditMode      = 'add-trail' | 'edit-trail' | 'refine-trail' | 'add-network' | 'edit-network' | 'draw-trail' | null
+EditMode      = 'add-trail' | 'edit-trail' | 'refine-trail' | 'add-network' | 'edit-network' | 'network-map' | 'draw-trail' | 'add-trail-photo' | null
 difficulty    = 'easy' | 'intermediate' | 'hard' | 'not_set'
 direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 ```
@@ -84,7 +85,8 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 | STRAVA_CLIENT_ID | OAuth app ID |
 | STRAVA_CLIENT_SECRET | Server-only |
 | SESSION_SECRET | 32-byte hex for JWT |
-| NEXT_PUBLIC_APP_URL | Base URL (browser-visible) |
+| NEXT_PUBLIC_APP_URL | Base URL for prod dump scripts / marketing links — **not** used for Strava `redirect_uri` (that follows the request origin) |
+| AUTH_PUBLIC_ORIGIN | Optional — override public origin for Strava OAuth callback (e.g. tunnel URL); default is incoming request `Origin` / host |
 | NODE_ENV | Controls cookie security |
 | PROD_APP_URL | Optional — dump origin for `npm run db:pull-prod`; falls back to `NEXT_PUBLIC_APP_URL` |
 | DEV_DUMP_SECRET | Shared with production; required header for `GET /api/dev/dump` |

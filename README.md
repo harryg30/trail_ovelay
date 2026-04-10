@@ -186,6 +186,10 @@ export default function LeafletMap() {
 | `TRAIL_DB_PGPASSWORD` | Non-empty password (local Docker, or derived from `DATABASE_URL`) |
 | `TRAIL_DB_PGSSLMODE` | e.g. `disable` for local Docker, `require` for cloud (see [`lib/pg-connection-env.mjs`](lib/pg-connection-env.mjs)). **`disable` breaks Neon** unless you remove it: migration URLs on `*.neon.tech` force `require` when parsing `DATABASE_URL` / `DATABASE_URL_MIGRATE`. |
 | `TRAIL_DB_SSL` | Set to `false` to force SSL off |
+| `STRAVA_CLIENT_ID` / `STRAVA_CLIENT_SECRET` | Strava OAuth ([My API Application](https://www.strava.com/settings/api)). |
+| `SESSION_SECRET` | 32-byte secret for the session JWT ([`lib/session.ts`](lib/session.ts)). |
+| `AUTH_PUBLIC_ORIGIN` | Optional. Override the OAuth callback base URL (no trailing slash). Default is the **incoming request origin** so `http://localhost:3000` works even if `NEXT_PUBLIC_APP_URL` is your production site. |
+| `NEXT_PUBLIC_APP_URL` | Production site URL (e.g. for `db:pull-prod` fallback) — **not** used for Strava `redirect_uri`. |
 
 ```bash
 # .env.local — Neon-style (after vercel env pull or paste from Neon console)
@@ -205,6 +209,12 @@ TRAIL_DB_PGSSLMODE=disable
 ```
 
 `NEXT_PUBLIC_MAP_BASE_STYLE` — omit (or `stylized`) for **Catalog** as the first-load default; `osm` selects **Classic**. Both modes use **standard OpenStreetMap** raster tiles; Catalog only adds a light warm CSS filter so the base sits closer to the app’s paper/forest palette ([`lib/map-basemap.ts`](lib/map-basemap.ts)). **Classic / Catalog** is chosen from the layers tool button under **zoom to my location** (top-left) and persists in `localStorage` (`trail-overlay-basemap-style`), overriding the env default on return visits until cleared.
+
+### Strava sign-in on localhost
+
+1. In Strava’s API application settings, set **Authorization Callback Domain** to `localhost` (domain only, no port).
+2. Open the app at **`http://localhost:3000`** (same origin as the redirect Strava uses: `http://localhost:3000/api/auth/strava/callback`).
+3. Without Strava: in **`next dev`**, use **Dev sign-in (first DB user)** in the drawer (or `GET /api/auth/dev-login`) to create a session from the oldest row in `users` — useful when the DB was seeded from prod and you only need app auth, not live Strava API calls.
 
 ---
 

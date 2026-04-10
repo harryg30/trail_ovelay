@@ -22,9 +22,12 @@ export async function GET() {
         n.name,
         n.polygon,
         n.created_at,
-        array_agg(nt.trail_id) FILTER (WHERE nt.trail_id IS NOT NULL) AS trail_ids
+        array_agg(nt.trail_id) FILTER (WHERE nt.trail_id IS NOT NULL) AS trail_ids,
+        COALESCE(BOOL_OR(mo.id IS NOT NULL), false) AS has_official_map,
+        COALESCE(BOOL_OR(mo.transform IS NOT NULL), false) AS official_map_aligned
       FROM networks n
       LEFT JOIN network_trails nt ON nt.network_id = n.id
+      LEFT JOIN map_overlays mo ON mo.network_id = n.id
       GROUP BY n.id
       ORDER BY n.created_at DESC
     `)

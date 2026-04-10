@@ -19,12 +19,17 @@ export default function ThemeToggle({ className, size = 'md' }: ThemeToggleProps
   const text = size === 'sm' ? 'text-[11px]' : 'text-xs'
   const icon = size === 'sm' ? 'h-3 w-3' : 'h-3.5 w-3.5'
 
+  const blockThemeClicks = !mounted
+
   return (
     <div className={cn('flex w-full min-w-0 items-center gap-0', className)}>
       <button
         type="button"
-        onClick={() => isDark && mounted && setTheme('light')}
-        disabled={!mounted}
+        onClick={() => {
+          if (!mounted || !isDark) return
+          setTheme('light')
+        }}
+        aria-disabled={blockThemeClicks}
         className={cn(
           'flex flex-1 items-center justify-center gap-1.5 border-2 border-r-0 border-foreground font-bold uppercase tracking-wide transition-colors',
           pad,
@@ -32,7 +37,7 @@ export default function ThemeToggle({ className, size = 'md' }: ThemeToggleProps
           !isDark
             ? 'bg-foreground text-background'
             : 'bg-card text-muted-foreground hover:bg-mud/80',
-          'disabled:cursor-not-allowed disabled:opacity-40'
+          blockThemeClicks && 'pointer-events-none cursor-not-allowed opacity-40'
         )}
         aria-pressed={!isDark}
         aria-label="Light mode"
@@ -43,8 +48,11 @@ export default function ThemeToggle({ className, size = 'md' }: ThemeToggleProps
       </button>
       <button
         type="button"
-        onClick={() => !isDark && mounted && setTheme('dark')}
-        disabled={!mounted}
+        onClick={() => {
+          if (!mounted || isDark) return
+          setTheme('dark')
+        }}
+        aria-disabled={blockThemeClicks}
         className={cn(
           'flex flex-1 items-center justify-center gap-1.5 border-2 border-foreground font-bold uppercase tracking-wide transition-colors',
           pad,
@@ -52,7 +60,7 @@ export default function ThemeToggle({ className, size = 'md' }: ThemeToggleProps
           isDark
             ? 'bg-foreground text-background'
             : 'bg-card text-muted-foreground hover:bg-mud/80',
-          'disabled:cursor-not-allowed disabled:opacity-40'
+          blockThemeClicks && 'pointer-events-none cursor-not-allowed opacity-40'
         )}
         aria-pressed={isDark}
         aria-label="Dark mode"

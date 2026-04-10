@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <title>Trail Overlay</title>
+  <!-- Forest + safety orange + paper  matches app theme (globals.css) -->
+  <rect width="32" height="32" rx="8" fill="#2a5c47"/>
+  <!-- Map tile / overlay frame -->
+  <rect
+    x="6"
+    y="6"
+    width="20"
+    height="20"
+    rx="3"
+    stroke="#f2e8d5"
+    stroke-opacity="0.35"
+    stroke-width="1.25"
+  />
+  <!-- Trail path -->
+  <path
+    d="M9 22c3-6 5-9 7-11s4-3 7-3"
+    stroke="#e0592a"
+    stroke-width="3.25"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <!-- Current position -->
+  <circle cx="23" cy="8" r="2.25" fill="#f2e8d5"/>
+</svg>

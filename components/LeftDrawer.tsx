@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   Ride,
   Trail,
@@ -43,6 +43,7 @@ import {
   faEye,
   faEyeSlash,
   faFolder,
+  faMap,
   faPenToSquare,
   faPlus,
   faSpinner,
@@ -100,6 +101,11 @@ interface LeftDrawerProps {
   onUpdateNetwork: (name: string, polygon: [number, number][] | null, trailIds: string[]) => Promise<string | null>
   onDeleteNetwork: () => Promise<string | null>
   onStartRedrawNetwork: () => void
+  canUndoNetworkDraw: boolean
+  canRedoNetworkDraw: boolean
+  onNetworkDrawUndo: () => void
+  onNetworkDrawRedo: () => void
+  onNetworkDrawClear: () => void
   onOpenAnnouncement: () => void
   highResRideIds: Set<string>
   onFetchHighRes: (id: string) => Promise<void>
@@ -134,11 +140,13 @@ interface LeftDrawerProps {
   onOpenPhotoLightbox: (src: string) => void
   onFlyToTrail: (trail: Trail) => void
   onFlyToNetwork: (network: Network) => void
+  officialMapLayer: OfficialMapLayerPayload | null
   onOfficialMapLayerChange: (layer: OfficialMapLayerPayload | null) => void
   onAlignmentMapPickChange: (handler: null | ((latlng: [number, number]) => void)) => void
   pendingDigitizationTask: PendingDigitizationTask | null
   onPendingDigitizationTaskChange: (task: PendingDigitizationTask | null) => void
   onRefetchNetworks: () => void
+  onNetworkOfficialMapClick: (network: Network) => void
 }
 
 export default function LeftDrawer({
@@ -192,6 +200,11 @@ export default function LeftDrawer({
   onUpdateNetwork,
   onDeleteNetwork,
   onStartRedrawNetwork,
+  canUndoNetworkDraw,
+  canRedoNetworkDraw,
+  onNetworkDrawUndo,
+  onNetworkDrawRedo,
+  onNetworkDrawClear,
   onOpenAnnouncement,
   highResRideIds,
   onFetchHighRes,
@@ -224,13 +237,20 @@ export default function LeftDrawer({
   onOpenPhotoLightbox,
   onFlyToTrail,
   onFlyToNetwork,
+  officialMapLayer,
   onOfficialMapLayerChange,
   onAlignmentMapPickChange,
   pendingDigitizationTask,
   onPendingDigitizationTaskChange,
   onRefetchNetworks,
+  onNetworkOfficialMapClick,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  /** Avoid disabled-attribute mismatch: map bounds can update before subtree hydration finishes. */
+  const [viewportClientReady, setViewportClientReady] = useState(false)
+  useEffect(() => {
+    setViewportClientReady(true)
+  }, [])
   const [uploading, setUploading] = useState(false)
   const [pendingHighResRideId, setPendingHighResRideId] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
@@ -405,7 +425,7 @@ export default function LeftDrawer({
         <button
           type="button"
           onClick={() => !showOnMapOnly && onToggleShowOnMapOnly()}
-          disabled={!mapBounds}
+          disabled={!viewportClientReady || !mapBounds}
           className={cn(
             'flex-1 border-2 border-foreground py-1.5 text-xs font-bold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-40',
             showOnMapOnly
@@ -899,7 +919,11 @@ export default function LeftDrawer({
                     onEditModeChange('edit-network')
                   }
                 }}
-                title={editMode === 'edit-network' ? 'Exit edit networks' : 'Edit networks (map, trails, official map)'}
+                title={
+                  editMode === 'edit-network'
+                    ? 'Exit network edit'
+                    : 'Edit network name, trails, and polygon'
+                }
                 className={cn(
                   'flex size-6 items-center justify-center rounded-sm border-2 transition-colors',
                   editMode === 'edit-network'
@@ -912,6 +936,31 @@ export default function LeftDrawer({
                 ) : (
                   <FontAwesomeIcon icon={faPenToSquare} className="w-3.5 h-3.5" />
                 )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (editMode === 'network-map') {
+                    onSelectNetwork(null)
+                    onEditModeChange(null)
+                  } else {
+                    onSelectNetwork(null)
+                    onEditModeChange('network-map')
+                  }
+                }}
+                title={
+                  editMode === 'network-map'
+                    ? 'Close official map'
+                    : 'Official map: upload, align, trace tasks'
+                }
+                className={cn(
+                  'flex size-6 items-center justify-center rounded-sm border-2 transition-colors',
+                  editMode === 'network-map'
+                    ? 'border-foreground bg-primary text-primary-foreground'
+                    : 'border-border text-muted-foreground hover:bg-mud/80'
+                )}
+              >
+                <FontAwesomeIcon icon={faMap} className="w-3.5 h-3.5" />
               </button>
               <button
                 type="button"
@@ -929,11 +978,14 @@ export default function LeftDrawer({
             </div>
           )}
         </div>
-        {user && editMode !== 'add-network' && editMode !== 'edit-network' && (
-          <p className="text-[11px] leading-snug text-muted-foreground">
-            Use + to draw a network area and assign trails; use the pen to edit names, trail links, and the official map overlay.
-          </p>
-        )}
+        {user &&
+          editMode !== 'add-network' &&
+          editMode !== 'edit-network' &&
+          editMode !== 'network-map' && (
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Pen: edit network details. Map icon: only official map and tasks. Row map icon: toggle the overlay or open the map panel to upload.
+            </p>
+          )}
 
         {(editMode === 'add-network') && (
           <DrawNetworkContent
@@ -943,11 +995,19 @@ export default function LeftDrawer({
             onSave={onSaveNetwork}
             onUpdate={onUpdateNetwork}
             onCancel={() => onEditModeChange(null)}
+            trailEditTool={trailEditTool}
+            onSetTrailEditTool={onSetTrailEditTool}
+            canUndo={canUndoNetworkDraw}
+            canRedo={canRedoNetworkDraw}
+            onUndo={onNetworkDrawUndo}
+            onRedo={onNetworkDrawRedo}
+            onClear={onNetworkDrawClear}
           />
         )}
 
         {editMode === 'edit-network' && (
           <EditNetworkContent
+            variant="full"
             trails={trails}
             networks={networks}
             selectedNetwork={selectedNetwork}
@@ -955,13 +1015,43 @@ export default function LeftDrawer({
             onUpdate={onUpdateNetwork}
             onDelete={onDeleteNetwork}
             onRedraw={onStartRedrawNetwork}
-            onCancel={() => { onSelectNetwork(null); onEditModeChange(null) }}
+            onCancel={() => {
+              onSelectNetwork(null)
+              onEditModeChange(null)
+            }}
             user={user}
             onOfficialMapLayerChange={onOfficialMapLayerChange}
             onAlignmentMapPickChange={onAlignmentMapPickChange}
             pendingDigitizationTask={pendingDigitizationTask}
             onPendingDigitizationTaskChange={onPendingDigitizationTaskChange}
             onRefetchNetworks={onRefetchNetworks}
+            officialMapLayer={officialMapLayer}
+            onNetworkOfficialMapClick={onNetworkOfficialMapClick}
+          />
+        )}
+
+        {editMode === 'network-map' && (
+          <EditNetworkContent
+            variant="map-only"
+            trails={trails}
+            networks={networks}
+            selectedNetwork={selectedNetwork}
+            onSelectNetwork={onSelectNetwork}
+            onUpdate={onUpdateNetwork}
+            onDelete={onDeleteNetwork}
+            onRedraw={onStartRedrawNetwork}
+            onCancel={() => {
+              onSelectNetwork(null)
+              onEditModeChange(null)
+            }}
+            user={user}
+            onOfficialMapLayerChange={onOfficialMapLayerChange}
+            onAlignmentMapPickChange={onAlignmentMapPickChange}
+            pendingDigitizationTask={pendingDigitizationTask}
+            onPendingDigitizationTaskChange={onPendingDigitizationTaskChange}
+            onRefetchNetworks={onRefetchNetworks}
+            officialMapLayer={officialMapLayer}
+            onNetworkOfficialMapClick={onNetworkOfficialMapClick}
           />
         )}
 
@@ -981,7 +1071,10 @@ export default function LeftDrawer({
                   key={network.id}
                   network={network}
                   trails={trails}
-                  isSelected={selectedNetwork?.id === network.id && editMode === 'edit-network'}
+                  isSelected={
+                    selectedNetwork?.id === network.id &&
+                    (editMode === 'edit-network' || editMode === 'network-map')
+                  }
                   isHidden={hiddenNetworkIds.has(network.id)}
                   onToggleVisibility={() => onToggleNetwork(network.id)}
                   onFlyTo={() => onFlyToNetwork(network)}
@@ -990,6 +1083,14 @@ export default function LeftDrawer({
                     onEditModeChange('edit-network')
                   }}
                   user={user}
+                  officialMapOnMap={
+                    !!(
+                      officialMapLayer?.visible &&
+                      officialMapLayer.networkId === network.id &&
+                      officialMapLayer.transform
+                    )
+                  }
+                  onOfficialMapClick={() => onNetworkOfficialMapClick(network)}
                 />
               ))}
             </ul>

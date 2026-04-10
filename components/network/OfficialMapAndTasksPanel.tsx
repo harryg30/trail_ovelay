@@ -68,13 +68,14 @@ export function OfficialMapAndTasksPanel({
         return
       }
       onOfficialMapLayerChange({
+        networkId,
         blobUrl: o.blobUrl,
         opacity: o.opacity,
         transform: o.transform,
         visible: visible && !!o.transform,
       })
     },
-    [onOfficialMapLayerChange]
+    [networkId, onOfficialMapLayerChange]
   )
 
   const reload = useCallback(async () => {
@@ -239,6 +240,7 @@ export function OfficialMapAndTasksPanel({
       setOverlay(data.overlay)
       setAlignmentPoints([])
       cancelAlignment()
+      onRefetchNetworks()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Upload failed')
     } finally {

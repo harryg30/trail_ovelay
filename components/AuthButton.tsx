@@ -7,15 +7,28 @@ interface AuthButtonProps {
   user: { name: string; profilePicture: string | null } | null
 }
 
+const isDev = process.env.NODE_ENV === 'development'
+
 export default function AuthButton({ user }: AuthButtonProps) {
   if (!user) {
     return (
-      <a
-        href="/api/auth/strava"
-        className={cn(buttonVariants({ variant: 'catalog', size: 'sm' }), 'mt-2 w-full justify-center')}
-      >
-        Connect with Strava
-      </a>
+      <div className="mt-2 flex flex-col gap-1.5">
+        <a
+          href="/api/auth/strava"
+          className={cn(buttonVariants({ variant: 'catalog', size: 'sm' }), 'w-full justify-center')}
+        >
+          Connect with Strava
+        </a>
+        {isDev && (
+          <a
+            href="/api/auth/dev-login"
+            className="w-full text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+            title="Sign in as the oldest user row in the local database (no Strava). NODE_ENV=development only."
+          >
+            Dev sign-in (first DB user)
+          </a>
+        )}
+      </div>
     )
   }
 

@@ -172,33 +172,81 @@ function trailsToGeoJSON(trails) {
 
 // --- GEOJSON (networks) ---
 
+function polygonRingEdgesLatLng(polygonLatLng) {
+  const n = polygonLatLng.length;
+  if (n < 2) return [];
+  const closed =
+    polygonLatLng[0][0] === polygonLatLng[n - 1][0] &&
+    polygonLatLng[0][1] === polygonLatLng[n - 1][1];
+  const edges = [];
+  if (closed) {
+    for (let i = 0; i < n - 1; i++) {
+      edges.push([polygonLatLng[i], polygonLatLng[i + 1]]);
+    }
+  } else {
+    for (let i = 0; i < n - 1; i++) {
+      edges.push([polygonLatLng[i], polygonLatLng[i + 1]]);
+    }
+    edges.push([polygonLatLng[n - 1], polygonLatLng[0]]);
+  }
+  return edges;
+}
+
+function longestPolygonEdgeLngLatLine(polygonLatLng) {
+  const edges = polygonRingEdgesLatLng(polygonLatLng);
+  if (!edges.length) return null;
+  let best = edges[0];
+  let bestLen = -1;
+  for (const [p0, p1] of edges) {
+    const dx = p1[0] - p0[0];
+    const dy = p1[1] - p0[1];
+    const len = dx * dx + dy * dy;
+    if (len > bestLen) {
+      bestLen = len;
+      best = [p0, p1];
+    }
+  }
+  const [[lat0, lng0], [lat1, lng1]] = best;
+  return [
+    [lng0, lat0],
+    [lng1, lat1]
+  ];
+}
+
 function networksToGeoJSON(networks) {
-  return {
-    type: "FeatureCollection",
-    features: networks
-      .filter((n) => n.polygon && n.polygon.length >= 3)
-      .map((n) => {
-        // DB stores [lat, lng]; Mapbox requires [lng, lat]
-        const coords = n.polygon.map(([lat, lng]) => [lng, lat]);
-        // Close the ring
-        if (
-          coords[0][0] !== coords[coords.length - 1][0] ||
-          coords[0][1] !== coords[coords.length - 1][1]
-        ) {
-          coords.push(coords[0]);
-        }
-        return {
-          type: "Feature",
-          geometry: { type: "Polygon", coordinates: [coords] },
-          properties: {
-            id: n.id,
-            name: n.name,
-            trailCount: n.trailIds ? n.trailIds.length : 0,
-            trailIds: JSON.stringify(n.trailIds || [])
-          }
-        };
-      })
-  };
+  const features = [];
+  for (const n of networks) {
+    if (!n.polygon || n.polygon.length < 3) continue;
+    // DB stores [lat, lng]; Mapbox requires [lng, lat]
+    const coords = n.polygon.map(([lat, lng]) => [lng, lat]);
+    // Close the ring
+    if (
+      coords[0][0] !== coords[coords.length - 1][0] ||
+      coords[0][1] !== coords[coords.length - 1][1]
+    ) {
+      coords.push(coords[0]);
+    }
+    features.push({
+      type: "Feature",
+      geometry: { type: "Polygon", coordinates: [coords] },
+      properties: {
+        id: n.id,
+        name: n.name,
+        trailCount: n.trailIds ? n.trailIds.length : 0,
+        trailIds: JSON.stringify(n.trailIds || [])
+      }
+    });
+    // Longest boundary segment — label follows this edge (symbol-placement line-center)
+    const lineLngLat = longestPolygonEdgeLngLatLine(n.polygon);
+    if (lineLngLat) {
+      features.push({
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: lineLngLat },
+        properties: { id: n.id, name: n.name, overlayKind: "networkLabel" }
+      });
+    }
+  }
+  return { type: "FeatureCollection", features };
 }
 
 // --- MAP RENDERING ---
@@ -226,6 +274,7 @@ function addNetworksToMap(map, networks) {
     id: NETWORK_FILL_LAYER,
     type: "fill",
     source: NETWORK_SOURCE_ID,
+    filter: ["==", ["geometry-type"], "Polygon"],
     paint: {
       "fill-color": "#3b82f6",
       "fill-opacity": 0.1
@@ -237,6 +286,7 @@ function addNetworksToMap(map, networks) {
     id: NETWORK_BORDER_LAYER,
     type: "line",
     source: NETWORK_SOURCE_ID,
+    filter: ["==", ["geometry-type"], "Polygon"],
     paint: {
       "line-color": "#3b82f6",
       "line-width": 2,
@@ -244,15 +294,18 @@ function addNetworksToMap(map, networks) {
     }
   });
 
-  // Network name label at polygon centroid
+  // Network name along longest polygon edge (LineString + line-center)
   map.addLayer({
     id: NETWORK_LABEL_LAYER,
     type: "symbol",
     source: NETWORK_SOURCE_ID,
+    filter: ["==", ["get", "overlayKind"], "networkLabel"],
     layout: {
+      "symbol-placement": "line-center",
       "text-field": ["get", "name"],
       "text-size": 13,
-      "text-anchor": "center",
+      "text-rotation-alignment": "map",
+      "text-pitch-alignment": "map",
       "text-font": ["Open Sans Semibold", "Arial Unicode MS Bold"]
     },
     paint: {

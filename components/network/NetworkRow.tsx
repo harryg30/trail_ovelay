@@ -4,7 +4,14 @@ import { useState } from 'react'
 import type { Trail, Network } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faChevronRight, faCrosshairs, faEye, faEyeSlash, faPenToSquare } from '@fortawesome/free-solid-svg-icons'
+import {
+  faChevronRight,
+  faCrosshairs,
+  faEye,
+  faEyeSlash,
+  faMap,
+  faPenToSquare,
+} from '@fortawesome/free-solid-svg-icons'
 
 export function NetworkRow({
   network,
@@ -15,6 +22,8 @@ export function NetworkRow({
   onFlyTo,
   onEdit,
   user,
+  officialMapOnMap,
+  onOfficialMapClick,
 }: {
   network: Network
   trails: Trail[]
@@ -24,9 +33,13 @@ export function NetworkRow({
   onFlyTo: () => void
   onEdit: () => void
   user: SessionUser | null
+  officialMapOnMap: boolean
+  onOfficialMapClick: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
   const networkTrails = trails.filter((t) => network.trailIds.includes(t.id))
+  const aligned = network.officialMapAligned === true
+  const showMapControl = aligned || !!user
 
   return (
     <li className={`flex flex-col rounded-md bg-mud/45 text-sm ${isSelected ? 'ring-1 ring-primary' : ''} ${isHidden ? 'opacity-50' : ''}`}>
@@ -60,6 +73,28 @@ export function NetworkRow({
           >
             <FontAwesomeIcon icon={faCrosshairs} className="w-3.5 h-3.5" />
           </button>
+          {showMapControl && (
+            <button
+              type="button"
+              onClick={onOfficialMapClick}
+              title={
+                aligned
+                  ? officialMapOnMap
+                    ? 'Hide official map overlay'
+                    : 'Show official map overlay'
+                  : user
+                    ? 'Upload or align official map'
+                    : ''
+              }
+              className={
+                aligned && officialMapOnMap
+                  ? 'text-primary hover:text-primary/90 transition-colors'
+                  : 'text-muted-foreground hover:text-foreground transition-colors'
+              }
+            >
+              <FontAwesomeIcon icon={faMap} className="w-3.5 h-3.5" />
+            </button>
+          )}
           {user && (
             <button
               type="button"

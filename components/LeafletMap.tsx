@@ -18,7 +18,7 @@ import type {
 import { imagePixelToLatLng } from '@/lib/map-overlay-transform'
 import type { TrailEditTool } from '@/lib/modes/types'
 import { resolveMapCursor } from '@/lib/modes/map-cursor'
-import { snapToNearestTrailPoint } from '@/lib/geo-utils'
+import { longestPolygonEdgeMidpoint, snapToNearestTrailPoint } from '@/lib/geo-utils'
 import {
   MAP,
   basemapControlSvg,
@@ -27,7 +27,7 @@ import {
   drawTrailNodeDivHtml,
   locateControlSvg,
   mapPopupStyles,
-  networkCentroidLabelHtml,
+  networkEdgeLabelHtml,
   networkPolygonLeafletStyle,
   refineMidpointDivHtml,
   refineNodeDivHtml,
@@ -44,6 +44,20 @@ import {
 } from '@/lib/map-basemap'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faCamera } from '@fortawesome/free-solid-svg-icons'
+
+/** Screen-space rotation for text along edge AB; flip 180° so labels stay upright. */
+function networkPolygonEdgeLabelRotationDeg(
+  map: L.Map,
+  a: [number, number],
+  b: [number, number]
+): number {
+  const p1 = map.latLngToLayerPoint(L.latLng(a[0], a[1]))
+  const p2 = map.latLngToLayerPoint(L.latLng(b[0], b[1]))
+  let deg = (Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180) / Math.PI
+  if (deg > 90) deg -= 180
+  if (deg < -90) deg += 180
+  return deg
+}
 
 export interface LeafletMapProps {
   rides: Ride[]
@@ -66,6 +80,9 @@ export interface LeafletMapProps {
   drawNetworkMode: boolean
   drawNetworkPoints: [number, number][]
   onNetworkPointAdded: (latlng: [number, number]) => void
+  onNetworkDrawPointRemoved: (index: number) => void
+  onNetworkDrawInsertAfter: (indexBefore: number, latlng: [number, number]) => void
+  onNetworkDrawPointMoved: (index: number, latlng: [number, number]) => void
   editNetworkMode: boolean
   selectedNetworkId: string | null
   onNetworkSelected: (network: Network) => void
@@ -117,6 +134,9 @@ export default function LeafletMap({
   drawNetworkMode,
   drawNetworkPoints,
   onNetworkPointAdded,
+  onNetworkDrawPointRemoved,
+  onNetworkDrawInsertAfter,
+  onNetworkDrawPointMoved,
   editNetworkMode,
   selectedNetworkId,
   onNetworkSelected,
@@ -168,6 +188,8 @@ export default function LeafletMap({
   const drawTrailLayerRef = useRef<L.LayerGroup | null>(null)
 
   const [zoom, setZoom] = useState(5)
+  /** Bumps on pan so network edge labels recompute screen rotation against the map view. */
+  const [mapLayoutEpoch, setMapLayoutEpoch] = useState(0)
   const [basemapStyle, setBasemapStyle] = useState<MapBaseStyle>(getMapBaseStyle)
   const basemapStyleRef = useRef(basemapStyle)
   basemapStyleRef.current = basemapStyle
@@ -185,6 +207,9 @@ export default function LeafletMap({
   const drawNetworkModeRef = useRef(drawNetworkMode)
   const editNetworkModeRef = useRef(editNetworkMode)
   const onNetworkPointAddedRef = useRef(onNetworkPointAdded)
+  const onNetworkDrawPointRemovedRef = useRef(onNetworkDrawPointRemoved)
+  const onNetworkDrawInsertAfterRef = useRef(onNetworkDrawInsertAfter)
+  const onNetworkDrawPointMovedRef = useRef(onNetworkDrawPointMoved)
   const onNetworkSelectedRef = useRef(onNetworkSelected)
   const networksRef = useRef(networks)
   const drawTrailModeRef = useRef(drawTrailMode)
@@ -226,6 +251,9 @@ export default function LeafletMap({
   drawNetworkModeRef.current = drawNetworkMode
   editNetworkModeRef.current = editNetworkMode
   onNetworkPointAddedRef.current = onNetworkPointAdded
+  onNetworkDrawPointRemovedRef.current = onNetworkDrawPointRemoved
+  onNetworkDrawInsertAfterRef.current = onNetworkDrawInsertAfter
+  onNetworkDrawPointMovedRef.current = onNetworkDrawPointMoved
   onNetworkSelectedRef.current = onNetworkSelected
   networksRef.current = networks
   drawTrailModeRef.current = drawTrailMode
@@ -437,8 +465,14 @@ export default function LeafletMap({
       })
     }
 
-    map.on('zoomend', () => { setZoom(map.getZoom()); fireBoundsChange() })
-    map.on('moveend', fireBoundsChange)
+    map.on('zoomend', () => {
+      setZoom(map.getZoom())
+      fireBoundsChange()
+    })
+    map.on('moveend', () => {
+      fireBoundsChange()
+      setMapLayoutEpoch((e) => e + 1)
+    })
     fireBoundsChange()
 
     map.on('click', (e: L.LeafletMouseEvent) => {
@@ -595,7 +629,10 @@ export default function LeafletMap({
         return
       }
       if (drawNetworkModeRef.current) {
-        onNetworkPointAddedRef.current([e.latlng.lat, e.latlng.lng])
+        if (trailEditToolRef.current === 'pencil') {
+          onNetworkPointAddedRef.current([e.latlng.lat, e.latlng.lng])
+        }
+        return
       }
     })
 
@@ -866,9 +903,10 @@ export default function LeafletMap({
       editTrailMode,
       refineMode,
       drawTrailMode,
+      drawNetworkMode,
       trailEditTool,
     })
-  }, [editMode, editTrailMode, refineMode, drawTrailMode, trailEditTool])
+  }, [editMode, editTrailMode, refineMode, drawTrailMode, drawNetworkMode, trailEditTool])
 
   // Effect 5: start marker (before second point is selected)
   useEffect(() => {
@@ -1050,12 +1088,13 @@ export default function LeafletMap({
 
       polygon.addTo(networksLayerRef.current!)
 
-      // Network name label at polygon centroid when zoomed out — click to zoom in
-      if (zoom < LABEL_ZOOM_THRESHOLD) {
-        const centroidLat = network.polygon.reduce((s, p) => s + p[0], 0) / network.polygon.length
-        const centroidLon = network.polygon.reduce((s, p) => s + p[1], 0) / network.polygon.length
-        const networkLabelHtml = networkCentroidLabelHtml(network.name, MAP)
-        const labelMarker = L.marker([centroidLat, centroidLon], {
+      // Network name along longest polygon edge when zoomed out — click to zoom in
+      if (zoom < LABEL_ZOOM_THRESHOLD && mapRef.current) {
+        const edge = longestPolygonEdgeMidpoint(network.polygon as [number, number][])
+        if (!edge) return
+        const rot = networkPolygonEdgeLabelRotationDeg(mapRef.current, edge.a, edge.b)
+        const networkLabelHtml = networkEdgeLabelHtml(network.name, rot, MAP)
+        const labelMarker = L.marker(edge.mid as L.LatLngExpression, {
           icon: L.divIcon({ html: networkLabelHtml, className: '', iconSize: [0, 0], iconAnchor: [0, 0] }),
           interactive,
           keyboard: false,
@@ -1077,14 +1116,17 @@ export default function LeafletMap({
     placingPhoto,
     placingTrailPhoto,
     zoom,
+    mapLayoutEpoch,
     mapDrawingSurface,
   ])
 
-  // Effect: draw network polygon preview
+  // Effect: draw network polygon — same interactions as draw-trail (drag, midpoints, eraser) + closing edge
   useEffect(() => {
     if (!drawNetworkLayerRef.current) return
     drawNetworkLayerRef.current.clearLayers()
     if (!drawNetworkMode || drawNetworkPoints.length === 0) return
+
+    const tool = trailEditTool
 
     const nodeIcon = L.divIcon({
       className: '',
@@ -1093,32 +1135,98 @@ export default function LeafletMap({
       iconAnchor: [5, 5],
     })
 
-    drawNetworkPoints.forEach((pt) => {
-      L.marker(pt as L.LatLngExpression, { icon: nodeIcon }).addTo(drawNetworkLayerRef.current!)
-    })
+    const pts: [number, number][] = drawNetworkPoints.map(([lat, lng]) => [lat, lng])
 
-    if (drawNetworkPoints.length >= 2) {
-      // Preview polyline connecting placed points
-      L.polyline(drawNetworkPoints as L.LatLngExpression[], {
+    let previewChain: L.Polyline | null = null
+    let previewClosing: L.Polyline | null = null
+    if (pts.length >= 2) {
+      previewChain = L.polyline(pts as L.LatLngExpression[], {
         color: MAP.primary,
         weight: 2,
         dashArray: '6, 4',
         opacity: 0.8,
+        interactive: false,
         ...catalogLineHints,
       }).addTo(drawNetworkLayerRef.current!)
     }
-
-    if (drawNetworkPoints.length >= 3) {
-      // Closing dash back to first point
-      L.polyline([drawNetworkPoints[drawNetworkPoints.length - 1], drawNetworkPoints[0]] as L.LatLngExpression[], {
+    if (pts.length >= 3) {
+      previewClosing = L.polyline([pts[pts.length - 1], pts[0]] as L.LatLngExpression[], {
         color: MAP.primary,
         weight: 1,
         dashArray: '4, 6',
         opacity: 0.5,
+        interactive: false,
         ...catalogLineHints,
       }).addTo(drawNetworkLayerRef.current!)
     }
-  }, [drawNetworkMode, drawNetworkPoints])
+
+    const syncPolylines = () => {
+      if (previewChain && pts.length >= 2) {
+        previewChain.setLatLngs(pts as L.LatLngExpression[])
+      }
+      if (previewClosing && pts.length >= 3) {
+        previewClosing.setLatLngs([pts[pts.length - 1], pts[0]] as L.LatLngExpression[])
+      }
+    }
+
+    pts.forEach((pt, i) => {
+      const marker = L.marker(pt as L.LatLngExpression, {
+        icon: nodeIcon,
+        interactive: true,
+        draggable: tool === 'pencil',
+        zIndexOffset: 1000,
+      })
+      if (tool === 'eraser') {
+        marker.on('click', (ev: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(ev)
+          onNetworkDrawPointRemovedRef.current(i)
+        })
+      }
+      if (tool === 'pencil') {
+        marker.on('drag', () => {
+          const { lat, lng } = marker.getLatLng()
+          pts[i] = [lat, lng]
+          syncPolylines()
+        })
+        marker.on('dragend', () => {
+          const { lat, lng } = marker.getLatLng()
+          onNetworkDrawPointMovedRef.current(i, [lat, lng])
+        })
+      }
+      marker.addTo(drawNetworkLayerRef.current!)
+    })
+
+    if (tool === 'pencil' && pts.length >= 2) {
+      const midIcon = L.divIcon({
+        className: '',
+        html: refineMidpointDivHtml(MAP.primary, MAP),
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+      })
+      for (let i = 0; i < pts.length - 1; i++) {
+        const a = pts[i]
+        const b = pts[i + 1]
+        const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+        const marker = L.marker(mid as L.LatLngExpression, { icon: midIcon, interactive: true })
+        marker.on('click', (ev: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(ev)
+          onNetworkDrawInsertAfterRef.current(i, mid)
+        })
+        marker.addTo(drawNetworkLayerRef.current!)
+      }
+      if (pts.length >= 3) {
+        const a = pts[pts.length - 1]
+        const b = pts[0]
+        const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+        const marker = L.marker(mid as L.LatLngExpression, { icon: midIcon, interactive: true })
+        marker.on('click', (ev: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(ev)
+          onNetworkDrawInsertAfterRef.current(pts.length - 1, mid)
+        })
+        marker.addTo(drawNetworkLayerRef.current!)
+      }
+    }
+  }, [drawNetworkMode, drawNetworkPoints, trailEditTool])
 
   // Effect: draft trails — dashed lines, same difficulty colors, not interactive in edit modes
   useEffect(() => {

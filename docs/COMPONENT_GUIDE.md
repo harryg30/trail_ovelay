@@ -21,9 +21,9 @@ components/
     EditTrailForm.tsx     ← Edit-existing-trail form (stats + TrailFormFields + delete)
 
   network/                ← Components for the add-network / edit-network workflow
-    NetworkRow.tsx        ← Expandable list item showing network trails (+ fly-to-map control)
+    NetworkRow.tsx        ← Expandable list item: trails, visibility, fly-to, official map row control (toggle overlay or open upload/align), edit
     DrawNetworkContent.tsx ← Two-phase draw (place vertices → name + assign trails)
-    EditNetworkContent.tsx ← Network picker dropdown + edit form + delete + official map panel
+    EditNetworkContent.tsx ← Network picker + full edit (`variant="full"`) or map-only (`variant="map-only"`) + OfficialMapAndTasksPanel
     OfficialMapAndTasksPanel.tsx ← Per-network map overlay, alignment, digitization tasks (linking a task trail also adds `network_trails` server-side)
 
   shared/                 ← Cross-cutting UI primitives
@@ -31,6 +31,7 @@ components/
     TrailFormFields.tsx   ← Controlled Name/Difficulty/Direction/Notes field set
     ConfirmDeleteButton.tsx ← Two-stage delete button (owns confirmDelete state)
     SearchableDropdown.tsx  ← Generic filtered dropdown with click-outside dismiss
+    VertexDrawToolbar.tsx   ← Pencil / eraser / undo / redo / clear for map vertex editing (draw-trail, refine, draw-network)
 ```
 
 ## Visual system (shadcn + Trail catalog theme)
@@ -114,10 +115,14 @@ interface SearchableDropdownProps<T extends { id: string }> {
   onClear: () => void
   getSearchText: (item: T) => string   // text to filter against
   renderItem: (item: T, isSelected: boolean) => React.ReactNode
+  /** Optional per-row trailing control; return null to omit the side column for that row. */
+  renderSideAction?: (item: T, close: () => void) => React.ReactNode
   placeholder: string
   inputCls: string  // Tailwind classes for the text input
 }
 ```
+
+`EditNetworkContent` passes `renderSideAction` to show an official-map control (show/hide aligned overlay or open upload/alignment) on each network row in the search list.
 
 ---
 

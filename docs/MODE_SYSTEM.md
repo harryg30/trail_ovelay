@@ -23,11 +23,12 @@ Notes:
 | `add-trail` | crosshair | AddTrailContent | trimStart, trimEnd |
 | `edit-trail` | pointer | EditTrailContent | selectedTrail |
 | `refine-trail` | default | (inline in LeftDrawer) | selectedTrail (shared), refinedPolyline, refineError |
-| `add-network` | crosshair | DrawNetworkContent | drawNetworkPoints |
-| `edit-network` | pointer | EditNetworkContent | selectedNetwork, drawNetworkPoints |
+| `add-network` | crosshair / pointer | DrawNetworkContent | drawNetworkPoints, drawNetworkHistory*, shared `trailEditTool` with draw-trail |
+| `edit-network` | pointer | EditNetworkContent (`variant="full"`) | selectedNetwork |
+| `network-map` | pointer | EditNetworkContent (`variant="map-only"`) — official map + tasks only | selectedNetwork |
 | `null` | default | (no panel) | — |
 
-In **LeftDrawer**, the Networks block uses **+** for `add-network` and a **pen** control to enter `edit-network` without picking a row first (search or map click still selects the network). A pending digitization task carries `networkId` so draw-trail publish pre-fills network membership.
+In **LeftDrawer**, the Networks block uses **+** for `add-network`, a **pen** for full **`edit-network`** (name, trails, polygon, and official map at the bottom of that form), and a **map** icon for **`network-map`** (upload, align, trace tasks — no full network edit). Each network row’s map control: if the overlay is aligned it toggles visibility on the basemap; otherwise (signed-in) it opens **`network-map`** with that network selected. A pending digitization task carries `networkId` so draw-trail publish pre-fills network membership.
 
 ---
 
@@ -137,5 +138,6 @@ When `setMode(next)` is called in `useEditMode`, it clears state that doesn't ca
 - `trimStart`, `trimEnd` — cleared unless entering `add-trail`
 - `selectedTrail` — cleared unless entering `edit-trail` or `refine-trail` (shared between them)
 - `refinedPolyline`, `refineError` — cleared unless entering `refine-trail`
-- `selectedNetwork`, `drawNetworkPoints` — cleared unless entering `add-network` or `edit-network`
-- `drawNetworkPoints` — additionally cleared when entering `edit-network` (fresh start for redraw)
+- `selectedNetwork` — cleared unless entering `add-network`, `edit-network`, or `network-map`
+- `drawNetworkPoints`, `drawNetworkHistoryPast`, `drawNetworkHistoryFuture` — cleared unless entering `add-network`
+- `trailEditTool` — reset to pencil when leaving `draw-trail`, `edit-trail`, and `add-network`

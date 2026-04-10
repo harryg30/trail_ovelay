@@ -15,6 +15,7 @@ export function SearchableDropdown<T extends { id: string }>({
   onClear,
   getSearchText,
   renderItem,
+  renderSideAction,
   placeholder,
   inputCls,
 }: {
@@ -24,8 +25,10 @@ export function SearchableDropdown<T extends { id: string }>({
   onClear: () => void
   /** Text used to filter items against the search query. */
   getSearchText: (item: T) => string
-  /** Renders each list item button's content. */
+  /** Renders each list item's main (select) cell content. */
   renderItem: (item: T, isSelected: boolean) => React.ReactNode
+  /** Optional trailing control per row (e.g. icon button). Receives `close` to dismiss the list. */
+  renderSideAction?: (item: T, close: () => void) => React.ReactNode
   placeholder: string
   /** Tailwind class string for the text input. */
   inputCls: string
@@ -34,9 +37,14 @@ export function SearchableDropdown<T extends { id: string }>({
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // Sync input when item is selected externally (e.g. map click)
+  // Sync input when selection changes externally (e.g. map pick, clear, or mode exit)
   useEffect(() => {
-    if (selectedItem) setQuery(getSearchText(selectedItem))
+    if (selectedItem) {
+      setQuery(getSearchText(selectedItem))
+    } else {
+      setQuery('')
+    }
+    setOpen(false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedItem?.id])
 
@@ -89,17 +97,29 @@ export function SearchableDropdown<T extends { id: string }>({
       </div>
       {open && filtered.length > 0 && (
         <ul className="absolute z-10 mt-1 w-full max-h-48 overflow-y-auto rounded-md border border-border bg-card shadow-md">
-          {filtered.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                onMouseDown={() => handleSelect(item)}
-                className="w-full text-left"
+          {filtered.map((item) => {
+            const side =
+              renderSideAction?.(item, () => setOpen(false)) ?? null
+            return (
+              <li
+                key={item.id}
+                className="flex min-h-0 items-stretch border-b border-border/60 last:border-b-0"
               >
-                {renderItem(item, selectedItem?.id === item.id)}
-              </button>
-            </li>
-          ))}
+                <button
+                  type="button"
+                  onMouseDown={() => handleSelect(item)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  {renderItem(item, selectedItem?.id === item.id)}
+                </button>
+                {side ? (
+                  <div className="flex shrink-0 items-center border-l border-border/50 px-1">
+                    {side}
+                  </div>
+                ) : null}
+              </li>
+            )
+          })}
         </ul>
       )}
       {open && query.trim() !== '' && filtered.length === 0 && (

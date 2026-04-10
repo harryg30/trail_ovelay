@@ -52,6 +52,7 @@ export type EditMode =
   | 'refine-trail'
   | 'add-network'
   | 'edit-network'
+  | 'network-map'
   | 'draw-trail'
   | 'add-trail-photo'
   | null
@@ -78,6 +79,10 @@ export interface Network {
   polygon: [number, number][];
   trailIds: string[];
   createdAt: Date;
+  /** Present when loaded from GET /api/networks (joined map_overlays). */
+  hasOfficialMap?: boolean;
+  /** True when a map_overlays row exists and transform is set (showable on basemap). */
+  officialMapAligned?: boolean;
 }
 
 export interface RidePhoto {
@@ -182,6 +187,8 @@ export type PendingDigitizationTask = { id: string; label: string; networkId: st
 
 /** Client payload for rendering the georeferenced official map on Leaflet. */
 export type OfficialMapLayerPayload = {
+  /** Which network this overlay belongs to (row toggle / panel sync). */
+  networkId?: string;
   blobUrl: string;
   opacity: number;
   transform: MapOverlayTransformJson | null;

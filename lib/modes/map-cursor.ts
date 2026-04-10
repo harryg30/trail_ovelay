@@ -11,12 +11,17 @@ export function resolveMapCursor(params: {
   editTrailMode: boolean
   refineMode: boolean
   drawTrailMode: boolean
+  drawNetworkMode: boolean
   trailEditTool: TrailEditTool
 }): string {
-  const { editMode, editTrailMode, refineMode, drawTrailMode, trailEditTool } = params
+  const { editMode, editTrailMode, refineMode, drawTrailMode, drawNetworkMode, trailEditTool } = params
   if (!editMode) return ''
 
   if (drawTrailMode) {
+    return trailEditTool === 'pencil' ? 'crosshair' : 'pointer'
+  }
+
+  if (drawNetworkMode) {
     return trailEditTool === 'pencil' ? 'crosshair' : 'pointer'
   }
 

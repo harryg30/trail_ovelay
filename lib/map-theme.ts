@@ -99,9 +99,15 @@ export function trailMidpointLabelHtml(
   return `<div style="font-family:${mapLabelFontStack};font-size:11px;font-weight:400;letter-spacing:0.06em;text-transform:uppercase;white-space:nowrap;pointer-events:none;line-height:1.35;color:${palette.foreground};transform:rotate(${labelAngle}deg);transform-origin:0 50%;text-shadow:-1px -1px 0 ${halo},1px -1px 0 ${halo},-1px 1px 0 ${halo},1px 1px 0 ${halo}"><span style="color:${trailColor}">${diffIcon}</span>${diffIcon ? '\u00a0' : ''}${name}</div>`
 }
 
-export function networkCentroidLabelHtml(name: string, palette: MapPalette = MAP): string {
+/** Network name drawn along a polygon edge (marker at segment midpoint, `rotationDeg` from map projection). */
+export function networkEdgeLabelHtml(
+  name: string,
+  rotationDeg: number,
+  palette: MapPalette = MAP
+): string {
   const halo = palette.haloLight
-  return `<div style="font-family:${mapLabelFontStack};font-size:13px;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;cursor:pointer;color:${palette.electric};text-shadow:-1px -1px 0 ${halo},1px -1px 0 ${halo},-1px 1px 0 ${halo},1px 1px 0 ${halo}">${name}</div>`
+  const text = `font-family:${mapLabelFontStack};font-size:13px;font-weight:400;letter-spacing:0.05em;text-transform:uppercase;white-space:nowrap;cursor:pointer;color:${palette.electric};text-shadow:-1px -1px 0 ${halo},1px -1px 0 ${halo},-1px 1px 0 ${halo},1px 1px 0 ${halo};line-height:1.35;display:inline-block`
+  return `<div style="display:inline-block;line-height:0;transform:translate(-50%,-50%) rotate(${rotationDeg}deg);transform-origin:center center"><span style="${text}">${name}</span></div>`
 }
 
 export function buildMapPopupStyles(m: MapPalette) {

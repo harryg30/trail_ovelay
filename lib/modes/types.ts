@@ -17,6 +17,8 @@ export interface EditModeState {
   refineTrailHistoryFuture: [number, number][][]
   selectedNetwork: Network | null
   drawNetworkPoints: [number, number][]
+  drawNetworkHistoryPast: [number, number][][]
+  drawNetworkHistoryFuture: [number, number][][]
   drawTrailPoints: [number, number][]
   drawTrailFinished: boolean
   drawTrailHistoryPast: [number, number][][]
@@ -35,6 +37,8 @@ export const initialModeState: EditModeState = {
   refineTrailHistoryFuture: [],
   selectedNetwork: null,
   drawNetworkPoints: [],
+  drawNetworkHistoryPast: [],
+  drawNetworkHistoryFuture: [],
   drawTrailPoints: [],
   drawTrailFinished: false,
   drawTrailHistoryPast: [],

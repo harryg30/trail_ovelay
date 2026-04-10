@@ -32,9 +32,11 @@ export function useEditMode() {
   const [refineTrailHistoryPast, setRefineTrailHistoryPast] = useState<[number, number][][]>([])
   const [refineTrailHistoryFuture, setRefineTrailHistoryFuture] = useState<[number, number][][]>([])
 
-  // Network state (add-network, edit-network)
+  // Network state (add-network, edit-network, network-map)
   const [selectedNetwork, setSelectedNetwork] = useState<Network | null>(null)
   const [drawNetworkPoints, setDrawNetworkPoints] = useState<[number, number][]>([])
+  const [drawNetworkHistoryPast, setDrawNetworkHistoryPast] = useState<[number, number][][]>([])
+  const [drawNetworkHistoryFuture, setDrawNetworkHistoryFuture] = useState<[number, number][][]>([])
 
   // Draw trail state (draw-trail)
   const [drawTrailPoints, setDrawTrailPoints] = useState<[number, number][]>([])
@@ -66,12 +68,13 @@ export function useEditMode() {
       setRefineTrailHistoryPast([])
       setRefineTrailHistoryFuture([])
     }
-    if (mode !== 'add-network' && mode !== 'edit-network') {
+    if (mode !== 'add-network' && mode !== 'edit-network' && mode !== 'network-map') {
       setSelectedNetwork(null)
-      setDrawNetworkPoints([])
     }
     if (mode !== 'add-network') {
       setDrawNetworkPoints([])
+      setDrawNetworkHistoryPast([])
+      setDrawNetworkHistoryFuture([])
     }
     if (mode !== 'draw-trail') {
       setDrawTrailPoints([])
@@ -80,7 +83,7 @@ export function useEditMode() {
       setDrawTrailHistoryFuture([])
     }
 
-    if (mode !== 'draw-trail' && mode !== 'edit-trail') {
+    if (mode !== 'draw-trail' && mode !== 'edit-trail' && mode !== 'add-network') {
       setTrailEditTool('pencil')
     }
   }, [])
@@ -102,6 +105,8 @@ export function useEditMode() {
 
     selectedNetwork, setSelectedNetwork,
     drawNetworkPoints, setDrawNetworkPoints,
+    drawNetworkHistoryPast, setDrawNetworkHistoryPast,
+    drawNetworkHistoryFuture, setDrawNetworkHistoryFuture,
 
     drawTrailPoints, setDrawTrailPoints,
     drawTrailFinished, setDrawTrailFinished,

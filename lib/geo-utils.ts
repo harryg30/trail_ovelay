@@ -300,3 +300,47 @@ export function trailPhotoMapPoint(photo: TrailPhoto): [number, number] | null {
   if (lat == null || lng == null) return null
   return [lat, lng]
 }
+
+/** Ordered edges around a polygon ring ([lat, lng] vertices). Handles optional closing duplicate. */
+export function polygonRingEdges(
+  polygon: [number, number][]
+): Array<[[number, number], [number, number]]> {
+  const n = polygon.length
+  if (n < 2) return []
+  const closed =
+    polygon[0]![0] === polygon[n - 1]![0] && polygon[0]![1] === polygon[n - 1]![1]
+  const edges: Array<[[number, number], [number, number]]> = []
+  if (closed) {
+    for (let i = 0; i < n - 1; i++) {
+      edges.push([polygon[i]!, polygon[i + 1]!])
+    }
+  } else {
+    for (let i = 0; i < n - 1; i++) {
+      edges.push([polygon[i]!, polygon[i + 1]!])
+    }
+    edges.push([polygon[n - 1]!, polygon[0]!])
+  }
+  return edges
+}
+
+/** Longest boundary segment — used to place a label along the polygon edge. */
+export function longestPolygonEdgeMidpoint(
+  polygon: [number, number][]
+): { a: [number, number]; b: [number, number]; mid: [number, number] } | null {
+  const edges = polygonRingEdges(polygon)
+  if (edges.length === 0) return null
+  let best = edges[0]!
+  let bestLen = -1
+  for (const [p0, p1] of edges) {
+    const dx = p1[0] - p0[0]
+    const dy = p1[1] - p0[1]
+    const len = dx * dx + dy * dy
+    if (len > bestLen) {
+      bestLen = len
+      best = [p0, p1]
+    }
+  }
+  const [a, b] = best
+  const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+  return { a, b, mid }
+}

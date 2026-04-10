@@ -6,6 +6,7 @@ import LeftDrawer from '@/components/LeftDrawer'
 import AnnouncementModal from '@/components/AnnouncementModal'
 import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
 import type {
+  EditMode,
   Ride,
   Trail,
   Network,
@@ -17,6 +18,7 @@ import type {
   TrailPhoto,
   OfficialMapLayerPayload,
   PendingDigitizationTask,
+  MapOverlayRecord,
 } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import {
@@ -93,6 +95,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     refineError, setRefineError,
     selectedNetwork, setSelectedNetwork,
     drawNetworkPoints, setDrawNetworkPoints,
+    drawNetworkHistoryPast, setDrawNetworkHistoryPast,
+    drawNetworkHistoryFuture, setDrawNetworkHistoryFuture,
     drawTrailPoints, setDrawTrailPoints,
     drawTrailHistoryPast, setDrawTrailHistoryPast,
     drawTrailHistoryFuture, setDrawTrailHistoryFuture,
@@ -108,7 +112,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const geometryEditMode =
     editMode === 'edit-trail' && !!selectedTrail && refinedPolyline !== null
   const drawNetworkMode = editMode === 'add-network'
-  const editNetworkMode = editMode === 'edit-network'
+  const editNetworkMode = editMode === 'edit-network' || editMode === 'network-map'
   const drawTrailMode = editMode === 'draw-trail'
 
   // Keep latest values in refs so event handlers can read synchronously without
@@ -119,6 +123,13 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   drawTrailHistoryPastRef.current = drawTrailHistoryPast
   const drawTrailHistoryFutureRef = useRef(drawTrailHistoryFuture)
   drawTrailHistoryFutureRef.current = drawTrailHistoryFuture
+
+  const drawNetworkPointsRef = useRef(drawNetworkPoints)
+  drawNetworkPointsRef.current = drawNetworkPoints
+  const drawNetworkHistoryPastRef = useRef(drawNetworkHistoryPast)
+  drawNetworkHistoryPastRef.current = drawNetworkHistoryPast
+  const drawNetworkHistoryFutureRef = useRef(drawNetworkHistoryFuture)
+  drawNetworkHistoryFutureRef.current = drawNetworkHistoryFuture
 
   const refinedPolylineRef = useRef(refinedPolyline)
   refinedPolylineRef.current = refinedPolyline
@@ -151,6 +162,20 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     }
     return true
   }, [])
+
+  const applyDrawNetworkEdit = useCallback((updater: (prev: [number, number][]) => [number, number][]) => {
+    const prev = drawNetworkPointsRef.current
+    const next = updater(prev)
+    if (polylinesEqual(prev, next)) return
+    setDrawNetworkHistoryPast([...drawNetworkHistoryPastRef.current, prev])
+    setDrawNetworkHistoryFuture([])
+    setDrawNetworkPoints(next)
+  }, [
+    polylinesEqual,
+    setDrawNetworkHistoryFuture,
+    setDrawNetworkHistoryPast,
+    setDrawNetworkPoints,
+  ])
 
   const applyDrawTrailEdit = useCallback((updater: (prev: [number, number][]) => [number, number][]) => {
     // IMPORTANT: keep this side-effect free from inside React state updaters.
@@ -215,11 +240,19 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [alignMapHandler, setAlignMapHandler] = useState<null | ((ll: [number, number]) => void)>(null)
   const [pendingDigitizationTask, setPendingDigitizationTask] = useState<PendingDigitizationTask | null>(null)
 
+  const prevEditModeRef = useRef<EditMode>(null)
   useEffect(() => {
-    if (editMode !== 'edit-network' && editMode !== 'draw-trail') {
-      setOfficialMapLayer(null)
+    const prev = prevEditModeRef.current
+    const inNetworkPanel = editMode === 'edit-network' || editMode === 'network-map'
+    if (!inNetworkPanel) {
       setAlignMapHandler(null)
     }
+    const wasNetworkPanel = prev === 'edit-network' || prev === 'network-map'
+    if (wasNetworkPanel && !inNetworkPanel && editMode !== 'add-network') {
+      setOfficialMapLayer(null)
+      setPendingDigitizationTask(null)
+    }
+    prevEditModeRef.current = editMode
   }, [editMode])
 
   const requestFlyToTrail = useCallback((trail: Trail) => {
@@ -325,6 +358,44 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       })
       .catch(console.error)
   }, [])
+
+  const handleNetworkOfficialMapClick = useCallback(
+    async (network: Network) => {
+      if (network.officialMapAligned) {
+        if (
+          officialMapLayer?.networkId === network.id &&
+          officialMapLayer.transform != null
+        ) {
+          setOfficialMapLayer({
+            ...officialMapLayer,
+            visible: !officialMapLayer.visible,
+          })
+          return
+        }
+        try {
+          const res = await fetch(`/api/networks/${network.id}/map-overlay`)
+          const data = await res.json()
+          if (!res.ok) return
+          const o = data.overlay as MapOverlayRecord | null
+          if (!o?.transform) return
+          setOfficialMapLayer({
+            networkId: network.id,
+            blobUrl: o.blobUrl,
+            opacity: o.opacity,
+            transform: o.transform,
+            visible: true,
+          })
+        } catch {
+          /* ignore */
+        }
+        return
+      }
+      if (!user) return
+      setSelectedNetwork(network)
+      setMode('network-map')
+    },
+    [user, officialMapLayer, setMode, setSelectedNetwork]
+  )
 
   const loadRides = useCallback(async () => {
     if (!user) return
@@ -918,9 +989,65 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     applyRefineTrailEdit((prev) => insertPointAfter(prev, indexBefore, latlng))
   }, [applyRefineTrailEdit])
 
-  const handleNetworkPointAdded = useCallback((latlng: [number, number]) => {
-    setDrawNetworkPoints((prev) => [...prev, latlng])
-  }, [])
+  const handleNetworkPointAdded = useCallback(
+    (latlng: [number, number]) => {
+      applyDrawNetworkEdit((prev) => [...prev, latlng])
+    },
+    [applyDrawNetworkEdit]
+  )
+
+  const handleNetworkDrawPointRemoved = useCallback(
+    (index: number) => {
+      applyDrawNetworkEdit((prev) => {
+        if (prev.length <= 3) return prev
+        return removePointAt(prev, index)
+      })
+    },
+    [applyDrawNetworkEdit]
+  )
+
+  const handleNetworkDrawInsertAfter = useCallback(
+    (indexBefore: number, latlng: [number, number]) => {
+      applyDrawNetworkEdit((prev) => insertPointAfter(prev, indexBefore, latlng))
+    },
+    [applyDrawNetworkEdit]
+  )
+
+  const handleNetworkDrawPointMoved = useCallback(
+    (index: number, latlng: [number, number]) => {
+      applyDrawNetworkEdit((prev) => {
+        if (index < 0 || index >= prev.length) return prev
+        const next = [...prev]
+        next[index] = latlng
+        return next
+      })
+    },
+    [applyDrawNetworkEdit]
+  )
+
+  const handleNetworkDrawUndo = useCallback(() => {
+    const past = drawNetworkHistoryPastRef.current
+    if (past.length === 0) return
+    const prev = past[past.length - 1]
+    const current = drawNetworkPointsRef.current
+    setDrawNetworkHistoryPast(past.slice(0, -1))
+    setDrawNetworkHistoryFuture([current, ...drawNetworkHistoryFutureRef.current])
+    setDrawNetworkPoints(prev)
+  }, [setDrawNetworkHistoryFuture, setDrawNetworkHistoryPast, setDrawNetworkPoints])
+
+  const handleNetworkDrawRedo = useCallback(() => {
+    const future = drawNetworkHistoryFutureRef.current
+    if (future.length === 0) return
+    const next = future[0]
+    const current = drawNetworkPointsRef.current
+    setDrawNetworkHistoryFuture(future.slice(1))
+    setDrawNetworkHistoryPast([...drawNetworkHistoryPastRef.current, current])
+    setDrawNetworkPoints(next)
+  }, [setDrawNetworkHistoryFuture, setDrawNetworkHistoryPast, setDrawNetworkPoints])
+
+  const handleNetworkDrawClear = useCallback(() => {
+    applyDrawNetworkEdit(() => [])
+  }, [applyDrawNetworkEdit])
 
   const handleSaveNetwork = useCallback(
     async (name: string, polygon: [number, number][], trailIds: string[]): Promise<string | null> => {
@@ -991,8 +1118,10 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const handleStartRedrawNetwork = useCallback(() => {
     setDrawNetworkPoints([])
+    setDrawNetworkHistoryPast([])
+    setDrawNetworkHistoryFuture([])
     setMode('add-network')
-  }, [])
+  }, [setDrawNetworkHistoryFuture, setDrawNetworkHistoryPast, setDrawNetworkPoints, setMode])
 
   const handleFetchAndTogglePhotos = useCallback(async (rideId: string) => {
     const isVisible = photosVisibleRideIds.has(rideId)
@@ -1237,11 +1366,18 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onOpenPhotoLightbox={handleOpenPhotoLightbox}
           onFlyToTrail={requestFlyToTrail}
           onFlyToNetwork={requestFlyToNetwork}
+          officialMapLayer={officialMapLayer}
           onOfficialMapLayerChange={setOfficialMapLayer}
           onAlignmentMapPickChange={setAlignMapHandler}
           pendingDigitizationTask={pendingDigitizationTask}
           onPendingDigitizationTaskChange={setPendingDigitizationTask}
           onRefetchNetworks={refetchNetworks}
+          onNetworkOfficialMapClick={handleNetworkOfficialMapClick}
+          canUndoNetworkDraw={drawNetworkHistoryPast.length > 0}
+          canRedoNetworkDraw={drawNetworkHistoryFuture.length > 0}
+          onNetworkDrawUndo={handleNetworkDrawUndo}
+          onNetworkDrawRedo={handleNetworkDrawRedo}
+          onNetworkDrawClear={handleNetworkDrawClear}
         />
       </div>
 
@@ -1297,6 +1433,9 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         drawNetworkMode={drawNetworkMode}
         drawNetworkPoints={drawNetworkPoints}
         onNetworkPointAdded={handleNetworkPointAdded}
+        onNetworkDrawPointRemoved={handleNetworkDrawPointRemoved}
+        onNetworkDrawInsertAfter={handleNetworkDrawInsertAfter}
+        onNetworkDrawPointMoved={handleNetworkDrawPointMoved}
         editNetworkMode={editNetworkMode}
         selectedNetworkId={selectedNetwork?.id ?? null}
         onNetworkSelected={setSelectedNetwork}

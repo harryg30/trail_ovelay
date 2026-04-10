@@ -42,16 +42,21 @@ export type NetworkRow = {
   polygon: [number, number][]
   created_at: string
   trail_ids: string[] | null
+  has_official_map?: boolean | null
+  official_map_aligned?: boolean | null
 }
 
 export function rowToNetwork(row: NetworkRow): Network {
-  return {
+  const net: Network = {
     id: row.id,
     name: row.name,
     polygon: row.polygon,
     trailIds: row.trail_ids ?? [],
     createdAt: new Date(row.created_at),
   }
+  if (row.has_official_map != null) net.hasOfficialMap = Boolean(row.has_official_map)
+  if (row.official_map_aligned != null) net.officialMapAligned = Boolean(row.official_map_aligned)
+  return net
 }
 
 // ─── Ride ─────────────────────────────────────────────────────────────────────
