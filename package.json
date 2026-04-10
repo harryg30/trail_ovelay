@@ -13,7 +13,8 @@
     "docker:up": "docker-compose up -d",
     "db:migrate": "node scripts/migrate-local.mjs",
     "db:migrate:prod": "node scripts/migrate.mjs",
-    "db:seed": "node scripts/seed-local.mjs"
+    "db:seed": "node scripts/seed-local.mjs",
+    "db:pull-prod": "node scripts/pull-prod-dump.mjs"
   },
   "dependencies": {
     "@aws-sdk/rds-signer": "^3.1017.0",

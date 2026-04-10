@@ -206,6 +206,26 @@ npm run dev
 # → http://localhost:3000
 ```
 
+### Copy production data into local Postgres
+
+Use this when the map or sidebar look empty against a local database that has no trails/networks (or is missing official maps / digitization tasks).
+
+1. **Production** must define `DEV_DUMP_SECRET` (Vercel env) — the same value must appear in your **local** `.env.local`.
+2. **Local** `.env.local`: set `PROD_APP_URL` to your deployed site origin (e.g. `https://your-app.vercel.app`, no trailing slash), `DEV_DUMP_SECRET`, and the usual `TRAIL_DB_*` / password used by `npm run db:migrate`.
+3. Run migrations locally so tables exist (including `012_map_overlays_and_digitization_tasks.sql`):
+
+   ```bash
+   npm run db:migrate
+   ```
+
+4. Pull and seed:
+
+   ```bash
+   npm run db:pull-prod
+   ```
+
+`GET /api/dev/dump` returns trails, networks, `network_trails`, `map_overlays`, `map_overlay_alignment_points`, and `network_digitization_tasks`. The seed script uses `ON CONFLICT DO NOTHING` for core rows, then **replaces** overlay-related rows when the dump includes `mapOverlays` (so local matches prod for official maps and tasks). Optional user FKs on overlays/tasks are stored as NULL locally to avoid missing `users` rows.
+
 ### Production migrations (GitHub Actions)
 
 Pushes to `main` that change `migrations/**` or `scripts/migrate.mjs` run [`.github/workflows/db-migrate-production.yml`](.github/workflows/db-migrate-production.yml), which executes `npm run db:migrate:prod`. You can also run it manually: **Actions → Production DB migrations → Run workflow**.

@@ -29,6 +29,7 @@ app/
     map-overlays/[id]/  # PATCH opacity (auth)
     map-overlays/[id]/alignment/  # PATCH two-point align (auth)
     digitization-tasks/[id]/  # PATCH, DELETE (auth)
+    dev/dump/             # GET (secret header) — JSON snapshot for local seed
     health/
 components/
   LeafletMap.tsx        # Interactive map; trail/ride/network rendering; trimming UI
@@ -80,6 +81,8 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 | SESSION_SECRET | 32-byte hex for JWT |
 | NEXT_PUBLIC_APP_URL | Base URL (browser-visible) |
 | NODE_ENV | Controls cookie security |
+| PROD_APP_URL | Optional — origin only, for `npm run db:pull-prod` |
+| DEV_DUMP_SECRET | Shared with production; required header for `GET /api/dev/dump` |
 
 ## Architecture Notes
 - Single Next.js/Vercel deployment (no separate API server)
@@ -101,6 +104,7 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 - **Leaflet**: `ClientPage` holds `officialMapLayer`; `LeafletMap` draws the raster with a CSS `matrix()` from three projected corners (`imagePixelToLatLng`), `pointer-events: none`, z-index under interactive layers. Opacity slider persists via `PATCH /api/map-overlays/[id]`.
 - **Tasks**: `network_digitization_tasks` rows; optional “complete when I save next drawn trail” links to `PATCH /api/digitization-tasks/[id]` after `POST /api/trails` from draw flow. **Draw trail** save also attaches trail to selected network (`PATCH /api/networks/[id]` trailIds) when `TrimFormState.networkId` is set.
 - **DB**: run `npm run db:migrate` after pulling migration `012_map_overlays_and_digitization_tasks.sql`.
+- **Prod → local:** `npm run db:pull-prod` calls `GET /api/dev/dump` on `PROD_APP_URL` with `x-dev-dump-secret: DEV_DUMP_SECRET`, then `scripts/seed-local.mjs`. Production must run the same migration so the dump includes overlay tables. Older dump JSON files without `mapOverlays` skip overlay/task sync.
 
 ## Branching / PR hygiene
 - **`feature/trail-drawer-redesign`**: Web app drawer + trail edit work; based on `main`.
