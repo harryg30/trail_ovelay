@@ -13,6 +13,7 @@ import type {
   RidePhoto,
   TrailPhoto,
   OfficialMapLayerPayload,
+  PendingDigitizationTask,
 } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import type { MapBounds } from '@/lib/geo-utils'
@@ -135,8 +136,9 @@ interface LeftDrawerProps {
   onFlyToNetwork: (network: Network) => void
   onOfficialMapLayerChange: (layer: OfficialMapLayerPayload | null) => void
   onAlignmentMapPickChange: (handler: null | ((latlng: [number, number]) => void)) => void
-  pendingDigitizationTask: { id: string; label: string } | null
-  onPendingDigitizationTaskChange: (task: { id: string; label: string } | null) => void
+  pendingDigitizationTask: PendingDigitizationTask | null
+  onPendingDigitizationTaskChange: (task: PendingDigitizationTask | null) => void
+  onRefetchNetworks: () => void
 }
 
 export default function LeftDrawer({
@@ -226,6 +228,7 @@ export default function LeftDrawer({
   onAlignmentMapPickChange,
   pendingDigitizationTask,
   onPendingDigitizationTaskChange,
+  onRefetchNetworks,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -879,26 +882,58 @@ export default function LeftDrawer({
       {/* Networks section */}
       {!focusedTrailSession && (
       <div className="px-4 py-4 border-t-2 border-border flex flex-col gap-2">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <h2 className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
             Networks ({networks.length})
           </h2>
           {user && (
-            <button
-              type="button"
-              onClick={() => onEditModeChange(editMode === 'add-network' ? null : 'add-network')}
-              title={editMode === 'add-network' ? 'Cancel' : 'Add new network'}
-              className={cn(
-                'flex size-6 items-center justify-center rounded-sm border-2 text-base font-light transition-colors',
-                editMode === 'add-network'
-                  ? 'border-foreground bg-primary text-primary-foreground'
-                  : 'border-border text-muted-foreground hover:bg-mud/80'
-              )}
-            >
-              {editMode === 'add-network' ? '×' : '+'}
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  if (editMode === 'edit-network') {
+                    onSelectNetwork(null)
+                    onEditModeChange(null)
+                  } else {
+                    onSelectNetwork(null)
+                    onEditModeChange('edit-network')
+                  }
+                }}
+                title={editMode === 'edit-network' ? 'Exit edit networks' : 'Edit networks (map, trails, official map)'}
+                className={cn(
+                  'flex size-6 items-center justify-center rounded-sm border-2 transition-colors',
+                  editMode === 'edit-network'
+                    ? 'border-foreground bg-primary text-primary-foreground'
+                    : 'border-border text-muted-foreground hover:bg-mud/80'
+                )}
+              >
+                {editMode === 'edit-network' ? (
+                  <FontAwesomeIcon icon={faXmark} className="w-3.5 h-3.5" />
+                ) : (
+                  <FontAwesomeIcon icon={faPenToSquare} className="w-3.5 h-3.5" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => onEditModeChange(editMode === 'add-network' ? null : 'add-network')}
+                title={editMode === 'add-network' ? 'Cancel' : 'Add new network'}
+                className={cn(
+                  'flex size-6 items-center justify-center rounded-sm border-2 text-base font-light transition-colors',
+                  editMode === 'add-network'
+                    ? 'border-foreground bg-primary text-primary-foreground'
+                    : 'border-border text-muted-foreground hover:bg-mud/80'
+                )}
+              >
+                {editMode === 'add-network' ? '×' : '+'}
+              </button>
+            </div>
           )}
         </div>
+        {user && editMode !== 'add-network' && editMode !== 'edit-network' && (
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Use + to draw a network area and assign trails; use the pen to edit names, trail links, and the official map overlay.
+          </p>
+        )}
 
         {(editMode === 'add-network') && (
           <DrawNetworkContent
@@ -926,6 +961,7 @@ export default function LeftDrawer({
             onAlignmentMapPickChange={onAlignmentMapPickChange}
             pendingDigitizationTask={pendingDigitizationTask}
             onPendingDigitizationTaskChange={onPendingDigitizationTaskChange}
+            onRefetchNetworks={onRefetchNetworks}
           />
         )}
 

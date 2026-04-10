@@ -177,6 +177,9 @@ export interface NetworkDigitizationTask {
   createdAt: Date;
 }
 
+/** Draw-trail flow: publishing can complete a task; networkId pre-fills network membership. */
+export type PendingDigitizationTask = { id: string; label: string; networkId: string }
+
 /** Client payload for rendering the georeferenced official map on Leaflet. */
 export type OfficialMapLayerPayload = {
   blobUrl: string;

@@ -27,6 +27,8 @@ Notes:
 | `edit-network` | pointer | EditNetworkContent | selectedNetwork, drawNetworkPoints |
 | `null` | default | (no panel) | — |
 
+In **LeftDrawer**, the Networks block uses **+** for `add-network` and a **pen** control to enter `edit-network` without picking a row first (search or map click still selects the network). A pending digitization task carries `networkId` so draw-trail publish pre-fills network membership.
+
 ---
 
 ## Key Files

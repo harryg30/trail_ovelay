@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import type { Trail, Network } from '@/lib/types'
+import type { Trail, Network, OfficialMapLayerPayload, PendingDigitizationTask } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
-import type { OfficialMapLayerPayload } from '@/lib/types'
 import { ConfirmDeleteButton } from '@/components/shared/ConfirmDeleteButton'
 import { SearchableDropdown } from '@/components/shared/SearchableDropdown'
 import { OfficialMapAndTasksPanel } from '@/components/network/OfficialMapAndTasksPanel'
@@ -22,6 +21,7 @@ export function EditNetworkContent({
   onAlignmentMapPickChange,
   pendingDigitizationTask,
   onPendingDigitizationTaskChange,
+  onRefetchNetworks,
 }: {
   trails: Trail[]
   networks: Network[]
@@ -34,8 +34,9 @@ export function EditNetworkContent({
   user: SessionUser | null
   onOfficialMapLayerChange: (layer: OfficialMapLayerPayload | null) => void
   onAlignmentMapPickChange: (handler: null | ((latlng: [number, number]) => void)) => void
-  pendingDigitizationTask: { id: string; label: string } | null
-  onPendingDigitizationTaskChange: (task: { id: string; label: string } | null) => void
+  pendingDigitizationTask: PendingDigitizationTask | null
+  onPendingDigitizationTaskChange: (task: PendingDigitizationTask | null) => void
+  onRefetchNetworks: () => void
 }) {
   const [name, setName] = useState(selectedNetwork?.name ?? '')
   const [selectedTrailIds, setSelectedTrailIds] = useState<Set<string>>(
@@ -43,6 +44,7 @@ export function EditNetworkContent({
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [trailsFilter, setTrailsFilter] = useState('')
 
   useEffect(() => {
     if (selectedNetwork) {
@@ -112,8 +114,23 @@ export function EditNetworkContent({
           {trails.length === 0 ? (
             <p className="text-xs text-muted-foreground">No trails yet.</p>
           ) : (
+            <>
+              <input
+                type="search"
+                value={trailsFilter}
+                onChange={(e) => setTrailsFilter(e.target.value)}
+                placeholder="Filter trails…"
+                className={inputCls}
+                aria-label="Filter trails"
+              />
             <div className="flex flex-col gap-0.5 max-h-36 overflow-y-auto">
-              {trails.map((trail) => (
+              {trails
+                .filter((trail) =>
+                  trailsFilter.trim()
+                    ? trail.name.toLowerCase().includes(trailsFilter.trim().toLowerCase())
+                    : true
+                )
+                .map((trail) => (
                 <label key={trail.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-mud/45 cursor-pointer">
                   <input
                     type="checkbox"
@@ -126,6 +143,7 @@ export function EditNetworkContent({
                 </label>
               ))}
             </div>
+            </>
           )}
         </div>
 
@@ -138,6 +156,7 @@ export function EditNetworkContent({
             onAlignmentMapPickChange={onAlignmentMapPickChange}
             pendingDigitizationTask={pendingDigitizationTask}
             onPendingDigitizationTaskChange={onPendingDigitizationTaskChange}
+            onRefetchNetworks={onRefetchNetworks}
           />
         )}
 

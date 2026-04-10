@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { queryOne } from '@/lib/db'
+import { query, queryOne } from '@/lib/db'
 import { getSessionUserId } from '@/lib/auth'
 import type { DigitizationTaskKind, NetworkDigitizationTask } from '@/lib/types'
 
@@ -140,6 +140,14 @@ export async function PATCH(
     if (!row) {
       return NextResponse.json({ error: 'Update failed' }, { status: 500 })
     }
+
+    if (completedTrailId) {
+      await query(
+        `INSERT INTO network_trails (network_id, trail_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [row.network_id, completedTrailId]
+      )
+    }
+
     return NextResponse.json({ task: rowToTask(row) })
   } catch (e) {
     console.error('PATCH digitization-task error:', e)

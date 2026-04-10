@@ -23,7 +23,8 @@ components/
   network/                ← Components for the add-network / edit-network workflow
     NetworkRow.tsx        ← Expandable list item showing network trails (+ fly-to-map control)
     DrawNetworkContent.tsx ← Two-phase draw (place vertices → name + assign trails)
-    EditNetworkContent.tsx ← Network picker dropdown + edit form + delete
+    EditNetworkContent.tsx ← Network picker dropdown + edit form + delete + official map panel
+    OfficialMapAndTasksPanel.tsx ← Per-network map overlay, alignment, digitization tasks (linking a task trail also adds `network_trails` server-side)
 
   shared/                 ← Cross-cutting UI primitives
     EndpointControls.tsx  ← Step/clear buttons for trim start and end points

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import type { Trail, TrimFormState, Network } from '@/lib/types'
+import type { Trail, TrimFormState, Network, PendingDigitizationTask } from '@/lib/types'
 import type { TrailEditTool } from '@/lib/modes/types'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
 import { ConfirmDeleteButton } from '@/components/shared/ConfirmDeleteButton'
@@ -56,7 +56,7 @@ export function TrailEditDrawer({
   networks: Network[]
   canPublish?: boolean
   /** When set (draw variant), publishing will mark this digitization task complete. */
-  pendingDigitizationTask?: { id: string; label: string } | null
+  pendingDigitizationTask?: PendingDigitizationTask | null
 }) {
   const [form, setForm] = useState<TrimFormState>({
     name: '',
@@ -91,6 +91,17 @@ export function TrailEditDrawer({
     setSaveError(null)
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [variant])
+
+  useEffect(() => {
+    if (variant !== 'draw') return
+    const nid = pendingDigitizationTask?.networkId
+    if (!nid) return
+    const n = networks.find((x) => x.id === nid)
+    /* eslint-disable react-hooks/set-state-in-effect -- sync network from digitization task */
+    setForm((f) => ({ ...f, networkId: nid }))
+    setNetworkQuery(n?.name ?? '')
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [variant, pendingDigitizationTask?.id, pendingDigitizationTask?.networkId, networks])
 
   const displayPoints = variant === 'edit' ? (refinedPolyline ?? points) : points
   const distanceKm = displayPoints.length >= 2 ? polylineDistanceKm(displayPoints) : 0

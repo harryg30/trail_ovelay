@@ -16,6 +16,7 @@ import type {
   DraftTrail,
   TrailPhoto,
   OfficialMapLayerPayload,
+  PendingDigitizationTask,
 } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import {
@@ -212,10 +213,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const [officialMapLayer, setOfficialMapLayer] = useState<OfficialMapLayerPayload | null>(null)
   const [alignMapHandler, setAlignMapHandler] = useState<null | ((ll: [number, number]) => void)>(null)
-  const [pendingDigitizationTask, setPendingDigitizationTask] = useState<{
-    id: string
-    label: string
-  } | null>(null)
+  const [pendingDigitizationTask, setPendingDigitizationTask] = useState<PendingDigitizationTask | null>(null)
 
   useEffect(() => {
     if (editMode !== 'edit-network' && editMode !== 'draw-trail') {
@@ -311,6 +309,15 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   }, [])
 
   useEffect(() => {
+    fetch('/api/networks')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success) setNetworks(data.networks)
+      })
+      .catch(console.error)
+  }, [])
+
+  const refetchNetworks = useCallback(() => {
     fetch('/api/networks')
       .then((r) => r.json())
       .then((data) => {
@@ -1234,6 +1241,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onAlignmentMapPickChange={setAlignMapHandler}
           pendingDigitizationTask={pendingDigitizationTask}
           onPendingDigitizationTaskChange={setPendingDigitizationTask}
+          onRefetchNetworks={refetchNetworks}
         />
       </div>
 

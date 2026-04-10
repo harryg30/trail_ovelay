@@ -26,6 +26,7 @@ export function DrawNetworkContent({
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [trailsFilter, setTrailsFilter] = useState('')
 
   const canClose = drawNetworkPoints.length >= 3
 
@@ -101,8 +102,23 @@ export function DrawNetworkContent({
         {trails.length === 0 ? (
           <p className="text-xs text-muted-foreground">No trails yet.</p>
         ) : (
+          <>
+            <input
+              type="search"
+              value={trailsFilter}
+              onChange={(e) => setTrailsFilter(e.target.value)}
+              placeholder="Filter trails…"
+              className={inputCls}
+              aria-label="Filter trails"
+            />
           <div className="flex flex-col gap-0.5 max-h-40 overflow-y-auto">
-            {trails.map((trail) => (
+            {trails
+              .filter((trail) =>
+                trailsFilter.trim()
+                  ? trail.name.toLowerCase().includes(trailsFilter.trim().toLowerCase())
+                  : true
+              )
+              .map((trail) => (
               <label key={trail.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-mud/45 cursor-pointer">
                 <input
                   type="checkbox"
@@ -115,6 +131,7 @@ export function DrawNetworkContent({
               </label>
             ))}
           </div>
+          </>
         )}
       </div>
 

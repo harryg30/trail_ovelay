@@ -7,6 +7,7 @@ import type {
   MapOverlayRecord,
   NetworkDigitizationTask,
   OfficialMapLayerPayload,
+  PendingDigitizationTask,
   Trail,
   DigitizationTaskKind,
 } from '@/lib/types'
@@ -38,14 +39,16 @@ export function OfficialMapAndTasksPanel({
   onAlignmentMapPickChange,
   pendingDigitizationTask,
   onPendingDigitizationTaskChange,
+  onRefetchNetworks,
 }: {
   networkId: string
   user: SessionUser | null
   trails: Trail[]
   onOfficialMapLayerChange: (layer: OfficialMapLayerPayload | null) => void
   onAlignmentMapPickChange: (handler: null | ((latlng: [number, number]) => void)) => void
-  pendingDigitizationTask: { id: string; label: string } | null
-  onPendingDigitizationTaskChange: (task: { id: string; label: string } | null) => void
+  pendingDigitizationTask: PendingDigitizationTask | null
+  onPendingDigitizationTaskChange: (task: PendingDigitizationTask | null) => void
+  onRefetchNetworks: () => void
 }) {
   const [overlay, setOverlay] = useState<MapOverlayRecord | null>(null)
   const [alignmentPoints, setAlignmentPoints] = useState<MapOverlayAlignmentPoint[]>([])
@@ -274,6 +277,7 @@ export function OfficialMapAndTasksPanel({
     const data = await res.json()
     if (res.ok && data.task) {
       setTasks((prev) => prev.map((t) => (t.id === taskId ? data.task : t)))
+      if (trailId) onRefetchNetworks()
     }
   }
 
@@ -496,7 +500,9 @@ export function OfficialMapAndTasksPanel({
                         name="pending-task"
                         checked={pendingDigitizationTask?.id === t.id}
                         disabled={!!t.completedTrailId}
-                        onChange={() => onPendingDigitizationTaskChange({ id: t.id, label: t.label })}
+                        onChange={() =>
+                          onPendingDigitizationTaskChange({ id: t.id, label: t.label, networkId })
+                        }
                         className="accent-primary"
                       />
                       <span>Offer to complete when I save next drawn trail</span>
