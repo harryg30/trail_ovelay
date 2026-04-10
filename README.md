@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
 
 **Trail photos:** `POST /api/trail-photos` requires a Strava session. `GET /api/trail-photos` lists only community-visible pins (accepted and attached to a trail). `GET /api/trail-photos/mine` returns the signed-in user’s unpinned uploads. Without auth, the app keeps demo photos in the browser only (object URLs).
 
+**Official park maps (per network):** Signed-in users can upload a georeferenced raster for a network (`POST /api/networks/[id]/map-overlay` → Vercel Blob), align it with two image/basemap point pairs (`PATCH /api/map-overlays/[id]/alignment`), tune opacity (`PATCH /api/map-overlays/[id]`), and manage trace tasks (`GET/POST /api/networks/[id]/digitization-tasks`, `PATCH/DELETE /api/digitization-tasks/[id]`). Migration `012_map_overlays_and_digitization_tasks.sql` adds the tables.
+
 ### Database Connection Pool
 
 ```typescript

@@ -24,10 +24,16 @@ app/
     rides/              # GET (auth required)
     networks/           # GET (CORS-open), POST
     networks/[id]/      # PATCH, DELETE
+    networks/[id]/map-overlay/     # GET, POST (Blob upload; auth)
+    networks/[id]/digitization-tasks/  # GET, POST (auth)
+    map-overlays/[id]/  # PATCH opacity (auth)
+    map-overlays/[id]/alignment/  # PATCH two-point align (auth)
+    digitization-tasks/[id]/  # PATCH, DELETE (auth)
     health/
 components/
   LeafletMap.tsx        # Interactive map; trail/ride/network rendering; trimming UI
   LeftDrawer.tsx        # Sidebar: upload, rides, trails (foldered), networks; TrailEditDrawer for draw/edit trail
+  network/OfficialMapAndTasksPanel.tsx  # Per-network official map upload, 2-point align, digitization tasks
   trail/TrailEditDrawer.tsx  # Shared drawer form: pencil/eraser, undo/redo/clear, TrailFormFields, draw vs edit save
   AuthButton.tsx
 lib/
@@ -37,7 +43,7 @@ lib/
   gpx-utils.ts          # GPX + ZIP parsing (gpxparser, jszip)
   geo-utils.ts          # Haversine distance, elevation gain
   types.ts              # Shared interfaces
-migrations/             # 001–006 SQL migrations
+migrations/             # 001–012 SQL migrations (012: map_overlays, alignment points, digitization tasks)
 browser-extension/      # Chrome extension (content.js, background.js, popup)
 ```
 
@@ -49,6 +55,9 @@ browser-extension/      # Chrome extension (content.js, background.js, popup)
 | trails | id, name, difficulty, direction, polyline (JSONB), distance_km, elevation_gain_ft, notes, source, source_ride_id, uploaded_by_user_id |
 | networks | id, name, polygon (JSONB) |
 | network_trails | network_id, trail_id (junction) |
+| map_overlays | id, network_id (unique), blob_url, image_width/height, transform (JSONB), opacity, optional source/title/printed_date |
+| map_overlay_alignment_points | map_overlay_id, seq 1–2, img_x/y, lat/lon |
+| network_digitization_tasks | network_id, kind, label, sort_order, optional completed_trail_id / completed_at |
 
 ## Key Types (lib/types.ts)
 ```ts
@@ -87,6 +96,12 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 - **Map flags** (see `ClientPage`): trail pick on map when `edit-trail` without selection; geometry edit when `edit-trail` + `selectedTrail` + `refinedPolyline !== null`. `useEditMode` clears `refinedPolyline` / refine history when leaving `edit-trail`; seeds `refinedPolyline` from `selectedTrail.polyline` when trail id changes.
 - **Geo helpers**: `lib/geo-edit.ts` (and updates to `lib/geo-utils.ts`) support interactive polyline editing used by the map.
 
+## Official map + digitization tasks
+- **Edit network** drawer includes `OfficialMapAndTasksPanel`: upload PNG/JPEG/WebP to Blob (`POST /api/networks/[id]/map-overlay` with `imageWidth` / `imageHeight` from client), **two-point align** (click feature on preview image → same feature on basemap → repeat), then `PATCH /api/map-overlays/[id]/alignment` stores points + `transform` (`lib/map-overlay-transform.ts` similarity fit).
+- **Leaflet**: `ClientPage` holds `officialMapLayer`; `LeafletMap` draws the raster with a CSS `matrix()` from three projected corners (`imagePixelToLatLng`), `pointer-events: none`, z-index under interactive layers. Opacity slider persists via `PATCH /api/map-overlays/[id]`.
+- **Tasks**: `network_digitization_tasks` rows; optional “complete when I save next drawn trail” links to `PATCH /api/digitization-tasks/[id]` after `POST /api/trails` from draw flow. **Draw trail** save also attaches trail to selected network (`PATCH /api/networks/[id]` trailIds) when `TrimFormState.networkId` is set.
+- **DB**: run `npm run db:migrate` after pulling migration `012_map_overlays_and_digitization_tasks.sql`.
+
 ## Branching / PR hygiene
 - **`feature/trail-drawer-redesign`**: Web app drawer + trail edit work; based on `main`.
 - **`extension/browser-extension-updates`**: Chrome extension–only commits; keep extension changes off the drawer feature branch so PRs stay reviewable.
@@ -95,6 +110,7 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 - Some environments wrap `git commit` with `commit --trailer …`, which **Git 2.28** rejects (`unknown option 'trailer'`). If that happens, create the commit with `git write-tree`, `git commit-tree <tree> -p <parent>` (message on stdin), then `git update-ref HEAD <new>`.
 
 ## Recent Work (from git log)
+- Official map per network: Blob upload, two-point align, semi-transparent overlay on map, digitization task checklist + optional auto-complete on drawn trail publish
 - Left drawer unified trail draw/edit (`TrailEditDrawer`), single save for metadata + geometry when editing
 - Browser extension showing trail lines on Strava
 - Initial extension scaffold

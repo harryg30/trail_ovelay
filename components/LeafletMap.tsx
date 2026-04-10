@@ -3,7 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, Network, EditMode, RidePhoto, TrailPhoto } from '@/lib/types'
+import type {
+  Ride,
+  Trail,
+  DraftTrail,
+  TrimPoint,
+  TrimSegment,
+  Network,
+  EditMode,
+  RidePhoto,
+  TrailPhoto,
+  OfficialMapLayerPayload,
+} from '@/lib/types'
+import { imagePixelToLatLng } from '@/lib/map-overlay-transform'
 import type { TrailEditTool } from '@/lib/modes/types'
 import { resolveMapCursor } from '@/lib/modes/map-cursor'
 import { snapToNearestTrailPoint } from '@/lib/geo-utils'
@@ -80,6 +92,8 @@ export interface LeafletMapProps {
   onOpenPhotoLightbox?: (src: string) => void
   /** Increment `seq` on each request so repeated fly-to on the same id runs again. */
   flyToRequest?: { seq: number; kind: 'trail' | 'network'; id: string } | null
+  officialMapLayer?: OfficialMapLayerPayload | null
+  officialMapAlignHandler?: null | ((latlng: [number, number]) => void)
 }
 
 export default function LeafletMap({
@@ -128,6 +142,8 @@ export default function LeafletMap({
   onBoundsChange,
   onOpenPhotoLightbox,
   flyToRequest,
+  officialMapLayer = null,
+  officialMapAlignHandler = null,
 }: LeafletMapProps) {
   /** Phases where the base_map should own clicks (not background trails/networks/rides). */
   const mapDrawingSurface = drawTrailMode || refineMode || drawNetworkMode
@@ -197,6 +213,10 @@ export default function LeafletMap({
   onAcceptTrailPhotoRef.current = onAcceptTrailPhoto
   const onOpenPhotoLightboxRef = useRef(onOpenPhotoLightbox)
   onOpenPhotoLightboxRef.current = onOpenPhotoLightbox
+  const officialMapLayerRef = useRef(officialMapLayer)
+  officialMapLayerRef.current = officialMapLayer
+  const officialMapAlignHandlerRef = useRef(officialMapAlignHandler)
+  officialMapAlignHandlerRef.current = officialMapAlignHandler
   trimModeRef.current = trimMode
   editTrailModeRef.current = editTrailMode
   onTrimPointSelectedRef.current = onTrimPointSelected
@@ -422,6 +442,10 @@ export default function LeafletMap({
     fireBoundsChange()
 
     map.on('click', (e: L.LeafletMouseEvent) => {
+      if (officialMapAlignHandlerRef.current) {
+        officialMapAlignHandlerRef.current([e.latlng.lat, e.latlng.lng])
+        return
+      }
       if (placingPhotoRef.current) {
         const { lat, lng } = e.latlng
         const snap = snapToNearestTrailPoint(lat, lng, trailsRef.current)
@@ -1440,6 +1464,88 @@ export default function LeafletMap({
     }
   }, [trailPhotos])
 
+  const officialMapDomRef = useRef<{ holder: HTMLDivElement; img: HTMLImageElement } | null>(null)
+
+  useEffect(() => {
+    const map = mapRef.current
+    const layer = officialMapLayer
+
+    const teardownDom = () => {
+      if (officialMapDomRef.current) {
+        officialMapDomRef.current.holder.remove()
+        officialMapDomRef.current = null
+      }
+    }
+
+    if (!map || !layer?.visible || !layer.transform) {
+      teardownDom()
+      return
+    }
+
+    const container = map.getContainer()
+    let pair = officialMapDomRef.current
+    if (!pair || !pair.holder.isConnected) {
+      teardownDom()
+      const holder = document.createElement('div')
+      holder.style.cssText =
+        'position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;z-index:380;overflow:hidden'
+      container.appendChild(holder)
+      const img = document.createElement('img')
+      img.draggable = false
+      img.alt = ''
+      img.style.position = 'absolute'
+      img.style.left = '0'
+      img.style.top = '0'
+      img.style.transformOrigin = '0 0'
+      holder.appendChild(img)
+      pair = { holder, img }
+      officialMapDomRef.current = pair
+    }
+
+    const { img } = pair
+    img.src = layer.blobUrl
+
+    const update = () => {
+      const m = mapRef.current
+      const lay = officialMapLayerRef.current
+      const dom = officialMapDomRef.current
+      if (!m || !lay?.visible || !lay.transform || !dom) return
+      const t = lay.transform
+      const w = t.imageWidth
+      const h = t.imageHeight
+      const im = dom.img
+      const ll00 = imagePixelToLatLng(0, 0, t.p1Img, t.p1Ll, t.p2Img, t.p2Ll)
+      const llw0 = imagePixelToLatLng(w, 0, t.p1Img, t.p1Ll, t.p2Img, t.p2Ll)
+      const ll0h = imagePixelToLatLng(0, h, t.p1Img, t.p1Ll, t.p2Img, t.p2Ll)
+      const p00 = m.latLngToContainerPoint(L.latLng(ll00.lat, ll00.lon))
+      const pW0 = m.latLngToContainerPoint(L.latLng(llw0.lat, llw0.lon))
+      const p0H = m.latLngToContainerPoint(L.latLng(ll0h.lat, ll0h.lon))
+      const a = (pW0.x - p00.x) / w
+      const c = (p0H.x - p00.x) / h
+      const e = p00.x
+      const b = (pW0.y - p00.y) / w
+      const d = (p0H.y - p00.y) / h
+      const f = p00.y
+      im.style.width = `${w}px`
+      im.style.height = `${h}px`
+      im.style.opacity = String(lay.opacity)
+      im.style.transform = `matrix(${a},${b},${c},${d},${e},${f})`
+    }
+
+    const onLoad = () => {
+      update()
+    }
+    img.addEventListener('load', onLoad)
+    map.on('zoom move zoomend moveend', update)
+    update()
+
+    return () => {
+      img.removeEventListener('load', onLoad)
+      map.off('zoom move zoomend moveend', update)
+      teardownDom()
+    }
+  }, [officialMapLayer])
+
   return (
     <div className="relative w-full h-full">
       <div
@@ -1448,6 +1554,13 @@ export default function LeafletMap({
         data-basemap={basemapStyle}
         suppressHydrationWarning
       />
+      {officialMapAlignHandler && (
+        <div className="absolute left-1/2 top-3 z-[1001] flex max-w-[min(92vw,24rem)] -translate-x-1/2 items-center gap-2 border-2 border-electric/80 bg-primary/15 px-3 py-1.5 shadow-[3px_3px_0_0_var(--foreground)]">
+          <p className="truncate text-xs font-semibold text-foreground">
+            Map align: tap the same feature on the basemap
+          </p>
+        </div>
+      )}
       {(placingPhoto || placingTrailPhoto) && (
         <div
           className={`absolute left-1/2 top-3 z-[1000] flex max-w-[min(90vw,22rem)] -translate-x-1/2 items-center gap-2 border-2 px-3 py-1.5 shadow-[3px_3px_0_0_var(--map-chrome-fg)] dark:border-[var(--map-chrome-fg)] dark:shadow-[3px_3px_0_0_var(--map-chrome-fg)] ${

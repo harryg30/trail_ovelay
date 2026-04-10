@@ -121,3 +121,66 @@ export interface SaveTrailResponse {
   savedTrails?: Trail[];
   error?: string;
 }
+
+export type DigitizationTaskKind =
+  | "named_route"
+  | "intersection_route"
+  | "loop"
+  | "other";
+
+/** Persisted JSON from `buildMapOverlayTransform` (lib/map-overlay-transform). */
+export type MapOverlayTransformJson = {
+  kind: "similarity_two_point";
+  imageWidth: number;
+  imageHeight: number;
+  p1Img: { x: number; y: number };
+  p1Ll: { lat: number; lon: number };
+  p2Img: { x: number; y: number };
+  p2Ll: { lat: number; lon: number };
+  southWest: [number, number];
+  northEast: [number, number];
+};
+
+export interface MapOverlayRecord {
+  id: string;
+  networkId: string;
+  blobUrl: string;
+  sourceUrl?: string;
+  title?: string;
+  printedDate?: string;
+  imageWidth: number;
+  imageHeight: number;
+  transform: MapOverlayTransformJson | null;
+  opacity: number;
+  createdAt: Date;
+}
+
+export interface MapOverlayAlignmentPoint {
+  seq: 1 | 2;
+  imgX: number;
+  imgY: number;
+  lat: number;
+  lon: number;
+}
+
+export interface NetworkDigitizationTask {
+  id: string;
+  networkId: string;
+  mapOverlayId?: string;
+  kind: DigitizationTaskKind;
+  label: string;
+  description?: string;
+  sortOrder: number;
+  completedTrailId?: string;
+  completedAt?: Date;
+  completedByUserId?: string;
+  createdAt: Date;
+}
+
+/** Client payload for rendering the georeferenced official map on Leaflet. */
+export type OfficialMapLayerPayload = {
+  blobUrl: string;
+  opacity: number;
+  transform: MapOverlayTransformJson | null;
+  visible: boolean;
+};

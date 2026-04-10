@@ -1,7 +1,19 @@
 'use client'
 
 import { Fragment, useMemo, useRef, useState } from 'react'
-import type { Ride, Trail, DraftTrail, TrimPoint, TrimSegment, TrimFormState, EditMode, Network, RidePhoto, TrailPhoto } from '@/lib/types'
+import type {
+  Ride,
+  Trail,
+  DraftTrail,
+  TrimPoint,
+  TrimSegment,
+  TrimFormState,
+  EditMode,
+  Network,
+  RidePhoto,
+  TrailPhoto,
+  OfficialMapLayerPayload,
+} from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import type { MapBounds } from '@/lib/geo-utils'
 import { polylineInBounds, pointInBounds, trailPhotoMapPoint } from '@/lib/geo-utils'
@@ -121,6 +133,10 @@ interface LeftDrawerProps {
   onOpenPhotoLightbox: (src: string) => void
   onFlyToTrail: (trail: Trail) => void
   onFlyToNetwork: (network: Network) => void
+  onOfficialMapLayerChange: (layer: OfficialMapLayerPayload | null) => void
+  onAlignmentMapPickChange: (handler: null | ((latlng: [number, number]) => void)) => void
+  pendingDigitizationTask: { id: string; label: string } | null
+  onPendingDigitizationTaskChange: (task: { id: string; label: string } | null) => void
 }
 
 export default function LeftDrawer({
@@ -206,6 +222,10 @@ export default function LeftDrawer({
   onOpenPhotoLightbox,
   onFlyToTrail,
   onFlyToNetwork,
+  onOfficialMapLayerChange,
+  onAlignmentMapPickChange,
+  pendingDigitizationTask,
+  onPendingDigitizationTaskChange,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -497,6 +517,7 @@ export default function LeftDrawer({
               onCancel={() => onEditModeChange(null)}
               networks={networks}
               canPublish={!!user}
+              pendingDigitizationTask={pendingDigitizationTask}
             />
           </div>
         )}
@@ -889,6 +910,11 @@ export default function LeftDrawer({
             onDelete={onDeleteNetwork}
             onRedraw={onStartRedrawNetwork}
             onCancel={() => { onSelectNetwork(null); onEditModeChange(null) }}
+            user={user}
+            onOfficialMapLayerChange={onOfficialMapLayerChange}
+            onAlignmentMapPickChange={onAlignmentMapPickChange}
+            pendingDigitizationTask={pendingDigitizationTask}
+            onPendingDigitizationTaskChange={onPendingDigitizationTaskChange}
           />
         )}
 

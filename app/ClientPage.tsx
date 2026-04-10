@@ -5,7 +5,18 @@ import dynamic from 'next/dynamic'
 import LeftDrawer from '@/components/LeftDrawer'
 import AnnouncementModal from '@/components/AnnouncementModal'
 import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
-import type { Ride, Trail, Network, TrimSegment, TrimFormState, SaveTrailResponse, RidePhoto, DraftTrail, TrailPhoto } from '@/lib/types'
+import type {
+  Ride,
+  Trail,
+  Network,
+  TrimSegment,
+  TrimFormState,
+  SaveTrailResponse,
+  RidePhoto,
+  DraftTrail,
+  TrailPhoto,
+  OfficialMapLayerPayload,
+} from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import {
   polylineDistanceKm,
@@ -198,6 +209,20 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     kind: 'trail' | 'network'
     id: string
   } | null>(null)
+
+  const [officialMapLayer, setOfficialMapLayer] = useState<OfficialMapLayerPayload | null>(null)
+  const [alignMapHandler, setAlignMapHandler] = useState<null | ((ll: [number, number]) => void)>(null)
+  const [pendingDigitizationTask, setPendingDigitizationTask] = useState<{
+    id: string
+    label: string
+  } | null>(null)
+
+  useEffect(() => {
+    if (editMode !== 'edit-network' && editMode !== 'draw-trail') {
+      setOfficialMapLayer(null)
+      setAlignMapHandler(null)
+    }
+  }, [editMode])
 
   const requestFlyToTrail = useCallback((trail: Trail) => {
     setMapFlyToRequest((prev) => ({
@@ -734,13 +759,40 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       })
       const data: SaveTrailResponse = await res.json()
       if (data.success && data.savedTrails) {
+        const saved = data.savedTrails[0]
         setTrails((prev) => [...(data.savedTrails ?? []), ...prev])
+
+        if (form.networkId && saved) {
+          const network = networks.find((n) => n.id === form.networkId)
+          if (network) {
+            const updatedTrailIds = [...network.trailIds, saved.id]
+            const res2 = await fetch(`/api/networks/${network.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: network.name, trailIds: updatedTrailIds }),
+            })
+            const data2 = await res2.json()
+            if (data2.success && data2.network) {
+              setNetworks((prev) => prev.map((n) => (n.id === data2.network.id ? data2.network : n)))
+            }
+          }
+        }
+
+        if (pendingDigitizationTask && saved) {
+          await fetch(`/api/digitization-tasks/${pendingDigitizationTask.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completedTrailId: saved.id }),
+          })
+          setPendingDigitizationTask(null)
+        }
+
         setMode(null)
         return null
       }
       return data.error ?? 'Save failed'
     },
-    [drawTrailPoints, user, handleSaveDraft]
+    [drawTrailPoints, user, handleSaveDraft, networks, pendingDigitizationTask]
   )
 
   const handleDrawTrailPointAdded = useCallback((latlng: [number, number]) => {
@@ -1178,6 +1230,10 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onOpenPhotoLightbox={handleOpenPhotoLightbox}
           onFlyToTrail={requestFlyToTrail}
           onFlyToNetwork={requestFlyToNetwork}
+          onOfficialMapLayerChange={setOfficialMapLayer}
+          onAlignmentMapPickChange={setAlignMapHandler}
+          pendingDigitizationTask={pendingDigitizationTask}
+          onPendingDigitizationTaskChange={setPendingDigitizationTask}
         />
       </div>
 
@@ -1256,6 +1312,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         onRefineInsertAfter={handleRefineInsertAfter}
         onOpenPhotoLightbox={handleOpenPhotoLightbox}
         flyToRequest={mapFlyToRequest}
+        officialMapLayer={officialMapLayer}
+        officialMapAlignHandler={alignMapHandler}
       />
 
       {photoLightboxSrc && (

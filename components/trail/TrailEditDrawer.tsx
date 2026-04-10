@@ -36,6 +36,7 @@ export function TrailEditDrawer({
   onDeleteTrail,
   networks,
   canPublish,
+  pendingDigitizationTask,
 }: {
   variant: 'draw' | 'edit'
   trailEditTool: TrailEditTool
@@ -54,6 +55,8 @@ export function TrailEditDrawer({
   onDeleteTrail?: () => Promise<string | null>
   networks: Network[]
   canPublish?: boolean
+  /** When set (draw variant), publishing will mark this digitization task complete. */
+  pendingDigitizationTask?: { id: string; label: string } | null
 }) {
   const [form, setForm] = useState<TrimFormState>({
     name: '',
@@ -130,6 +133,12 @@ export function TrailEditDrawer({
             <span className="ml-2">{distanceKm.toFixed(2)} km</span>
           )}
         </p>
+        {variant === 'draw' && pendingDigitizationTask && (
+          <p className="mt-1.5 rounded border border-electric/40 bg-primary/10 px-2 py-1 text-xs text-foreground">
+            Publishing will complete task:{' '}
+            <span className="font-semibold">{pendingDigitizationTask.label}</span>
+          </p>
+        )}
       </div>
 
       <div className="flex flex-col gap-2">
