@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
+import { applyDatabaseUrlFallback as applyDatabaseUrlFallbackFromLib } from '../lib/pg-connection-env.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -44,23 +45,7 @@ export function loadEnvLocal() {
   }
 }
 
-/** If `DATABASE_URL` is set but `TRAIL_DB_*` is missing, fill TRAIL_DB_* for local scripts. */
+/** Delegates to shared helper in `lib/pg-connection-env.mjs` (also used by Next `lib/db.ts`). */
 export function applyDatabaseUrlFallback() {
-  const urlStr = process.env.DATABASE_URL
-  if (!urlStr) return
-  try {
-    const u = new URL(urlStr)
-    if (!process.env.TRAIL_DB_PGHOST) process.env.TRAIL_DB_PGHOST = u.hostname
-    if (!process.env.TRAIL_DB_PGPORT && u.port)
-      process.env.TRAIL_DB_PGPORT = u.port
-    if (!process.env.TRAIL_DB_PGUSER && u.username)
-      process.env.TRAIL_DB_PGUSER = decodeURIComponent(u.username)
-    if (!process.env.TRAIL_DB_PGPASSWORD)
-      process.env.TRAIL_DB_PGPASSWORD = decodeURIComponent(u.password || '')
-    const db = u.pathname.replace(/^\//, '')
-    if (!process.env.TRAIL_DB_PGDATABASE && db)
-      process.env.TRAIL_DB_PGDATABASE = db
-  } catch {
-    // ignore invalid DATABASE_URL
-  }
+  applyDatabaseUrlFallbackFromLib()
 }

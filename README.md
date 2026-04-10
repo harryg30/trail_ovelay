@@ -61,31 +61,19 @@ export async function POST(request: NextRequest) {
 
 ### Database Connection Pool
 
-```typescript
-// lib/db.ts
-import { Pool } from "pg";
+[`lib/db.ts`](lib/db.ts) exposes `query` / `queryOne` backed by a `pg` `Pool` that is created **lazily** on first use so `next build` can succeed without a live database when no route touches the DB at import time. Auth is **password-only**: either **`DATABASE_URL`** (recommended on Vercel with [Neon](https://neon.tech) via the [Vercel Marketplace](https://vercel.com/marketplace)) or discrete **`TRAIL_DB_*`** including a non-empty **`TRAIL_DB_PGPASSWORD`**.
 
-let pool: Pool;
+If **`DATABASE_URL`** is set and discrete `TRAIL_DB_*` values are missing, [`applyDatabaseUrlFallback`](lib/pg-connection-env.mjs) fills them (Next.js and scripts share this logic). For **migrate/seed scripts only**, optional **`DATABASE_URL_MIGRATE`** overwrites `TRAIL_DB_*` after that mapping so you can point migrations at Neon’s **direct** (non-pooler) endpoint while the app uses a **pooled** `DATABASE_URL`.
 
-export function getPool() {
-  if (!pool) {
-    pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  }
-  return pool;
-}
+SSL follows `TRAIL_DB_PGSSLMODE` / `TRAIL_DB_SSL` — same rules as migrate/seed scripts ([`lib/pg-connection-env.mjs`](lib/pg-connection-env.mjs)). Use `disable` for local Docker; `require` (or rely on Neon’s URL) for cloud.
 
-export async function query<T = any>(text: string, values?: any[]): Promise<T[]> {
-  const result = await getPool().query(text, values);
-  return result.rows;
-}
+Vercel serverless: `attachDatabasePool` from `@vercel/functions` helps reuse connections across invocations.
 
-export async function queryOne<T = any>(text: string, values?: any[]): Promise<T | null> {
-  const result = await getPool().query(text, values);
-  return result.rows[0] || null;
-}
-```
+#### Neon on Vercel (golden path)
 
-Vercel serverless functions are ephemeral — the pool reuses connections across invocations.
+1. **Add Neon**: Vercel project → **Storage** → **Neon**, or `vercel integration add neon` ([Vercel storage docs](https://vercel.com/docs/storage)). Ensure **`DATABASE_URL`** is attached to Production (and Preview if you want branch databases).
+2. **Pooled vs direct**: Use Neon’s **pooled** connection string for **`DATABASE_URL`** on Vercel (and usually in local `.env.local` for `npm run dev`). For `npm run db:migrate` / `db:migrate:prod` and GitHub Actions, set **`DATABASE_URL_MIGRATE`** to the **direct** (non-pooler) string if Neon shows both; otherwise a single `DATABASE_URL` is enough until you hit pooler edge cases during DDL.
+3. **`vercel env pull .env.local --yes`** syncs env vars for local runs against the linked project.
 
 ### File Uploads
 
@@ -183,17 +171,38 @@ export default function LeafletMap() {
 }
 ```
 
-### Environment Variables
+### Environment variables
+
+**Postgres:** server-only vars — never `NEXT_PUBLIC_*`. **Production on Vercel:** prefer **`DATABASE_URL`** from the Neon integration; **local:** Docker `TRAIL_DB_*` or a dev `DATABASE_URL`.
+
+| Variable | Role |
+|----------|------|
+| `DATABASE_URL` | Standard Postgres URL. When set, **always** maps into `TRAIL_DB_*` (overwrites), so Neon wins over stale discrete vars from old integrations ([`lib/pg-connection-env.mjs`](lib/pg-connection-env.mjs)). Omit `DATABASE_URL` for Docker-only local `TRAIL_DB_*`. |
+| `DATABASE_URL_MIGRATE` | Optional. **Migrate/seed scripts only:** parsed after `DATABASE_URL` and **overwrites** `TRAIL_DB_*`. Use Neon’s **direct** (non-pooler) URL here when the app uses a pooled `DATABASE_URL`. |
+| `TRAIL_DB_PGHOST` | Hostname (if not using `DATABASE_URL` alone) |
+| `TRAIL_DB_PGPORT` | Port (default `5432`) |
+| `TRAIL_DB_PGUSER` | User |
+| `TRAIL_DB_PGDATABASE` | Database name |
+| `TRAIL_DB_PGPASSWORD` | Non-empty password (local Docker, or derived from `DATABASE_URL`) |
+| `TRAIL_DB_PGSSLMODE` | e.g. `disable` for local Docker, `require` for cloud (see [`lib/pg-connection-env.mjs`](lib/pg-connection-env.mjs)). **`disable` breaks Neon** unless you remove it: migration URLs on `*.neon.tech` force `require` when parsing `DATABASE_URL` / `DATABASE_URL_MIGRATE`. |
+| `TRAIL_DB_SSL` | Set to `false` to force SSL off |
 
 ```bash
-# .env.local
-DATABASE_URL=postgres://user:pass@localhost:5432/traildb
+# .env.local — Neon-style (after vercel env pull or paste from Neon console)
+# DATABASE_URL=postgres://...@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require
+# DATABASE_URL_MIGRATE=postgres://...@ep-xxx.region.aws.neon.tech/neondb?sslmode=require
+
+# .env.local — Docker / discrete vars
+TRAIL_DB_PGHOST=localhost
+TRAIL_DB_PGPORT=5432
+TRAIL_DB_PGUSER=trail_user
+TRAIL_DB_PGPASSWORD=localdevpassword
+TRAIL_DB_PGDATABASE=trail_overlay
+TRAIL_DB_PGSSLMODE=disable
 
 # Optional — first-load basemap (Catalog is the default; set osm for Classic)
 # NEXT_PUBLIC_MAP_BASE_STYLE=osm
 ```
-
-`DATABASE_URL` has no `NEXT_PUBLIC_` prefix — server-only. Set it in the Vercel dashboard for production.
 
 `NEXT_PUBLIC_MAP_BASE_STYLE` — omit (or `stylized`) for **Catalog** as the first-load default; `osm` selects **Classic**. Both modes use **standard OpenStreetMap** raster tiles; Catalog only adds a light warm CSS filter so the base sits closer to the app’s paper/forest palette ([`lib/map-basemap.ts`](lib/map-basemap.ts)). **Classic / Catalog** is chosen from the layers tool button under **zoom to my location** (top-left) and persists in `localStorage` (`trail-overlay-basemap-style`), overriding the env default on return visits until cleared.
 
@@ -206,12 +215,29 @@ npm run dev
 # → http://localhost:3000
 ```
 
+### Local Postgres with Docker (golden path)
+
+1. Start the DB and print a matching `.env.local` snippet:
+
+   ```bash
+   npm run db:local-docker
+   ```
+
+   (Uses `docker compose` or `docker-compose`; credentials match [`docker-compose.yml`](docker-compose.yml).)
+
+2. Merge the printed `TRAIL_DB_*` lines into `.env.local`, then:
+
+   ```bash
+   npm run db:migrate
+   npm run dev
+   ```
+
 ### Copy production data into local Postgres
 
 Use this when the map or sidebar look empty against a local database that has no trails/networks (or is missing official maps / digitization tasks).
 
 1. **Production** must define `DEV_DUMP_SECRET` (Vercel env) — the same value must appear in your **local** `.env.local`.
-2. **Local** `.env.local`: set `DEV_DUMP_SECRET` (must match production). For the dump URL, set `PROD_APP_URL` **or** rely on `NEXT_PUBLIC_APP_URL` (same origin as production). Use the same `TRAIL_DB_*` values as `npm run db:migrate` (password **or** IAM — see below).
+2. **Local** `.env.local`: set `DEV_DUMP_SECRET` (must match production). For the dump URL, set `PROD_APP_URL` **or** rely on `NEXT_PUBLIC_APP_URL` (same origin as production). Use the same DB credentials as `npm run db:migrate` (`DATABASE_URL` / `TRAIL_DB_*` / optional `DATABASE_URL_MIGRATE`).
 3. Run migrations locally so tables exist (including `012_map_overlays_and_digitization_tasks.sql`):
 
    ```bash
@@ -226,33 +252,45 @@ Use this when the map or sidebar look empty against a local database that has no
 
 `GET /api/dev/dump` returns trails, networks, `network_trails`, `map_overlays`, `map_overlay_alignment_points`, and `network_digitization_tasks`. The seed script uses `ON CONFLICT DO NOTHING` for core rows, then **replaces** overlay-related rows when the dump includes `mapOverlays` (so local matches prod for official maps and tasks). Optional user FKs on overlays/tasks are stored as NULL locally to avoid missing `users` rows.
 
-`npm run db:migrate` and `npm run db:pull-prod` use the same DB auth as production migrate: non-empty `TRAIL_DB_PGPASSWORD` → password auth (typical Docker); otherwise IAM RDS (`TRAIL_DB_AWS_REGION`, `TRAIL_DB_AWS_ROLE_ARN`). `ExpiredTokenException` means refresh AWS credentials (e.g. `aws sso login`). To seed **Docker** Postgres while `.env.local` points at RDS, set `TRAIL_DB_PGHOST=localhost`, `TRAIL_DB_PGUSER=trail_user`, `TRAIL_DB_PGPASSWORD=localdevpassword`, `TRAIL_DB_PGDATABASE=trail_overlay`, `TRAIL_DB_PGSSLMODE=disable` in your shell **before** `npm run …` (values match `docker-compose.yml`).
+`npm run db:migrate` and `npm run db:pull-prod` use the same env rules as [`lib/db.ts`](lib/db.ts): password auth via `DATABASE_URL` and/or `TRAIL_DB_*` (see [`scripts/db-script-pool.mjs`](scripts/db-script-pool.mjs)). To hit **Docker** Postgres while `.env.local` points at Neon, override `TRAIL_DB_*` or unset `DATABASE_URL` in your shell **before** `npm run …` (same values as `npm run db:local-docker` prints).
 
 ### Production migrations (GitHub Actions)
 
-Pushes to `main` that change `migrations/**` or `scripts/migrate.mjs` run [`.github/workflows/db-migrate-production.yml`](.github/workflows/db-migrate-production.yml), which executes `npm run db:migrate:prod`. You can also run it manually: **Actions → Production DB migrations → Run workflow**.
+Pushes to `main` that change `migrations/**` or related DB scripts run [`.github/workflows/db-migrate-production.yml`](.github/workflows/db-migrate-production.yml), which executes `npm run db:migrate:prod`. You can also run it manually: **Actions → Production DB migrations → Run workflow**.
 
-Create the same values you use in Vercel (see `TRAIL_DB_*` in the dashboard) as **repository secrets** — for example with [GitHub CLI](https://cli.github.com/). This workflow is currently wired for **password auth** (it fails fast if `TRAIL_DB_PGPASSWORD` is missing/empty).
+Configure **either** a single **`DATABASE_URL`** secret (recommended for Neon — use the **direct** connection string if you have both pooled and direct) **or** discrete **`TRAIL_DB_*`** secrets including non-empty **`TRAIL_DB_PGPASSWORD`**. Optional **`DATABASE_URL_MIGRATE`** overrides `TRAIL_DB_*` in the migrate script when you store a pooled URL in `DATABASE_URL` for other tooling but want migrations on the direct host.
 
 ```bash
+# Option A — one secret (simplest for Neon)
+gh secret set DATABASE_URL --body "postgres://...@ep-xxx.region.aws.neon.tech/neondb?sslmode=require"
+
+# Option B — pooled app URL + direct migrate URL
+gh secret set DATABASE_URL --body "postgres://...@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require"
+gh secret set DATABASE_URL_MIGRATE --body "postgres://...@ep-xxx.region.aws.neon.tech/neondb?sslmode=require"
+
+# Option C — discrete vars (any Postgres)
 gh secret set TRAIL_DB_PGHOST --body "your-host"
 gh secret set TRAIL_DB_PGUSER --body "your-user"
 gh secret set TRAIL_DB_PGPASSWORD --body "your-password"
-gh secret set TRAIL_DB_PGDATABASE --body "postgres"
+gh secret set TRAIL_DB_PGDATABASE --body "neondb"
 gh secret set TRAIL_DB_PGPORT --body "5432"
-# Optional — match Vercel (e.g. require / disable)
 gh secret set TRAIL_DB_PGSSLMODE --body "require"
-# gh secret set TRAIL_DB_SSL --body "false"
 ```
 
 List configured names (not values): `gh secret list`
+
+### Moving data from another Postgres (e.g. old Aurora)
+
+- **Fresh start:** point Vercel at Neon, run `npm run db:migrate:prod` (or migrate from an empty DB), deploy. No data transfer.
+- **Keep existing rows:** take a logical dump from the source (`pg_dump`), restore into Neon (`pg_restore` or `psql`). Ensure the **`_migrations`** table matches already-applied files under [`migrations/`](migrations/) so CI does not re-apply DDL. Easiest: dump **after** migrations are fully applied on the old DB, restore, then compare `_migrations` to the repo’s `.sql` list.
 
 ---
 
 ## Gotchas
 
 - **CORS** — not an issue; API routes run on the same origin as the frontend
-- **DB connections** — use the pool; don't create a new connection per request
+- **DB connections** — use the pool via `query` / `queryOne`; don't create a new connection per request
+- **First DB access** — [`lib/db.ts`](lib/db.ts) builds the pool on first query; misconfigured env surfaces as an error at runtime on the first DB route, not necessarily at deploy time
 - **Vercel body limit** — 4.5MB default; increase in `next.config.ts` if needed
 - **Leaflet CSS** — must be imported in the client component, not `globals.css`
-- **`NEXT_PUBLIC_` prefix** — only needed for env vars that must be readable in the browser; keep `DATABASE_URL` unprefixed
+- **`NEXT_PUBLIC_` prefix** — only needed for env vars that must be readable in the browser; keep `TRAIL_DB_*` and `DATABASE_URL` unprefixed (server-only)

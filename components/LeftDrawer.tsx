@@ -652,8 +652,36 @@ export default function LeftDrawer({
             for (const t of unassigned) rows.push({ kind: 'trail', trail: t, networkId: null })
           }
 
+          const trailFolderSearchBar = (
+            <div className="flex items-center gap-2">
+              <Input
+                type="text"
+                value={trailsQuery}
+                onChange={(e) => { setTrailsQuery(e.target.value); setTrailsPage(0) }}
+                placeholder="Search trails…"
+                className="h-9 flex-1 min-w-0"
+              />
+              <select
+                value={trailsPageSize}
+                onChange={(e) => { const v = Number(e.target.value); setTrailsPageSize(v); localStorage.setItem('trailsPageSize', String(v)); setTrailsPage(0) }}
+                className="shrink-0 rounded-sm border-2 border-foreground bg-card px-1 py-0.5 text-xs font-semibold text-foreground shadow-[1px_1px_0_0_var(--foreground)]"
+              >
+                <option value={5}>5 / pg</option>
+                <option value={10}>10 / pg</option>
+                <option value={25}>25 / pg</option>
+              </select>
+            </div>
+          )
+
           if (rows.length === 0) {
-            return <p className="text-xs text-muted-foreground">{trails.length === 0 ? 'No trails saved yet.' : 'No trails match.'}</p>
+            return (
+              <>
+                {trailFolderSearchBar}
+                <p className="text-xs text-muted-foreground">
+                  {trails.length === 0 ? 'No trails saved yet.' : 'No trails match.'}
+                </p>
+              </>
+            )
           }
 
           const totalPages = Math.max(1, Math.ceil(rows.length / trailsPageSize))
@@ -662,24 +690,7 @@ export default function LeftDrawer({
 
           return (
             <>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  value={trailsQuery}
-                  onChange={(e) => { setTrailsQuery(e.target.value); setTrailsPage(0) }}
-                  placeholder="Search trails…"
-                  className="h-9 flex-1 min-w-0"
-                />
-                <select
-                  value={trailsPageSize}
-                  onChange={(e) => { const v = Number(e.target.value); setTrailsPageSize(v); localStorage.setItem('trailsPageSize', String(v)); setTrailsPage(0) }}
-                  className="shrink-0 rounded-sm border-2 border-foreground bg-card px-1 py-0.5 text-xs font-semibold text-foreground shadow-[1px_1px_0_0_var(--foreground)]"
-                >
-                  <option value={5}>5 / pg</option>
-                  <option value={10}>10 / pg</option>
-                  <option value={25}>25 / pg</option>
-                </select>
-              </div>
+              {trailFolderSearchBar}
               <ul className="flex flex-col gap-0.5">
                 {pagedRows.map((row, i) => {
                   if (row.kind === 'header') {

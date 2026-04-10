@@ -1,11 +1,17 @@
-Run all pending database migrations for this project.
+Run pending database migrations for this project.
 
-1. Read the `DATABASE_URL` from `.env.local` to find the connection string.
-2. List all `.sql` files in the `migrations/` directory, sorted by filename (they are numbered like `001_...`, `002_...`).
-3. For each migration file in order, run it against the database using psql:
-   ```
-   psql "$DATABASE_URL" -f migrations/<filename>.sql
-   ```
-4. Report which migrations were run and whether they succeeded or failed.
+1. Ensure `.env.local` (or the shell) defines database access — see README **Environment variables**:
+   - **Preferred (Vercel / Neon):** `DATABASE_URL` (mapped to `TRAIL_DB_*` via [`lib/pg-connection-env.mjs`](lib/pg-connection-env.mjs)).
+   - **Optional:** `DATABASE_URL_MIGRATE` — direct (non-pooler) URL; overwrites `TRAIL_DB_*` for migrate scripts only when both are set.
+   - **Local Docker:** discrete `TRAIL_DB_*` with non-empty `TRAIL_DB_PGPASSWORD`, or a local `DATABASE_URL`.
+2. Run from the repo root:
 
-Note: All migrations use `CREATE TABLE IF NOT EXISTS` and `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so they are safe to re-run — already-applied migrations will be skipped automatically.
+   ```bash
+   npm run db:migrate
+   ```
+
+   This runs `scripts/migrate-local.mjs`, which applies numbered `.sql` files in `migrations/` in order and records them in `_migrations`. Already-applied files are skipped.
+
+3. Report which migrations ran (`apply` vs `skip`) and whether the run succeeded.
+
+Do **not** use raw `psql` unless you intentionally bypass the migration tracker — the npm script is the source of truth for local dev.

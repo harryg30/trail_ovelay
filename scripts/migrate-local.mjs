@@ -14,9 +14,9 @@ try {
 }
 
 console.log(
-  process.env.TRAIL_DB_PGPASSWORD?.length
-    ? 'Using TRAIL_DB_PGPASSWORD for migrations.\n'
-    : 'Using IAM RDS auth for migrations.\n'
+  process.env.DATABASE_URL_MIGRATE
+    ? 'Using DATABASE_URL_MIGRATE (direct connection) for migrations.\n'
+    : 'Using DATABASE_URL / TRAIL_DB_* password auth for migrations.\n'
 )
 
 const migrationsDir = resolve(__dirname, '../migrations')

@@ -38,7 +38,8 @@ components/
   trail/TrailEditDrawer.tsx  # Shared drawer form: pencil/eraser, undo/redo/clear, TrailFormFields, draw vs edit save
   AuthButton.tsx
 lib/
-  db.ts                 # pg pool; query() / queryOne()
+  db.ts                 # pg pool; query() / queryOne(); TRAIL_DB_* + optional DATABASE_URL→TRAIL_DB_* (pg-connection-env.mjs)
+  pg-connection-env.mjs # shared applyDatabaseUrlFallback + poolSsl for db.ts and scripts
   auth.ts               # getSessionUser() / getSessionUserId()
   session.ts            # JWT encrypt/decrypt; 30-day cookie
   gpx-utils.ts          # GPX + ZIP parsing (gpxparser, jszip)
@@ -75,7 +76,11 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 ## Env Vars
 | Var | Notes |
 |-----|-------|
-| DATABASE_URL | Postgres connection string |
+| TRAIL_DB_PGHOST, TRAIL_DB_PGPORT, TRAIL_DB_PGUSER, TRAIL_DB_PGDATABASE | Postgres connection (discrete vars) |
+| TRAIL_DB_PGPASSWORD | Non-empty password (local Docker or derived from DATABASE_URL) |
+| TRAIL_DB_PGSSLMODE / TRAIL_DB_SSL | SSL for pg (shared with scripts via lib/pg-connection-env.mjs) |
+| DATABASE_URL | Preferred on Vercel (Neon); mapped to TRAIL_DB_* when discrete vars unset |
+| DATABASE_URL_MIGRATE | Optional; migrate/seed only — direct Neon URL overwrites TRAIL_DB_* after DATABASE_URL mapping |
 | STRAVA_CLIENT_ID | OAuth app ID |
 | STRAVA_CLIENT_SECRET | Server-only |
 | SESSION_SECRET | 32-byte hex for JWT |
