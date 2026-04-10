@@ -2,30 +2,29 @@
  * Fetches GET /api/dev/dump from production and runs scripts/seed-local.mjs.
  * Requires in .env.local (or environment): PROD_APP_URL, DEV_DUMP_SECRET, TRAIL_DB_*.
  */
-import { readFileSync, writeFileSync } from 'fs'
+import { writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join, resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { spawnSync } from 'child_process'
+import { loadEnvLocal, applyDatabaseUrlFallback } from './load-env-local.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..')
-const envPath = join(root, '.env.local')
 
-try {
-  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-    const match = line.match(/^([^#=]+)=["']?(.+?)["']?\s*$/)
-    if (match) process.env[match[1].trim()] = match[2].trim()
-  }
-} catch {
-  console.error('Could not read .env.local — copy env vars or create the file.')
-  process.exit(1)
-}
+loadEnvLocal()
+applyDatabaseUrlFallback()
 
-const base = process.env.PROD_APP_URL?.replace(/\/$/, '')
+const base = (
+  process.env.PROD_APP_URL ||
+  process.env.NEXT_PUBLIC_APP_URL ||
+  ''
+).replace(/\/$/, '')
 const secret = process.env.DEV_DUMP_SECRET
 if (!base || !secret) {
-  console.error('Set PROD_APP_URL and DEV_DUMP_SECRET (e.g. in .env.local).')
+  console.error(
+    'Set DEV_DUMP_SECRET and PROD_APP_URL (or NEXT_PUBLIC_APP_URL) in .env.local.'
+  )
   process.exit(1)
 }
 

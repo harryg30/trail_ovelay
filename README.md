@@ -211,7 +211,7 @@ npm run dev
 Use this when the map or sidebar look empty against a local database that has no trails/networks (or is missing official maps / digitization tasks).
 
 1. **Production** must define `DEV_DUMP_SECRET` (Vercel env) — the same value must appear in your **local** `.env.local`.
-2. **Local** `.env.local`: set `PROD_APP_URL` to your deployed site origin (e.g. `https://your-app.vercel.app`, no trailing slash), `DEV_DUMP_SECRET`, and the usual `TRAIL_DB_*` / password used by `npm run db:migrate`.
+2. **Local** `.env.local`: set `DEV_DUMP_SECRET` (must match production). For the dump URL, set `PROD_APP_URL` **or** rely on `NEXT_PUBLIC_APP_URL` (same origin as production). Use the same `TRAIL_DB_*` values as `npm run db:migrate` (password **or** IAM — see below).
 3. Run migrations locally so tables exist (including `012_map_overlays_and_digitization_tasks.sql`):
 
    ```bash
@@ -225,6 +225,8 @@ Use this when the map or sidebar look empty against a local database that has no
    ```
 
 `GET /api/dev/dump` returns trails, networks, `network_trails`, `map_overlays`, `map_overlay_alignment_points`, and `network_digitization_tasks`. The seed script uses `ON CONFLICT DO NOTHING` for core rows, then **replaces** overlay-related rows when the dump includes `mapOverlays` (so local matches prod for official maps and tasks). Optional user FKs on overlays/tasks are stored as NULL locally to avoid missing `users` rows.
+
+`npm run db:migrate` and `npm run db:pull-prod` use the same DB auth as production migrate: non-empty `TRAIL_DB_PGPASSWORD` → password auth (typical Docker); otherwise IAM RDS (`TRAIL_DB_AWS_REGION`, `TRAIL_DB_AWS_ROLE_ARN`). `ExpiredTokenException` means refresh AWS credentials (e.g. `aws sso login`). To seed **Docker** Postgres while `.env.local` points at RDS, set `TRAIL_DB_PGHOST=localhost`, `TRAIL_DB_PGUSER=trail_user`, `TRAIL_DB_PGPASSWORD=localdevpassword`, `TRAIL_DB_PGDATABASE=trail_overlay`, `TRAIL_DB_PGSSLMODE=disable` in your shell **before** `npm run …` (values match `docker-compose.yml`).
 
 ### Production migrations (GitHub Actions)
 

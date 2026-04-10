@@ -81,7 +81,7 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 | SESSION_SECRET | 32-byte hex for JWT |
 | NEXT_PUBLIC_APP_URL | Base URL (browser-visible) |
 | NODE_ENV | Controls cookie security |
-| PROD_APP_URL | Optional — origin only, for `npm run db:pull-prod` |
+| PROD_APP_URL | Optional — dump origin for `npm run db:pull-prod`; falls back to `NEXT_PUBLIC_APP_URL` |
 | DEV_DUMP_SECRET | Shared with production; required header for `GET /api/dev/dump` |
 
 ## Architecture Notes

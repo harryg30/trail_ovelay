@@ -1,36 +1,23 @@
 import { readFileSync, readdirSync } from 'fs'
 import { resolve, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { Pool } from 'pg'
+import { createScriptPool } from './db-script-pool.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-// Load .env.local
-const envPath = resolve(__dirname, '../.env.local')
+let pool
 try {
-  for (const line of readFileSync(envPath, 'utf8').split('\n')) {
-    const match = line.match(/^([^#=]+)=["']?(.+?)["']?\s*$/)
-    if (match) process.env[match[1].trim()] = match[2].trim()
-  }
-} catch {
-  // .env.local is optional when vars are already in the environment
-}
-
-if (!process.env.TRAIL_DB_PGPASSWORD) {
-  console.error('TRAIL_DB_PGPASSWORD is not set.')
-  console.error('This script requires a static password (local Postgres).')
-  console.error('For production (IAM auth), use: node scripts/migrate.mjs')
+  pool = createScriptPool()
+} catch (err) {
+  console.error(err.message)
   process.exit(1)
 }
 
-const pool = new Pool({
-  host: process.env.TRAIL_DB_PGHOST || 'localhost',
-  user: process.env.TRAIL_DB_PGUSER || 'trail_user',
-  database: process.env.TRAIL_DB_PGDATABASE || 'trail_overlay',
-  password: process.env.TRAIL_DB_PGPASSWORD,
-  port: Number(process.env.TRAIL_DB_PGPORT) || 5432,
-  ssl: false,
-})
+console.log(
+  process.env.TRAIL_DB_PGPASSWORD?.length
+    ? 'Using TRAIL_DB_PGPASSWORD for migrations.\n'
+    : 'Using IAM RDS auth for migrations.\n'
+)
 
 const migrationsDir = resolve(__dirname, '../migrations')
 const files = readdirSync(migrationsDir)
