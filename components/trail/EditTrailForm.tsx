@@ -64,6 +64,20 @@ export function EditTrailForm({
         )}
       </div>
 
+      {selectedTrail?.osmWayId && (
+        <div className="rounded-md border border-forest/30 bg-forest/5 px-2.5 py-1.5 text-xs text-forest">
+          Linked to{' '}
+          <a
+            href={`https://www.openstreetmap.org/way/${selectedTrail.osmWayId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2"
+          >
+            OSM way {selectedTrail.osmWayId}
+          </a>
+        </div>
+      )}
+
       <TrailFormFields form={form} onChange={setForm} disabled={disabled} />
 
       {saveError && <p className="text-xs font-semibold text-destructive">{saveError}</p>}

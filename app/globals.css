@@ -284,6 +284,22 @@
   color: var(--map-chrome-fg) !important;
 }
 
+.osm-way-tooltip {
+  background: var(--map-chrome-bg) !important;
+  color: var(--map-chrome-fg) !important;
+  border: 2px solid var(--map-chrome-fg) !important;
+  border-radius: var(--radius-sm) !important;
+  padding: 3px 8px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  white-space: nowrap !important;
+  box-shadow: 2px 2px 0 0 var(--map-chrome-fg) !important;
+}
+
+.osm-way-tooltip::before {
+  border-top-color: var(--map-chrome-fg) !important;
+}
+
 /* Classic — standard OSM appearance (same tiles as Catalog, no grade) */
 .leaflet-container[data-basemap='osm'] .leaflet-tile-pane {
   filter: none;

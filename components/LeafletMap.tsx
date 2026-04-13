@@ -17,19 +17,26 @@ import type {
 } from '@/lib/types'
 import { imagePixelToLatLng } from '@/lib/map-overlay-transform'
 import type { TrailEditTool } from '@/lib/modes/types'
+import type { OsmWayFeature } from '@/lib/overpass'
+import type { StravaSegmentFeature } from '@/lib/strava-segments'
+import type { StagedTrailApi } from '@/hooks/useStagedTrail'
+import { FloatingDraggableToolsPanel } from '@/components/map/FloatingDraggableToolsPanel'
+import { AddTrailPanel } from '@/components/trail/AddTrailPanel'
 import { resolveMapCursor } from '@/lib/modes/map-cursor'
 import { snapToNearestTrailPoint } from '@/lib/geo-utils'
+import { nearestPolylineSegment } from '@/lib/geo-edit'
+import { attachVertexInsertHoverCursor } from '@/lib/map-vertex-insert-cursor'
 import {
   MAP,
   basemapControlSvg,
   catalogLineHints,
   drawNetworkNodeDivHtml,
   drawTrailNodeDivHtml,
+  drawInsertMidpointDivHtml,
   locateControlSvg,
   mapPopupStyles,
   networkCentroidLabelHtml,
   networkPolygonLeafletStyle,
-  refineMidpointDivHtml,
   refineNodeDivHtml,
   rideLineColor,
   trailLineColor,
@@ -79,21 +86,34 @@ export interface LeafletMapProps {
   onAcceptTrailPhoto: (photoId: string, trailId: string, trailLat: number, trailLon: number) => Promise<void>
   onEditModeChange?: (mode: EditMode) => void
   draftTrails: DraftTrail[]
-  drawTrailMode: boolean
-  drawTrailPoints: [number, number][]
-  onDrawTrailPointAdded: (latlng: [number, number]) => void
-  onDrawTrailPointRemoved: (index: number) => void
-  onDrawTrailInsertAfter: (indexBefore: number, latlng: [number, number]) => void
-  onDrawTrailPointMoved: (index: number, latlng: [number, number]) => void
   trailEditTool: TrailEditTool
   onRefinePointRemoved: (index: number) => void
   onRefineInsertAfter: (indexBefore: number, latlng: [number, number]) => void
+  onRefineSectionErase?: (fromIndex: number, toIndex: number) => void
   onBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void
   onOpenPhotoLightbox?: (src: string) => void
-  /** Increment `seq` on each request so repeated fly-to on the same id runs again. */
   flyToRequest?: { seq: number; kind: 'trail' | 'network'; id: string } | null
   officialMapLayer?: OfficialMapLayerPayload | null
   officialMapAlignHandler?: null | ((latlng: [number, number]) => void)
+  addTrailMode?: boolean
+  staged?: StagedTrailApi
+  osmWays?: OsmWayFeature[]
+  onOsmWaySelected?: (feature: OsmWayFeature) => void
+  osmLoading?: boolean
+  osmError?: string | null
+  stravaSegments?: StravaSegmentFeature[]
+  onStravaSegmentSelected?: (feature: StravaSegmentFeature) => void
+  stravaLoading?: boolean
+  stravaError?: string | null
+  showStravaTab?: boolean
+  gpxActiveRideId?: string | null
+  onSetGpxActiveRide?: (id: string | null) => void
+  onAddTrimSegment?: () => void
+  onStepTrimPoint?: (which: 'start' | 'end', delta: number) => void
+  onClearTrimPoint?: (which: 'start' | 'end') => void
+  /** GPX tab: upload matches drawer /api/upload (session required). */
+  canUploadGpx?: boolean
+  onRidesUploaded?: (rides: Ride[]) => void
 }
 
 export default function LeafletMap({
@@ -130,23 +150,38 @@ export default function LeafletMap({
   onAcceptTrailPhoto,
   onEditModeChange,
   draftTrails,
-  drawTrailMode,
-  drawTrailPoints,
-  onDrawTrailPointAdded,
-  onDrawTrailPointRemoved,
-  onDrawTrailInsertAfter,
-  onDrawTrailPointMoved,
   trailEditTool,
   onRefinePointRemoved,
   onRefineInsertAfter,
+  onRefineSectionErase,
   onBoundsChange,
   onOpenPhotoLightbox,
   flyToRequest,
   officialMapLayer = null,
   officialMapAlignHandler = null,
+  addTrailMode = false,
+  staged,
+  osmWays = [],
+  onOsmWaySelected,
+  osmLoading = false,
+  osmError = null,
+  stravaSegments = [],
+  onStravaSegmentSelected,
+  stravaLoading = false,
+  stravaError = null,
+  showStravaTab = false,
+  gpxActiveRideId = null,
+  onSetGpxActiveRide,
+  onAddTrimSegment,
+  onStepTrimPoint,
+  onClearTrimPoint,
+  canUploadGpx = false,
+  onRidesUploaded,
 }: LeafletMapProps) {
-  /** Phases where the base_map should own clicks (not background trails/networks/rides). */
-  const mapDrawingSurface = drawTrailMode || refineMode || drawNetworkMode
+  const drawToolActive = addTrailMode && staged?.activeTool === 'draw'
+  const osmToolActive = addTrailMode && staged?.activeTool === 'osm'
+  const stravaToolActive = addTrailMode && staged?.activeTool === 'strava'
+  const mapDrawingSurface = drawToolActive || refineMode || drawNetworkMode
 
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<L.Map | null>(null)
@@ -166,6 +201,8 @@ export default function LeafletMap({
   const trailPhotoMarkersLayerRef = useRef<L.LayerGroup | null>(null)
   const draftTrailsLayerRef = useRef<L.LayerGroup | null>(null)
   const drawTrailLayerRef = useRef<L.LayerGroup | null>(null)
+  const osmLayerRef = useRef<L.LayerGroup | null>(null)
+  const stravaLayerRef = useRef<L.LayerGroup | null>(null)
 
   const [zoom, setZoom] = useState(5)
   const [basemapStyle, setBasemapStyle] = useState<MapBaseStyle>(getMapBaseStyle)
@@ -187,15 +224,14 @@ export default function LeafletMap({
   const onNetworkPointAddedRef = useRef(onNetworkPointAdded)
   const onNetworkSelectedRef = useRef(onNetworkSelected)
   const networksRef = useRef(networks)
-  const drawTrailModeRef = useRef(drawTrailMode)
-  const onDrawTrailPointAddedRef = useRef(onDrawTrailPointAdded)
-  const onDrawTrailPointRemovedRef = useRef(onDrawTrailPointRemoved)
-  const onDrawTrailInsertAfterRef = useRef(onDrawTrailInsertAfter)
-  const onDrawTrailPointMovedRef = useRef(onDrawTrailPointMoved)
+  const drawToolActiveRef = useRef(drawToolActive)
+  const drawToolTypeRef = useRef(staged?.drawTool ?? 'pencil')
+  const stagedRef = useRef(staged)
   const trailEditToolRef = useRef<TrailEditTool>(trailEditTool)
   const refineModeRef = useRef(refineMode)
   const onRefinePointRemovedRef = useRef(onRefinePointRemoved)
   const onRefineInsertAfterRef = useRef(onRefineInsertAfter)
+  const sectionEraseStartRef = useRef<number | null>(null)
   const hasFitBoundsRef = useRef(false)
   const onBoundsChangeRef = useRef(onBoundsChange)
   onBoundsChangeRef.current = onBoundsChange
@@ -217,6 +253,10 @@ export default function LeafletMap({
   officialMapLayerRef.current = officialMapLayer
   const officialMapAlignHandlerRef = useRef(officialMapAlignHandler)
   officialMapAlignHandlerRef.current = officialMapAlignHandler
+  const onOsmWaySelectedRef = useRef(onOsmWaySelected)
+  onOsmWaySelectedRef.current = onOsmWaySelected
+  const onStravaSegmentSelectedRef = useRef(onStravaSegmentSelected)
+  onStravaSegmentSelectedRef.current = onStravaSegmentSelected
   trimModeRef.current = trimMode
   editTrailModeRef.current = editTrailMode
   onTrimPointSelectedRef.current = onTrimPointSelected
@@ -228,15 +268,30 @@ export default function LeafletMap({
   onNetworkPointAddedRef.current = onNetworkPointAdded
   onNetworkSelectedRef.current = onNetworkSelected
   networksRef.current = networks
-  drawTrailModeRef.current = drawTrailMode
-  onDrawTrailPointAddedRef.current = onDrawTrailPointAdded
-  onDrawTrailPointRemovedRef.current = onDrawTrailPointRemoved
-  onDrawTrailInsertAfterRef.current = onDrawTrailInsertAfter
-  onDrawTrailPointMovedRef.current = onDrawTrailPointMoved
+  drawToolActiveRef.current = drawToolActive
+  drawToolTypeRef.current = staged?.drawTool ?? 'pencil'
+  stagedRef.current = staged
   trailEditToolRef.current = trailEditTool
   refineModeRef.current = refineMode
   onRefinePointRemovedRef.current = onRefinePointRemoved
+  const onRefineSectionEraseRef = useRef(onRefineSectionErase)
+  onRefineSectionEraseRef.current = onRefineSectionErase
   onRefineInsertAfterRef.current = onRefineInsertAfter
+
+  const getResolvedMapCursor = useCallback(
+    () =>
+      resolveMapCursor({
+        editMode,
+        editTrailMode,
+        refineMode,
+        addTrailTool: staged?.activeTool ?? null,
+        drawTool: staged?.drawTool ?? 'pencil',
+        trailEditTool,
+      }),
+    [editMode, editTrailMode, refineMode, staged?.activeTool, staged?.drawTool, trailEditTool]
+  )
+  const getResolvedMapCursorRef = useRef(getResolvedMapCursor)
+  getResolvedMapCursorRef.current = getResolvedMapCursor
 
   /** Classic vs Catalog only changes tile CSS (`data-basemap`); both use the same OSM layer. */
   const applyBasemapStyle = useCallback((next: MapBaseStyle) => {
@@ -426,6 +481,8 @@ export default function LeafletMap({
     drawNetworkLayerRef.current = L.layerGroup().addTo(map)
     draftTrailsLayerRef.current = L.layerGroup().addTo(map)
     drawTrailLayerRef.current = L.layerGroup().addTo(map)
+    osmLayerRef.current = L.layerGroup().addTo(map)
+    stravaLayerRef.current = L.layerGroup().addTo(map)
 
     const fireBoundsChange = () => {
       const b = map.getBounds()
@@ -588,9 +645,9 @@ export default function LeafletMap({
         }
         return
       }
-      if (drawTrailModeRef.current) {
-        if (trailEditToolRef.current === 'pencil') {
-          onDrawTrailPointAddedRef.current([e.latlng.lat, e.latlng.lng])
+      if (drawToolActiveRef.current) {
+        if (drawToolTypeRef.current === 'pencil') {
+          stagedRef.current?.appendDrawPoint([e.latlng.lat, e.latlng.lng])
         }
         return
       }
@@ -622,6 +679,7 @@ export default function LeafletMap({
       userLocationLayerRef.current = null
       draftTrailsLayerRef.current = null
       drawTrailLayerRef.current = null
+      osmLayerRef.current = null
     }
   }, [])
 
@@ -743,7 +801,7 @@ export default function LeafletMap({
           onTrimPointSelectedRef.current(ride.id, findClosestIdx(e.latlng))
           return
         }
-        if (drawTrailModeRef.current || refineModeRef.current) return
+        if (drawToolActiveRef.current || refineModeRef.current) return
         if (editTrailModeRef.current) return
         L.popup().setLatLng(e.latlng).setContent(ridePopupContent).openOn(mapRef.current!)
       })
@@ -861,14 +919,8 @@ export default function LeafletMap({
   // Map container cursor: mode + trail picker vs geometry + pencil vs eraser
   useEffect(() => {
     if (!mapRef.current) return
-    mapRef.current.getContainer().style.cursor = resolveMapCursor({
-      editMode,
-      editTrailMode,
-      refineMode,
-      drawTrailMode,
-      trailEditTool,
-    })
-  }, [editMode, editTrailMode, refineMode, drawTrailMode, trailEditTool])
+    mapRef.current.getContainer().style.cursor = getResolvedMapCursor()
+  }, [getResolvedMapCursor])
 
   // Effect 5: start marker (before second point is selected)
   useEffect(() => {
@@ -955,11 +1007,15 @@ export default function LeafletMap({
 
   // Effect 7: refine mode — draggable nodes
   useEffect(() => {
+    let cleanupInsertHover: (() => void) | undefined
     if (!refineLayerRef.current || !mapRef.current) return
     refineLayerRef.current.clearLayers()
     if (!refineMode || !refinePolyline || refinePolyline.length < 2) return
 
     const tool = trailEditTool
+    sectionEraseStartRef.current = null
+
+    const insertHitPx = isCoarsePointer ? 48 : 40
 
     // Working copy mutated during drag
     const pts: [number, number][] = refinePolyline.map(([lat, lng]) => [lat, lng])
@@ -971,9 +1027,37 @@ export default function LeafletMap({
       ...catalogLineHints,
     }).addTo(refineLayerRef.current)
 
+    let refineInsertHitPoly: L.Polyline | null = null
+
+    // Click-on-line to insert a point (pencil mode)
+    if (tool === 'pencil' && pts.length >= 2) {
+      const hitArea = L.polyline(pts as L.LatLngExpression[], {
+        color: MAP.primary,
+        weight: insertHitPx,
+        opacity: 0,
+        interactive: true,
+      }).addTo(refineLayerRef.current!)
+      refineInsertHitPoly = hitArea
+      hitArea.on('click', (e: L.LeafletMouseEvent) => {
+        L.DomEvent.stopPropagation(e)
+        const click: [number, number] = [e.latlng.lat, e.latlng.lng]
+        const result = nearestPolylineSegment(pts, click)
+        if (result) {
+          onRefineInsertAfterRef.current(result.indexBefore, result.projectedLatLng)
+        }
+      })
+    }
+
     const nodeIcon = L.divIcon({
       className: '',
       html: refineNodeDivHtml(10, MAP.primary, MAP),
+      iconSize: [10, 10],
+      iconAnchor: [5, 5],
+    })
+
+    const sectionEraseActiveIcon = L.divIcon({
+      className: '',
+      html: refineNodeDivHtml(10, MAP.destructive, MAP),
       iconSize: [10, 10],
       iconAnchor: [5, 5],
     })
@@ -995,34 +1079,61 @@ export default function LeafletMap({
         marker.on('dragend', () => {
           onPolylineRefinedRef.current([...pts])
         })
-      } else {
+      } else if (tool === 'eraser') {
         marker.on('click', (e: L.LeafletMouseEvent) => {
           L.DomEvent.stopPropagation(e)
           onRefinePointRemovedRef.current(i)
         })
+      } else if (tool === 'section-eraser') {
+        marker.on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e)
+          const start = sectionEraseStartRef.current
+          if (start === null || start === i) {
+            sectionEraseStartRef.current = i
+            marker.setIcon(sectionEraseActiveIcon)
+          } else {
+            sectionEraseStartRef.current = null
+            onRefineSectionEraseRef.current?.(start, i)
+          }
+        })
       }
     })
 
+    const insertMidMarkers: L.Marker[] = []
     if (tool === 'pencil' && pts.length >= 2) {
       const midIcon = L.divIcon({
         className: '',
-        html: refineMidpointDivHtml(MAP.primary, MAP),
-        iconSize: [10, 10],
-        iconAnchor: [5, 5],
+        html: drawInsertMidpointDivHtml(MAP.primary, MAP),
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
       })
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i]
         const b = pts[i + 1]
         const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
-        const marker = L.marker(mid as L.LatLngExpression, { icon: midIcon, interactive: true })
+        const marker = L.marker(mid as L.LatLngExpression, {
+          icon: midIcon,
+          interactive: true,
+          zIndexOffset: 1500,
+        })
         marker.on('click', (e: L.LeafletMouseEvent) => {
           L.DomEvent.stopPropagation(e)
           onRefineInsertAfterRef.current(i, mid)
         })
         marker.addTo(refineLayerRef.current!)
+        insertMidMarkers.push(marker)
+      }
+      const mapForInsert = mapRef.current
+      if (mapForInsert && refineInsertHitPoly) {
+        cleanupInsertHover = attachVertexInsertHoverCursor(mapForInsert, [refineInsertHitPoly, ...insertMidMarkers], () =>
+          getResolvedMapCursorRef.current()
+        )
       }
     }
-  }, [refineMode, refinePolyline, trailEditTool])
+    return () => {
+      cleanupInsertHover?.()
+    }
+  }, [refineMode, refinePolyline, trailEditTool, isCoarsePointer])
 
   // Effect 8: networks layer
   useEffect(() => {
@@ -1142,82 +1253,223 @@ export default function LeafletMap({
   }, [draftTrails])
 
   // Effect: draw trail preview — live polyline + node markers as user plots
+  // Unified staged-trail rendering: composite polyline + start/end markers + draw vertex editing
   useEffect(() => {
+    let cleanupInsertHover: (() => void) | undefined
     if (!drawTrailLayerRef.current) return
     drawTrailLayerRef.current.clearLayers()
-    if (!drawTrailMode || drawTrailPoints.length === 0) return
+    if (!addTrailMode || !staged) return
 
-    const tool = trailEditTool
+    const composite = staged.compositePolyline
+    if (composite.length === 0) return
 
-    const nodeIcon = L.divIcon({
-      className: '',
-      html: drawTrailNodeDivHtml(8, MAP.primary, MAP),
-      iconSize: [8, 8],
-      iconAnchor: [4, 4],
-    })
+    // Render composite polyline
+    if (composite.length >= 2) {
+      L.polyline(composite as L.LatLngExpression[], {
+        color: MAP.primary,
+        weight: 3,
+        opacity: 0.85,
+        interactive: false,
+        ...catalogLineHints,
+      }).addTo(drawTrailLayerRef.current!)
+    }
 
-    // Mutable copy so pencil drag can update the live polyline (matches refine-mode behavior).
-    const pts: [number, number][] = drawTrailPoints.map(([lat, lng]) => [lat, lng])
-
-    const previewPolyline =
-      pts.length >= 2
-        ? L.polyline(pts as L.LatLngExpression[], {
-            color: MAP.primary,
-            weight: 3,
-            opacity: 0.85,
-            interactive: false,
-            ...catalogLineHints,
-          }).addTo(drawTrailLayerRef.current!)
-        : null
-
-    pts.forEach((pt, i) => {
-      const marker = L.marker(pt as L.LatLngExpression, {
-        icon: nodeIcon,
-        // Must stay interactive in pencil mode or Leaflet will not deliver drag events.
-        interactive: true,
-        draggable: tool === 'pencil',
-        zIndexOffset: 1000,
-      })
-      if (tool === 'eraser') {
-        marker.on('click', (e: L.LeafletMouseEvent) => {
-          L.DomEvent.stopPropagation(e)
-          onDrawTrailPointRemovedRef.current(i)
-        })
-      }
-      if (tool === 'pencil') {
-        marker.on('drag', () => {
-          const { lat, lng } = marker.getLatLng()
-          pts[i] = [lat, lng]
-          if (previewPolyline) previewPolyline.setLatLngs(pts as L.LatLngExpression[])
-        })
-        marker.on('dragend', () => {
-          const { lat, lng } = marker.getLatLng()
-          onDrawTrailPointMovedRef.current(i, [lat, lng])
-        })
-      }
-      marker.addTo(drawTrailLayerRef.current!)
-    })
-
-    if (tool === 'pencil' && pts.length >= 2) {
-      const midIcon = L.divIcon({
-        className: '',
-        html: refineMidpointDivHtml(MAP.primary, MAP),
-        iconSize: [10, 10],
-        iconAnchor: [5, 5],
-      })
-      for (let i = 0; i < pts.length - 1; i++) {
-        const a = pts[i]
-        const b = pts[i + 1]
-        const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
-        const marker = L.marker(mid as L.LatLngExpression, { icon: midIcon, interactive: true })
-        marker.on('click', (e: L.LeafletMouseEvent) => {
-          L.DomEvent.stopPropagation(e)
-          onDrawTrailInsertAfterRef.current(i, mid)
-        })
-        marker.addTo(drawTrailLayerRef.current!)
+    // Gap dashes between non-adjacent segment endpoints
+    const segs = staged.segments.filter((s) => s.polyline.length > 0)
+    for (let i = 0; i < segs.length - 1; i++) {
+      const endA = segs[i].polyline[segs[i].polyline.length - 1]
+      const startB = segs[i + 1].polyline[0]
+      if (endA[0] !== startB[0] || endA[1] !== startB[1]) {
+        L.polyline([endA, startB] as L.LatLngExpression[], {
+          color: '#888',
+          weight: 2,
+          dashArray: '6 4',
+          opacity: 0.5,
+          interactive: false,
+        }).addTo(drawTrailLayerRef.current!)
       }
     }
-  }, [drawTrailMode, drawTrailPoints, trailEditTool])
+
+    // Start marker (green)
+    const startPt = composite[0]
+    L.circleMarker(startPt as L.LatLngExpression, {
+      radius: 6,
+      color: '#16a34a',
+      fillColor: '#22c55e',
+      fillOpacity: 1,
+      weight: 2,
+      interactive: false,
+    }).addTo(drawTrailLayerRef.current!)
+
+    // End marker (red)
+    if (composite.length >= 2) {
+      const endPt = composite[composite.length - 1]
+      L.circleMarker(endPt as L.LatLngExpression, {
+        radius: 6,
+        color: '#dc2626',
+        fillColor: '#ef4444',
+        fillOpacity: 1,
+        weight: 2,
+        interactive: false,
+      }).addTo(drawTrailLayerRef.current!)
+    }
+
+    // Draw vertex editing (only when draw tool is active)
+    const activeDrawSeg = staged.activeDrawSegment
+    if (drawToolActive && activeDrawSeg && activeDrawSeg.polyline.length > 0) {
+      const tool = staged.drawTool
+      const drawPts: [number, number][] = activeDrawSeg.polyline.map(([lat, lng]) => [lat, lng])
+      sectionEraseStartRef.current = null
+
+      const insertHitPx = isCoarsePointer ? 48 : 40
+      let drawInsertHitPoly: L.Polyline | null = null
+
+      // Click-on-line to insert a point (pencil mode)
+      if (tool === 'pencil' && drawPts.length >= 2) {
+        const hitArea = L.polyline(drawPts as L.LatLngExpression[], {
+          color: MAP.primary,
+          weight: insertHitPx,
+          opacity: 0,
+          interactive: true,
+        }).addTo(drawTrailLayerRef.current!)
+        drawInsertHitPoly = hitArea
+        hitArea.on('click', (e: L.LeafletMouseEvent) => {
+          L.DomEvent.stopPropagation(e)
+          const click: [number, number] = [e.latlng.lat, e.latlng.lng]
+          const result = nearestPolylineSegment(drawPts, click)
+          if (result) {
+            staged.insertDrawPointAfter(result.indexBefore, result.projectedLatLng)
+          }
+        })
+      }
+
+      const nodeIcon = L.divIcon({
+        className: '',
+        html: drawTrailNodeDivHtml(8, MAP.primary, MAP),
+        iconSize: [8, 8],
+        iconAnchor: [4, 4],
+      })
+
+      const sectionEraseActiveIcon = L.divIcon({
+        className: '',
+        html: drawTrailNodeDivHtml(8, MAP.destructive, MAP),
+        iconSize: [8, 8],
+        iconAnchor: [4, 4],
+      })
+
+      drawPts.forEach((pt, i) => {
+        const marker = L.marker(pt as L.LatLngExpression, {
+          icon: nodeIcon,
+          interactive: true,
+          draggable: tool === 'pencil',
+          zIndexOffset: 1000,
+        })
+        if (tool === 'eraser') {
+          marker.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e)
+            staged.removeDrawPoint(i)
+          })
+        }
+        if (tool === 'pencil') {
+          marker.on('dragend', () => {
+            const { lat, lng } = marker.getLatLng()
+            staged.moveDrawPoint(i, [lat, lng])
+          })
+          marker.on('contextmenu', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e)
+            e.originalEvent?.preventDefault()
+            const canTowardStart = i > 0
+            const canTowardEnd = i < drawPts.length - 1
+            if (!canTowardStart && !canTowardEnd) return
+            const mapInstance = mapRef.current
+            if (!mapInstance) return
+
+            const popupContent = document.createElement('div')
+            popupContent.style.cssText = mapPopupStyles.column
+            const label = document.createElement('p')
+            label.style.cssText = mapPopupStyles.label
+            label.textContent = 'Remove line on one side of this point'
+            popupContent.appendChild(label)
+
+            const btnRow = document.createElement('div')
+            btnRow.style.cssText = `${mapPopupStyles.btnRow};flex-direction:column;gap:6px`
+
+            const popup = L.popup({ closeButton: true })
+
+            if (canTowardStart) {
+              const btn = document.createElement('button')
+              btn.type = 'button'
+              btn.textContent = 'Toward trail start'
+              btn.style.cssText = `${mapPopupStyles.btnOutline};width:100%;box-sizing:border-box`
+              btn.onclick = () => {
+                mapInstance.closePopup(popup)
+                stagedRef.current?.trimDrawTowardStartAt(i)
+              }
+              btnRow.appendChild(btn)
+            }
+            if (canTowardEnd) {
+              const btn = document.createElement('button')
+              btn.type = 'button'
+              btn.textContent = 'Toward trail end'
+              btn.style.cssText = `${mapPopupStyles.btnOutline};width:100%;box-sizing:border-box`
+              btn.onclick = () => {
+                mapInstance.closePopup(popup)
+                stagedRef.current?.trimDrawTowardEndAt(i)
+              }
+              btnRow.appendChild(btn)
+            }
+            popupContent.appendChild(btnRow)
+            popup.setLatLng(marker.getLatLng()).setContent(popupContent).openOn(mapInstance)
+          })
+        }
+        if (tool === 'section-eraser') {
+          marker.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e)
+            const start = sectionEraseStartRef.current
+            if (start === null || start === i) {
+              sectionEraseStartRef.current = i
+              marker.setIcon(sectionEraseActiveIcon)
+            } else {
+              sectionEraseStartRef.current = null
+              staged.eraseDrawSection(start, i)
+            }
+          })
+        }
+        marker.addTo(drawTrailLayerRef.current!)
+      })
+
+      const insertMidMarkers: L.Marker[] = []
+      if (tool === 'pencil' && drawPts.length >= 2) {
+        const midIcon = L.divIcon({
+          className: '',
+          html: drawInsertMidpointDivHtml(MAP.primary, MAP),
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+        })
+        for (let i = 0; i < drawPts.length - 1; i++) {
+          const a = drawPts[i]
+          const b = drawPts[i + 1]
+          const mid: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]
+          const marker = L.marker(mid as L.LatLngExpression, { icon: midIcon, interactive: true, zIndexOffset: 1500 })
+          marker.on('click', (e: L.LeafletMouseEvent) => {
+            L.DomEvent.stopPropagation(e)
+            staged.insertDrawPointAfter(i, mid)
+          })
+          marker.addTo(drawTrailLayerRef.current!)
+          insertMidMarkers.push(marker)
+        }
+        const mapForInsert = mapRef.current
+        if (mapForInsert && drawInsertHitPoly) {
+          cleanupInsertHover = attachVertexInsertHoverCursor(mapForInsert, [drawInsertHitPoly, ...insertMidMarkers], () =>
+            getResolvedMapCursorRef.current()
+          )
+        }
+      }
+    }
+    return () => {
+      cleanupInsertHover?.()
+    }
+  }, [addTrailMode, staged?.compositePolyline, staged?.segments, staged?.activeDrawSegment, staged?.drawTool, drawToolActive, isCoarsePointer]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Effect 9: selected trail highlight
   useEffect(() => {
@@ -1546,6 +1798,143 @@ export default function LeafletMap({
     }
   }, [officialMapLayer])
 
+  // OSM way layer — visible when OSM tool is active
+  useEffect(() => {
+    if (!osmLayerRef.current) return
+    osmLayerRef.current.clearLayers()
+    if (!osmToolActive || osmWays.length === 0) return
+
+    const osmColor = '#0ea5e9'
+    const osmColorSelected = MAP.primary
+    const osmHoverColor = '#facc15'
+
+    for (const way of osmWays) {
+      const isSelected = staged?.isOsmWaySelected(way.osmId) ?? false
+      const color = isSelected ? osmColorSelected : osmColor
+
+      const visibleLine = L.polyline(way.polyline, {
+        color,
+        weight: isSelected ? 5 : 3,
+        opacity: isSelected ? 1 : 0.7,
+        ...catalogLineHints,
+      }).addTo(osmLayerRef.current!)
+
+      const hitArea = L.polyline(way.polyline, {
+        color: 'transparent',
+        weight: 20,
+        opacity: 0,
+        interactive: true,
+      }).addTo(osmLayerRef.current!)
+
+      const tooltipLabel = way.name
+        ? `${way.name} — ${way.distanceKm.toFixed(2)} km`
+        : `${way.highway ?? 'way'} — ${way.distanceKm.toFixed(2)} km`
+      hitArea.bindTooltip(tooltipLabel, {
+        sticky: true,
+        direction: 'top',
+        className: 'osm-way-tooltip',
+        offset: [0, -8],
+      })
+
+      let glowLine: L.Polyline | null = null
+
+      hitArea.on('click', () => {
+        onOsmWaySelectedRef.current?.(way)
+      })
+
+      hitArea.on('mouseover', () => {
+        if (!isSelected) {
+          glowLine = L.polyline(way.polyline, {
+            color: osmHoverColor,
+            weight: 10,
+            opacity: 0.3,
+            interactive: false,
+          }).addTo(osmLayerRef.current!)
+          visibleLine.setStyle({ color: osmHoverColor, weight: 5, opacity: 1 })
+        }
+      })
+      hitArea.on('mouseout', () => {
+        if (glowLine) {
+          glowLine.remove()
+          glowLine = null
+        }
+        visibleLine.setStyle({
+          color: isSelected ? osmColorSelected : osmColor,
+          weight: isSelected ? 5 : 3,
+          opacity: isSelected ? 1 : 0.7,
+        })
+      })
+    }
+  }, [osmToolActive, osmWays, staged?.segments]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Strava segment layer — visible when Strava tool is active
+  useEffect(() => {
+    if (!stravaLayerRef.current) return
+    stravaLayerRef.current.clearLayers()
+    if (!stravaToolActive || stravaSegments.length === 0) return
+
+    const stravaColor = '#FC4C02'
+    const stravaColorSelected = MAP.primary
+    const stravaHoverColor = '#facc15'
+
+    for (const seg of stravaSegments) {
+      const isSelected = staged?.isStravaSegmentSelected(seg.segmentId) ?? false
+      const color = isSelected ? stravaColorSelected : stravaColor
+
+      const visibleLine = L.polyline(seg.polyline, {
+        color,
+        weight: isSelected ? 5 : 3,
+        opacity: isSelected ? 1 : 0.7,
+        ...catalogLineHints,
+      }).addTo(stravaLayerRef.current!)
+
+      const hitArea = L.polyline(seg.polyline, {
+        color: 'transparent',
+        weight: 20,
+        opacity: 0,
+        interactive: true,
+      }).addTo(stravaLayerRef.current!)
+
+      const distKm = (seg.distance / 1000).toFixed(2)
+      const tooltipLabel = `${seg.name} — ${distKm} km · ${seg.avgGrade.toFixed(1)}%`
+      hitArea.bindTooltip(tooltipLabel, {
+        sticky: true,
+        direction: 'top',
+        className: 'osm-way-tooltip',
+        offset: [0, -8],
+      })
+
+      let glowLine: L.Polyline | null = null
+
+      hitArea.on('click', () => {
+        onStravaSegmentSelectedRef.current?.(seg)
+      })
+
+      hitArea.on('mouseover', () => {
+        if (!isSelected) {
+          glowLine = L.polyline(seg.polyline, {
+            color: stravaHoverColor,
+            weight: 10,
+            opacity: 0.3,
+            interactive: false,
+          }).addTo(stravaLayerRef.current!)
+          visibleLine.setStyle({ color: stravaHoverColor, weight: 5, opacity: 1 })
+        }
+      })
+      hitArea.on('mouseout', () => {
+        if (glowLine) {
+          glowLine.remove()
+          glowLine = null
+        }
+        visibleLine.setStyle({
+          color: isSelected ? stravaColorSelected : stravaColor,
+          weight: isSelected ? 5 : 3,
+          opacity: isSelected ? 1 : 0.7,
+        })
+      })
+    }
+  }, [stravaToolActive, stravaSegments, staged?.segments]) // eslint-disable-line react-hooks/exhaustive-deps
+
   return (
     <div className="relative w-full h-full">
       <div
@@ -1586,6 +1975,49 @@ export default function LeafletMap({
             Cancel
           </button>
         </div>
+      )}
+
+      {/* Unified add-trail panel (drag handle persists position in localStorage) */}
+      {addTrailMode && staged && (
+        <FloatingDraggableToolsPanel title="Add trail">
+          <AddTrailPanel
+            rootClassName="w-full max-w-none rounded-none border-0 shadow-none"
+            activeTool={staged.activeTool}
+            onSetActiveTool={staged.setActiveTool}
+            drawTool={staged.drawTool}
+            onSetDrawTool={staged.setDrawTool}
+            activeEnd={staged.activeEnd}
+            onSetActiveEnd={staged.setActiveEnd}
+            canUndo={staged.canUndo}
+            canRedo={staged.canRedo}
+            onUndo={staged.undo}
+            onRedo={staged.redo}
+            onClearDraw={staged.clearAll}
+            segments={staged.segments}
+            onRemoveSegment={staged.removeSegment}
+            rides={rides}
+            activeRideId={gpxActiveRideId}
+            onSetActiveRide={onSetGpxActiveRide ?? (() => {})}
+            trimStart={trimStart}
+            trimSegment={trimSegment}
+            onStepTrimPoint={onStepTrimPoint ?? (() => {})}
+            onClearTrimPoint={onClearTrimPoint ?? (() => {})}
+            onAddTrimSegment={onAddTrimSegment ?? (() => {})}
+            osmLoading={osmLoading}
+            osmError={osmError}
+            osmWayCount={osmWays.length}
+            showStravaTab={showStravaTab}
+            stravaLoading={stravaLoading}
+            stravaError={stravaError}
+            stravaSegmentCount={stravaSegments.length}
+            stravaSegments={stravaSegments}
+            onStravaSegmentSelected={onStravaSegmentSelected ?? (() => {})}
+            isStravaSegmentSelected={staged?.isStravaSegmentSelected ?? (() => false)}
+            onCancel={() => onEditModeChange?.(null)}
+            canUploadGpx={canUploadGpx}
+            onRidesUploaded={onRidesUploaded}
+          />
+        </FloatingDraggableToolsPanel>
       )}
 
       {/* Mobile floating action button: enter add-trail-photo mode even when drawer is closed */}

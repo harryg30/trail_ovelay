@@ -9,11 +9,13 @@ export function DraftsList({
   canPublish,
   onPublish,
   onDelete,
+  onEdit,
 }: {
   drafts: DraftTrail[]
   canPublish: boolean
   onPublish: (localId: string) => Promise<string | null>
   onDelete: (localId: string) => void
+  onEdit: (localId: string) => void
 }) {
   const [publishingId, setPublishingId] = useState<string | null>(null)
   const [publishErrors, setPublishErrors] = useState<Record<string, string>>({})
@@ -36,6 +38,15 @@ export function DraftsList({
               <p className="text-xs text-muted-foreground">{draft.distanceKm.toFixed(2)} km · {draft.source}</p>
             </div>
             <div className="flex gap-1 shrink-0">
+              <Button
+                type="button"
+                variant="outlineThick"
+                size="xs"
+                onClick={() => onEdit(draft.localId)}
+                title="Open in add-trail tools"
+              >
+                Edit
+              </Button>
               {canPublish && (
                 <Button
                   type="button"

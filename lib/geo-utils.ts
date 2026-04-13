@@ -1,4 +1,4 @@
-import type { Ride, Trail, TrailPhoto } from "@/lib/types";
+import type { Network, Ride, Trail, TrailPhoto } from "@/lib/types";
 
 export type MapBounds = { north: number; south: number; east: number; west: number }
 
@@ -94,6 +94,81 @@ export function polylineInBounds(polyline: [number, number][], bounds: MapBounds
     if (segmentIntersectsBounds(polyline[i], polyline[i + 1], bounds)) return true
   }
   return false
+}
+
+/** Ray casting in [lat, lng] space — ring is closed or open; at least 3 vertices. */
+export function pointInPolygonLatLng(point: [number, number], ring: [number, number][]): boolean {
+  if (ring.length < 3) return false
+  const px = point[1]
+  const py = point[0]
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const yi = ring[i][0]
+    const xi = ring[i][1]
+    const yj = ring[j][0]
+    const xj = ring[j][1]
+    if ((yi > py) !== (yj > py)) {
+      if (yj === yi) continue
+      const xAt = xi + ((py - yi) / (yj - yi)) * (xj - xi)
+      if (px < xAt) inside = !inside
+    }
+  }
+  return inside
+}
+
+function polygonBBoxArea(ring: [number, number][]): number {
+  const lats = ring.map((p) => p[0])
+  const lngs = ring.map((p) => p[1])
+  return (Math.max(...lats) - Math.min(...lats)) * (Math.max(...lngs) - Math.min(...lngs))
+}
+
+/**
+ * Picks the network polygon that best contains the staged trail polyline.
+ * Prefers centroid inside; tie-break by smaller bbox (more specific region).
+ */
+export function inferNetworkIdForPolyline(
+  polyline: [number, number][],
+  networks: Network[]
+): string | undefined {
+  if (polyline.length < 2 || networks.length === 0) return undefined
+
+  const centroid: [number, number] = [
+    polyline.reduce((s, p) => s + p[0], 0) / polyline.length,
+    polyline.reduce((s, p) => s + p[1], 0) / polyline.length,
+  ]
+
+  const withPoly = networks.filter((n) => n.polygon.length >= 3)
+  if (withPoly.length === 0) return undefined
+
+  const centroidInside = withPoly.filter((n) => pointInPolygonLatLng(centroid, n.polygon))
+  if (centroidInside.length === 1) return centroidInside[0].id
+  if (centroidInside.length > 1) {
+    return centroidInside.reduce((a, b) =>
+      polygonBBoxArea(a.polygon) <= polygonBBoxArea(b.polygon) ? a : b
+    ).id
+  }
+
+  const samples =
+    polyline.length > 120 ? polyline.filter((_, i) => i % Math.ceil(polyline.length / 120) === 0) : polyline
+
+  let bestId: string | undefined
+  let bestRatio = -1
+  let bestArea = Infinity
+  for (const net of withPoly) {
+    let inside = 0
+    for (const p of samples) {
+      if (pointInPolygonLatLng(p, net.polygon)) inside++
+    }
+    const ratio = samples.length > 0 ? inside / samples.length : 0
+    const area = polygonBBoxArea(net.polygon)
+    if (ratio > bestRatio || (ratio === bestRatio && area < bestArea)) {
+      bestRatio = ratio
+      bestArea = area
+      bestId = net.id
+    }
+  }
+  if (bestRatio < 0.12) return undefined
+  return bestId
 }
 
 // Minimum distance in km from a point to any segment of a polyline

@@ -16,20 +16,7 @@ export async function OPTIONS() {
 
 export async function GET() {
   try {
-    const rows = await query<{
-      id: string
-      name: string
-      difficulty: Trail['difficulty']
-      direction: Trail['direction']
-      polyline: [number, number][]
-      distance_km: number
-      elevation_gain_ft: number
-      notes: string | null
-      source: string
-      source_ride_id: string | null
-      uploaded_by_email: string | null
-      created_at: string
-    }>(`
+    const rows = await query<TrailRow>(`
       SELECT
         id,
         name,
@@ -41,6 +28,7 @@ export async function GET() {
         notes,
         source,
         source_ride_id,
+        osm_way_id,
         uploaded_by_email,
         created_at
       FROM trails
@@ -79,12 +67,12 @@ export async function POST(request: NextRequest): Promise<NextResponse<SaveTrail
       const row = await queryOne<TrailRow>(`
         INSERT INTO trails (
           name, difficulty, direction, polyline,
-          distance_km, elevation_gain_ft, notes, source, source_ride_id, uploaded_by_user_id
-        ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10)
+          distance_km, elevation_gain_ft, notes, source, source_ride_id, osm_way_id, uploaded_by_user_id
+        ) VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11)
         RETURNING
           id, name, difficulty, direction, polyline,
           distance_km, elevation_gain_ft, notes,
-          source, source_ride_id, uploaded_by_email, created_at
+          source, source_ride_id, osm_way_id, uploaded_by_email, created_at
       `, [
         t.name.trim(),
         t.difficulty,
@@ -95,6 +83,7 @@ export async function POST(request: NextRequest): Promise<NextResponse<SaveTrail
         t.notes ?? null,
         t.source,
         t.sourceRideId ?? null,
+        t.osmWayId ?? null,
         userId,
       ])
 

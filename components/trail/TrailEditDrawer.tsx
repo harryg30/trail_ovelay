@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { polylineDistanceKm } from '@/lib/geo-utils'
 import { cn } from '@/lib/utils'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { faEraser, faPencil, faRotateLeft, faRotateRight } from '@fortawesome/free-solid-svg-icons'
+import { faEraser, faPencil, faRotateLeft, faRotateRight, faScissors } from '@fortawesome/free-solid-svg-icons'
 
 const toolBtnActive = 'border-2 border-foreground bg-foreground text-background'
 const toolBtnIdle = 'border-2 border-border bg-card text-foreground hover:bg-mud/80'
@@ -166,6 +166,16 @@ export function TrailEditDrawer({
           >
             <FontAwesomeIcon icon={faEraser} className="w-4 h-4" />
           </button>
+          <button
+            type="button"
+            title="Section eraser"
+            aria-label="Section eraser tool"
+            aria-pressed={trailEditTool === 'section-eraser'}
+            onClick={() => onSetTool('section-eraser')}
+            className={`${toolBase} ${trailEditTool === 'section-eraser' ? toolBtnActive : toolBtnIdle}`}
+          >
+            <FontAwesomeIcon icon={faScissors} className="w-4 h-4" />
+          </button>
           <button type="button" className={iconActionBtn} onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo">
             <FontAwesomeIcon icon={faRotateLeft} className="w-4 h-4" />
           </button>
@@ -177,7 +187,9 @@ export function TrailEditDrawer({
           </Button>
         </div>
         <p className="text-[11px] leading-snug text-muted-foreground">
-          Pencil: add or drag points on the map; tap midpoints to insert. Eraser: remove a point.
+          {trailEditTool === 'section-eraser'
+            ? 'Section eraser: click two points to erase the section between them.'
+            : 'Pencil: click line or drag points to edit; tap midpoints to insert. Eraser: remove a point.'}
         </p>
       </div>
 

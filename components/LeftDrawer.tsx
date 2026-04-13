@@ -1,36 +1,37 @@
 'use client'
 
-import { Fragment, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   Ride,
   Trail,
   DraftTrail,
-  TrimPoint,
-  TrimSegment,
   TrimFormState,
   EditMode,
   Network,
   RidePhoto,
   TrailPhoto,
   OfficialMapLayerPayload,
+  StagedSegment,
 } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import type { MapBounds } from '@/lib/geo-utils'
-import { polylineInBounds, pointInBounds, trailPhotoMapPoint } from '@/lib/geo-utils'
+import { polylineInBounds, pointInBounds, trailPhotoMapPoint, inferNetworkIdForPolyline } from '@/lib/geo-utils'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { uploadRideFilesClient } from '@/lib/upload-rides-client'
 import { cn } from '@/lib/utils'
 import AuthButton from '@/components/AuthButton'
 import ThemeToggle from '@/components/ThemeToggle'
-import { AddTrailContent } from '@/components/trail/AddTrailContent'
 import { TrailEditDrawer } from '@/components/trail/TrailEditDrawer'
+import { TrailFormFields } from '@/components/shared/TrailFormFields'
 import { NetworkRow } from '@/components/network/NetworkRow'
 import { DrawNetworkContent } from '@/components/network/DrawNetworkContent'
 import { EditNetworkContent } from '@/components/network/EditNetworkContent'
 import { DraftsList } from '@/components/trail/DraftsList'
 import { AddTrailPhotoContent } from '@/components/photo/AddTrailPhotoContent'
 import type { TrailEditTool } from '@/lib/modes/types'
+import type { StagedTrailApi } from '@/hooks/useStagedTrail'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   faCamera,
@@ -59,18 +60,6 @@ interface LeftDrawerProps {
   onSyncComplete: () => Promise<void>
   editMode: EditMode
   onEditModeChange: (mode: EditMode) => void
-  trimStart: TrimPoint | null
-  trimSegment: TrimSegment | null
-  onSaveTrail: (form: TrimFormState, publishOnSave: boolean) => Promise<string | null>
-  onStepTrimPoint: (which: 'start' | 'end', delta: number) => void
-  onClearTrimPoint: (which: 'start' | 'end') => void
-  averagedTrimPolyline: [number, number][] | null
-  averagedRideCount: number
-  onClearAveragedTrim: () => void
-  corridorRadiusKm: number
-  onCorridorRadiusChange: (v: number) => void
-  outputSpacingKm: number
-  onOutputSpacingChange: (v: number) => void
   selectedTrail: Trail | null
   onSelectTrail: (trail: Trail | null) => void
   onSaveEditedTrail: (form: TrimFormState) => Promise<string | null>
@@ -79,11 +68,6 @@ interface LeftDrawerProps {
   refinedPolyline: [number, number][] | null
   trailEditTool: TrailEditTool
   onSetTrailEditTool: (t: TrailEditTool) => void
-  canUndoDraw: boolean
-  canRedoDraw: boolean
-  onDrawUndo: () => void
-  onDrawRedo: () => void
-  onDrawClear: () => void
   canUndoRefine: boolean
   canRedoRefine: boolean
   onRefineUndo: () => void
@@ -103,10 +87,6 @@ interface LeftDrawerProps {
   highResRideIds: Set<string>
   onFetchHighRes: (id: string) => Promise<void>
   fetchingHighResId: string | null
-  hasUnfetchedStravaRides: boolean
-  onAverageLine: () => void
-  onFetchHighResForCorridor: () => Promise<void>
-  fetchingHighResForCorridor: boolean
   ridePhotos: Record<string, RidePhoto[]>
   photosVisibleRideIds: Set<string>
   fetchingPhotosId: string | null
@@ -114,8 +94,11 @@ interface LeftDrawerProps {
   draftTrails: DraftTrail[]
   onPublishDraft: (localId: string) => Promise<string | null>
   onDeleteDraft: (localId: string) => void
-  drawTrailPoints: [number, number][]
-  onSaveDrawnTrail: (form: TrimFormState, publishOnSave: boolean) => Promise<string | null>
+  onEditDraft: (localId: string) => void
+  draftSidebarPrefill: DraftTrail | null
+  onClearDraftSidebarPrefill: () => void
+  staged: StagedTrailApi
+  onSaveAddedTrail: (form: TrimFormState, publishOnSave: boolean) => Promise<string | null>
   mapBounds: MapBounds | null
   showOnMapOnly: boolean
   onToggleShowOnMapOnly: () => void
@@ -150,18 +133,6 @@ export default function LeftDrawer({
   onSyncComplete,
   editMode,
   onEditModeChange,
-  trimStart,
-  trimSegment,
-  onSaveTrail,
-  onStepTrimPoint,
-  onClearTrimPoint,
-  averagedTrimPolyline,
-  averagedRideCount,
-  onClearAveragedTrim,
-  corridorRadiusKm,
-  onCorridorRadiusChange,
-  outputSpacingKm,
-  onOutputSpacingChange,
   selectedTrail,
   onSelectTrail,
   onSaveEditedTrail,
@@ -170,11 +141,6 @@ export default function LeftDrawer({
   refinedPolyline,
   trailEditTool,
   onSetTrailEditTool,
-  canUndoDraw,
-  canRedoDraw,
-  onDrawUndo,
-  onDrawRedo,
-  onDrawClear,
   canUndoRefine,
   canRedoRefine,
   onRefineUndo,
@@ -194,10 +160,6 @@ export default function LeftDrawer({
   highResRideIds,
   onFetchHighRes,
   fetchingHighResId,
-  hasUnfetchedStravaRides,
-  onAverageLine,
-  onFetchHighResForCorridor,
-  fetchingHighResForCorridor,
   ridePhotos,
   photosVisibleRideIds,
   fetchingPhotosId,
@@ -205,8 +167,11 @@ export default function LeftDrawer({
   draftTrails,
   onPublishDraft,
   onDeleteDraft,
-  drawTrailPoints,
-  onSaveDrawnTrail,
+  onEditDraft,
+  draftSidebarPrefill,
+  onClearDraftSidebarPrefill,
+  staged,
+  onSaveAddedTrail,
   mapBounds,
   showOnMapOnly,
   onToggleShowOnMapOnly,
@@ -275,25 +240,9 @@ export default function LeftDrawer({
     setUploadError(null)
     setUploadProgress({ done: 0, total: files.length })
 
-    const allRides: Ride[] = []
-    const errors: string[] = []
-
-    for (let i = 0; i < files.length; i++) {
-      setUploadProgress({ done: i, total: files.length })
-      try {
-        const formData = new FormData()
-        formData.append('file', files[i])
-        const res = await fetch('/api/upload', { method: 'POST', body: formData })
-        const data = await res.json()
-        if (data.success) {
-          allRides.push(...data.rides)
-        } else {
-          errors.push(`${files[i].name}: ${data.error ?? 'failed'}`)
-        }
-      } catch {
-        errors.push(`${files[i].name}: network error`)
-      }
-    }
+    const { rides: allRides, errors } = await uploadRideFilesClient(files, (done, total) =>
+      setUploadProgress({ done, total })
+    )
 
     if (allRides.length > 0) onRidesUploaded(allRides)
     if (errors.length > 0) setUploadError(errors.join(', '))
@@ -326,9 +275,9 @@ export default function LeftDrawer({
   }
 
   const focusedTrailSession =
-    editMode === 'draw-trail' || (editMode === 'edit-trail' && !!selectedTrail)
+    editMode === 'add-trail' || (editMode === 'edit-trail' && !!selectedTrail)
   const showTrailFolderList =
-    editMode !== 'draw-trail' && !(editMode === 'edit-trail' && selectedTrail)
+    editMode !== 'add-trail' && !(editMode === 'edit-trail' && selectedTrail)
 
   return (
     <div className="flex h-screen w-full max-w-[392px] shrink-0 flex-col overflow-y-auto border-r-2 border-foreground bg-card shadow-[4px_0_0_0_var(--foreground)] sm:w-[392px]">
@@ -423,25 +372,8 @@ export default function LeftDrawer({
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => handleModeClick('draw-trail')}
-              title={editMode === 'draw-trail' ? 'Cancel draw' : 'Draw a trail'}
-              className={cn(
-                'flex size-6 items-center justify-center rounded-sm border-2 transition-colors',
-                editMode === 'draw-trail'
-                  ? 'border-foreground bg-primary text-primary-foreground'
-                  : 'border-border text-muted-foreground hover:bg-mud/80'
-              )}
-            >
-              {editMode === 'draw-trail' ? (
-                <FontAwesomeIcon icon={faXmark} className="w-3.5 h-3.5" />
-              ) : (
-                <FontAwesomeIcon icon={faPenToSquare} className="w-3.5 h-3.5" />
-              )}
-            </button>
-            <button
-              type="button"
               onClick={() => handleModeClick('add-trail')}
-              title={editMode === 'add-trail' ? 'Cancel' : 'Trim trail from ride'}
+              title={editMode === 'add-trail' ? 'Cancel' : 'Add trail'}
               className={cn(
                 'flex size-6 items-center justify-center rounded-sm border-2 text-base font-light transition-colors',
                 editMode === 'add-trail'
@@ -497,31 +429,6 @@ export default function LeftDrawer({
           </div>
         </div>
 
-        {editMode === 'draw-trail' && (
-          <div className="flex flex-col gap-2">
-            {refineError && <p className="text-xs text-destructive">{refineError}</p>}
-            <TrailEditDrawer
-              variant="draw"
-              trailEditTool={trailEditTool}
-              onSetTool={onSetTrailEditTool}
-              canUndo={canUndoDraw}
-              canRedo={canRedoDraw}
-              onUndo={onDrawUndo}
-              onRedo={onDrawRedo}
-              onClear={onDrawClear}
-              points={drawTrailPoints}
-              selectedTrail={null}
-              refinedPolyline={null}
-              onSaveDraw={onSaveDrawnTrail}
-              onSaveEdit={onSaveEditedTrail}
-              onCancel={() => onEditModeChange(null)}
-              networks={networks}
-              canPublish={!!user}
-              pendingDigitizationTask={pendingDigitizationTask}
-            />
-          </div>
-        )}
-
         {editMode === 'edit-trail' && selectedTrail && (
           <div className="flex flex-col gap-2">
             {refineError && <p className="text-xs text-destructive">{refineError}</p>}
@@ -537,7 +444,7 @@ export default function LeftDrawer({
               points={selectedTrail.polyline}
               selectedTrail={selectedTrail}
               refinedPolyline={refinedPolyline}
-              onSaveDraw={onSaveDrawnTrail}
+              onSaveDraw={onSaveAddedTrail}
               onSaveEdit={onSaveEditedTrail}
               onCancel={() => {
                 onSelectTrail(null)
@@ -550,26 +457,14 @@ export default function LeftDrawer({
         )}
 
         {editMode === 'add-trail' && (
-          <AddTrailContent
-            trimStart={trimStart}
-            trimSegment={trimSegment}
-            onSaveTrail={onSaveTrail}
+          <AddTrailSidebar
+            staged={staged}
+            onSave={onSaveAddedTrail}
             onCancel={() => onEditModeChange(null)}
-            onStepTrimPoint={onStepTrimPoint}
-            onClearTrimPoint={onClearTrimPoint}
-            averagedTrimPolyline={averagedTrimPolyline}
-            averagedRideCount={averagedRideCount}
-            onClearAveragedTrim={onClearAveragedTrim}
-            corridorRadiusKm={corridorRadiusKm}
-            onCorridorRadiusChange={onCorridorRadiusChange}
-            outputSpacingKm={outputSpacingKm}
-            onOutputSpacingChange={onOutputSpacingChange}
-            hasUnfetchedStravaRides={hasUnfetchedStravaRides}
-            onAverageLine={onAverageLine}
-            onFetchHighResForCorridor={onFetchHighResForCorridor}
-            fetchingHighResForCorridor={fetchingHighResForCorridor}
             networks={networks}
             canPublish={!!user}
+            draftPrefill={draftSidebarPrefill}
+            onClearDraftPrefill={onClearDraftSidebarPrefill}
           />
         )}
 
@@ -872,6 +767,7 @@ export default function LeftDrawer({
             canPublish={!!user}
             onPublish={onPublishDraft}
             onDelete={onDeleteDraft}
+            onEdit={onEditDraft}
           />
         </div>
       )}
@@ -1343,6 +1239,154 @@ export default function LeftDrawer({
         >
           About Trail Overlay
         </button>
+      </div>
+    </div>
+  )
+}
+
+function AddTrailSidebar({
+  staged,
+  onSave,
+  onCancel,
+  networks,
+  canPublish,
+  draftPrefill,
+  onClearDraftPrefill,
+}: {
+  staged: StagedTrailApi
+  onSave: (form: TrimFormState, publishOnSave: boolean) => Promise<string | null>
+  onCancel: () => void
+  networks: Network[]
+  canPublish: boolean
+  draftPrefill: DraftTrail | null
+  onClearDraftPrefill: () => void
+}) {
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [form, setForm] = useState<TrimFormState>({
+    name: '',
+    difficulty: 'not_set',
+    direction: 'not_set',
+    notes: '',
+    networkId: undefined,
+  })
+  const networkUserChosenRef = useRef(false)
+
+  // One-shot: opening a draft for edit (map tools + sidebar form)
+  useEffect(() => {
+    if (!draftPrefill) return
+    setForm({
+      name: draftPrefill.name,
+      difficulty: draftPrefill.difficulty,
+      direction: draftPrefill.direction,
+      notes: draftPrefill.notes ?? '',
+      networkId: draftPrefill.networkId,
+    })
+    networkUserChosenRef.current = !!draftPrefill.networkId
+    onClearDraftPrefill()
+  }, [draftPrefill, onClearDraftPrefill])
+
+  // Pre-fill trail name from OSM way names when the user hasn't typed a name yet
+  useEffect(() => {
+    const osmNamed = staged.segments.filter(
+      (s): s is Extract<StagedSegment, { source: 'osm' }> =>
+        s.source === 'osm' && typeof s.name === 'string' && s.name.trim().length > 0
+    )
+    if (osmNamed.length === 0) return
+    const suggested =
+      osmNamed.length === 1
+        ? (osmNamed[0]?.name ?? '').trim()
+        : osmNamed.map((s) => (s.name ?? '').trim()).filter(Boolean).join(' · ')
+    if (!suggested) return
+    setForm((prev) => {
+      if (prev.name.trim() !== '') return prev
+      return { ...prev, name: suggested }
+    })
+  }, [staged.segments])
+
+  // Pre-fill network from polygon containment when the user hasn't changed the Network select
+  useEffect(() => {
+    if (networkUserChosenRef.current || networks.length === 0) return
+    if (staged.compositePolyline.length < 2) return
+    const id = inferNetworkIdForPolyline(staged.compositePolyline, networks)
+    setForm((prev) => ({ ...prev, networkId: id }))
+  }, [staged.compositePolyline, networks])
+
+  const handleSubmit = async (publishOnSave: boolean) => {
+    setSaving(true)
+    setSaveError(null)
+    const err = await onSave(form, publishOnSave)
+    setSaving(false)
+    if (err) setSaveError(err)
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[11px] text-muted-foreground">
+        Use the panel on the map to draw, select GPX segments, or pick OSM ways.
+      </p>
+      {staged.segments.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Staged — {staged.segments.length} segment{staged.segments.length !== 1 ? 's' : ''} · {staged.totalDistanceKm.toFixed(2)} km
+          </p>
+          {staged.segments.map((seg, i) => (
+            <div key={seg.id} className="flex items-center justify-between text-[11px]">
+              <span className="truncate">
+                {i + 1}. {seg.source === 'draw' ? `Draw (${seg.polyline.length} pts)` : seg.source === 'gpx' ? 'GPX' : seg.source === 'osm' ? ((seg as Extract<typeof seg, { source: 'osm' }>).name ?? `OSM`) : seg.source === 'strava' ? ((seg as Extract<typeof seg, { source: 'strava' }>).name ?? `Strava`) : '?'}
+              </span>
+              <button type="button" onClick={() => staged.removeSegment(seg.id)} className="text-muted-foreground hover:text-destructive" title="Remove">
+                <FontAwesomeIcon icon={faXmark} className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {saveError && <p className="text-xs text-destructive">{saveError}</p>}
+      <TrailFormFields form={form} onChange={setForm} disabled={saving} />
+      {networks.length > 0 && (
+        <div className="flex flex-col gap-1">
+          <label className="text-[11px] font-medium">Network</label>
+          <select
+            value={form.networkId ?? ''}
+            onChange={(e) => {
+              networkUserChosenRef.current = true
+              setForm({ ...form, networkId: e.target.value || undefined })
+            }}
+            disabled={saving}
+            className="h-9 w-full rounded-md border-2 border-foreground bg-card px-2 py-1 text-sm font-medium text-foreground shadow-[inset_2px_2px_0_0_var(--mud)] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <option value="">None</option>
+            {networks.map((n) => (
+              <option key={n.id} value={n.id}>{n.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          onClick={() => handleSubmit(false)}
+          disabled={saving || staged.compositePolyline.length < 2}
+        >
+          {saving ? 'Saving…' : 'Save draft'}
+        </Button>
+        {canPublish && (
+          <Button
+            type="button"
+            variant="outlineThick"
+            size="sm"
+            onClick={() => handleSubmit(true)}
+            disabled={saving || staged.compositePolyline.length < 2 || !form.name.trim()}
+          >
+            Publish
+          </Button>
+        )}
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          Cancel
+        </Button>
       </div>
     </div>
   )

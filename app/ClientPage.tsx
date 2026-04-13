@@ -16,6 +16,7 @@ import type {
   DraftTrail,
   TrailPhoto,
   OfficialMapLayerPayload,
+  StagedSegment,
 } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import {
@@ -26,8 +27,11 @@ import {
   trailPhotoMapPoint,
 } from '@/lib/geo-utils'
 import type { MapBounds } from '@/lib/geo-utils'
-import { insertPointAfter, removePointAt } from '@/lib/geo-edit'
+import { insertPointAfter, removePointAt, removePointRange } from '@/lib/geo-edit'
 import { useEditMode } from '@/hooks/useEditMode'
+import { useStagedTrail } from '@/hooks/useStagedTrail'
+import { fetchOsmWays, OsmFetchError, type OsmWayFeature } from '@/lib/overpass'
+import { fetchStravaSegments, type StravaSegmentFeature } from '@/lib/strava-segments'
 import { loadDemoRides } from '@/lib/demo-rides'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBars, faCamera } from '@fortawesome/free-solid-svg-icons'
@@ -92,32 +96,34 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     refineError, setRefineError,
     selectedNetwork, setSelectedNetwork,
     drawNetworkPoints, setDrawNetworkPoints,
-    drawTrailPoints, setDrawTrailPoints,
-    drawTrailHistoryPast, setDrawTrailHistoryPast,
-    drawTrailHistoryFuture, setDrawTrailHistoryFuture,
     refineTrailHistoryPast, setRefineTrailHistoryPast,
     refineTrailHistoryFuture, setRefineTrailHistoryFuture,
     trailEditTool, setTrailEditTool,
   } = useEditMode()
 
-  const trimMode = editMode === 'add-trail'
-  /** Map click selects a trail only when in edit mode without a trail yet (picker). */
+  const staged = useStagedTrail()
+
+  const addTrailMode = editMode === 'add-trail'
+  const trimMode = addTrailMode && staged.activeTool === 'gpx'
   const mapTrailPickMode = editMode === 'edit-trail' && !selectedTrail
-  /** Geometry overlays (midpoints, drag) while editing an existing trail. */
   const geometryEditMode =
     editMode === 'edit-trail' && !!selectedTrail && refinedPolyline !== null
   const drawNetworkMode = editMode === 'add-network'
   const editNetworkMode = editMode === 'edit-network'
-  const drawTrailMode = editMode === 'draw-trail'
+  const drawToolActive = addTrailMode && staged.activeTool === 'draw'
+  const osmToolActive = addTrailMode && staged.activeTool === 'osm'
 
-  // Keep latest values in refs so event handlers can read synchronously without
-  // relying on state-updater closures (which are double-invoked in dev StrictMode).
-  const drawTrailPointsRef = useRef(drawTrailPoints)
-  drawTrailPointsRef.current = drawTrailPoints
-  const drawTrailHistoryPastRef = useRef(drawTrailHistoryPast)
-  drawTrailHistoryPastRef.current = drawTrailHistoryPast
-  const drawTrailHistoryFutureRef = useRef(drawTrailHistoryFuture)
-  drawTrailHistoryFutureRef.current = drawTrailHistoryFuture
+  const [osmWays, setOsmWays] = useState<OsmWayFeature[]>([])
+  const [osmLoading, setOsmLoading] = useState(false)
+  const [osmError, setOsmError] = useState<string | null>(null)
+  const [stravaSegments, setStravaSegments] = useState<StravaSegmentFeature[]>([])
+  const [stravaLoading, setStravaLoading] = useState(false)
+  const [stravaError, setStravaError] = useState<string | null>(null)
+  const [gpxActiveRideId, setGpxActiveRideId] = useState<string | null>(null)
+  /** When set, save-draft updates this row instead of creating a new draft (edit from drafts list). */
+  const [editingDraftLocalId, setEditingDraftLocalId] = useState<string | null>(null)
+  /** One-shot form prefill for AddTrailSidebar when opening a draft for edit. */
+  const [draftSidebarPrefill, setDraftSidebarPrefill] = useState<DraftTrail | null>(null)
 
   const refinedPolylineRef = useRef(refinedPolyline)
   refinedPolylineRef.current = refinedPolyline
@@ -150,22 +156,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     }
     return true
   }, [])
-
-  const applyDrawTrailEdit = useCallback((updater: (prev: [number, number][]) => [number, number][]) => {
-    // IMPORTANT: keep this side-effect free from inside React state updaters.
-    // In dev/StrictMode, updater functions can be invoked more than once.
-    const prev = drawTrailPointsRef.current
-    const next = updater(prev)
-    if (polylinesEqual(prev, next)) return
-    setDrawTrailHistoryPast([...drawTrailHistoryPastRef.current, prev])
-    setDrawTrailHistoryFuture([])
-    setDrawTrailPoints(next)
-  }, [
-    polylinesEqual,
-    setDrawTrailHistoryFuture,
-    setDrawTrailHistoryPast,
-    setDrawTrailPoints,
-  ])
 
   const applyRefineTrailEdit = useCallback((updater: (prev: [number, number][]) => [number, number][]) => {
     const prev =
@@ -203,6 +193,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   /** Demo-only photos (object URLs; never POST). */
   const [localTrailPhotos, setLocalTrailPhotos] = useState<TrailPhoto[]>([])
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null)
+  const osmTooZoomedOut = addTrailMode && !!mapBounds && (mapBounds.north - mapBounds.south) > 0.15
   const [showOnMapOnly, setShowOnMapOnly] = useState(false)
   const [mapFlyToRequest, setMapFlyToRequest] = useState<{
     seq: number
@@ -218,11 +209,143 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   } | null>(null)
 
   useEffect(() => {
-    if (editMode !== 'edit-network' && editMode !== 'draw-trail') {
+    if (editMode !== 'edit-network' && editMode !== 'add-trail') {
       setOfficialMapLayer(null)
       setAlignMapHandler(null)
     }
   }, [editMode])
+
+  const osmFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const osmAbortRef = useRef<AbortController | null>(null)
+
+  // Fetch OSM ways only when the OSM tool is active
+  const osmActive = addTrailMode && staged.activeTool === 'osm'
+  useEffect(() => {
+    if (!osmActive) {
+      setOsmWays([])
+      setOsmLoading(false)
+      setOsmError(null)
+      if (osmFetchTimerRef.current) clearTimeout(osmFetchTimerRef.current)
+      if (osmAbortRef.current) osmAbortRef.current.abort()
+      return
+    }
+    if (!mapBounds) return
+
+    const latSpan = mapBounds.north - mapBounds.south
+    if (latSpan > 0.15) {
+      setOsmWays([])
+      setOsmLoading(false)
+      return
+    }
+
+    if (osmFetchTimerRef.current) clearTimeout(osmFetchTimerRef.current)
+    if (osmAbortRef.current) osmAbortRef.current.abort()
+
+    setOsmLoading(true)
+    setOsmError(null)
+    osmFetchTimerRef.current = setTimeout(() => {
+      const controller = new AbortController()
+      osmAbortRef.current = controller
+      fetchOsmWays(mapBounds, undefined, controller.signal)
+        .then((ways) => {
+          if (!controller.signal.aborted) {
+            setOsmWays(ways)
+            setOsmError(null)
+          }
+        })
+        .catch((err) => {
+          if (!controller.signal.aborted) {
+            console.error('Overpass fetch error:', err)
+            if (err instanceof OsmFetchError) {
+              setOsmError(err.message)
+            } else {
+              setOsmError('Failed to load OSM data. Pan the map to retry.')
+            }
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setOsmLoading(false)
+        })
+    }, 800)
+
+    return () => {
+      if (osmFetchTimerRef.current) clearTimeout(osmFetchTimerRef.current)
+      if (osmAbortRef.current) osmAbortRef.current.abort()
+    }
+  }, [osmActive, mapBounds]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset staged trail + GPX ride when leaving add-trail mode
+  useEffect(() => {
+    if (!addTrailMode) {
+      staged.resetAll()
+      setGpxActiveRideId(null)
+      setEditingDraftLocalId(null)
+      setDraftSidebarPrefill(null)
+    }
+  }, [addTrailMode]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleOsmWaySelected = useCallback((feature: OsmWayFeature) => {
+    staged.toggleOsmWay(feature.osmId, feature.name, feature.polyline)
+  }, [staged.toggleOsmWay]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch Strava segments only when the Strava tool is active
+  const stravaFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const stravaAbortRef = useRef<AbortController | null>(null)
+  const stravaActive = addTrailMode && staged.activeTool === 'strava' && !!user
+
+  useEffect(() => {
+    if (!stravaActive) {
+      setStravaSegments([])
+      setStravaLoading(false)
+      setStravaError(null)
+      if (stravaFetchTimerRef.current) clearTimeout(stravaFetchTimerRef.current)
+      if (stravaAbortRef.current) stravaAbortRef.current.abort()
+      return
+    }
+    if (!mapBounds) return
+
+    const latSpan = mapBounds.north - mapBounds.south
+    if (latSpan > 0.15) {
+      setStravaSegments([])
+      setStravaLoading(false)
+      return
+    }
+
+    if (stravaFetchTimerRef.current) clearTimeout(stravaFetchTimerRef.current)
+    if (stravaAbortRef.current) stravaAbortRef.current.abort()
+
+    setStravaLoading(true)
+    setStravaError(null)
+    stravaFetchTimerRef.current = setTimeout(() => {
+      const controller = new AbortController()
+      stravaAbortRef.current = controller
+      fetchStravaSegments(mapBounds, 'riding', controller.signal)
+        .then((segs) => {
+          if (!controller.signal.aborted) {
+            setStravaSegments(segs)
+            setStravaError(null)
+          }
+        })
+        .catch((err) => {
+          if (!controller.signal.aborted) {
+            console.error('Strava segments fetch error:', err)
+            setStravaError(err instanceof Error ? err.message : 'Failed to load Strava segments.')
+          }
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setStravaLoading(false)
+        })
+    }, 800)
+
+    return () => {
+      if (stravaFetchTimerRef.current) clearTimeout(stravaFetchTimerRef.current)
+      if (stravaAbortRef.current) stravaAbortRef.current.abort()
+    }
+  }, [stravaActive, mapBounds]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleStravaSegmentSelected = useCallback((feature: StravaSegmentFeature) => {
+    staged.toggleStravaSegment(feature.segmentId, feature.name, feature.polyline)
+  }, [staged.toggleStravaSegment]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const requestFlyToTrail = useCallback((trail: Trail) => {
     setMapFlyToRequest((prev) => ({
@@ -374,7 +497,35 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     form: TrimFormState,
     source: string,
     sourceRideId?: string,
+    osmWayId?: number,
+    /** When set, update this draft instead of creating a new one (edit flow). */
+    replaceLocalId?: string,
   ) => {
+    if (replaceLocalId) {
+      setDraftTrails((prev) => {
+        const next = prev.map((d) =>
+          d.localId === replaceLocalId
+            ? {
+                ...d,
+                name: form.name,
+                difficulty: form.difficulty,
+                direction: form.direction,
+                notes: form.notes || undefined,
+                polyline,
+                distanceKm: polylineDistanceKm(polyline),
+                source,
+                sourceRideId,
+                osmWayId,
+                networkId: form.networkId,
+                createdAt: new Date().toISOString(),
+              }
+            : d
+        )
+        persistDrafts(next)
+        return next
+      })
+      return
+    }
     const draft: DraftTrail = {
       localId: 'draft_' + crypto.randomUUID(),
       isDraft: true,
@@ -387,6 +538,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       elevationGainFt: 0,
       source,
       sourceRideId,
+      osmWayId,
       networkId: form.networkId,
       createdAt: new Date().toISOString(),
     }
@@ -396,6 +548,120 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
       return next
     })
   }, [])
+
+  const handleEditDraft = useCallback(
+    (localId: string) => {
+      const draft = draftTrails.find((d) => d.localId === localId)
+      if (!draft || draft.polyline.length < 2) return
+      staged.loadDrawSegment(draft.polyline)
+      setEditingDraftLocalId(localId)
+      setDraftSidebarPrefill(draft)
+      setMode('add-trail')
+    },
+    [draftTrails, staged.loadDrawSegment, setMode]
+  )
+
+  const clearDraftSidebarPrefill = useCallback(() => setDraftSidebarPrefill(null), [])
+
+  const handleSaveAddedTrail = useCallback(
+    async (form: TrimFormState, publishOnSave: boolean): Promise<string | null> => {
+      const polyline = staged.compositePolyline
+      if (polyline.length < 2) return 'Add at least 2 points'
+
+      const osmSeg = staged.segments.find((s): s is Extract<StagedSegment, { source: 'osm' }> => s.source === 'osm')
+      const gpxSeg = staged.segments.find((s): s is Extract<StagedSegment, { source: 'gpx' }> => s.source === 'gpx')
+      const sources = new Set(staged.segments.map((s) => s.source))
+      const source = sources.size === 1 ? staged.segments[0].source : 'mixed'
+
+      if (!publishOnSave || !user) {
+        handleSaveDraft(
+          polyline,
+          form,
+          source,
+          gpxSeg?.rideId,
+          osmSeg?.osmWayId,
+          editingDraftLocalId ?? undefined
+        )
+        setEditingDraftLocalId(null)
+        setDraftSidebarPrefill(null)
+        setMode(null)
+        return null
+      }
+
+      const res = await fetch('/api/trails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trails: [{
+            name: form.name,
+            difficulty: form.difficulty,
+            direction: form.direction,
+            notes: form.notes || undefined,
+            polyline,
+            distanceKm: staged.totalDistanceKm,
+            elevationGainFt: 0,
+            source,
+            sourceRideId: gpxSeg?.rideId,
+            osmWayId: osmSeg?.osmWayId,
+          }],
+        }),
+      })
+      const data: SaveTrailResponse = await res.json()
+      if (data.success && data.savedTrails) {
+        setTrails((prev) => [...(data.savedTrails ?? []), ...prev])
+
+        if (form.networkId && data.savedTrails.length > 0) {
+          const network = networks.find((n) => n.id === form.networkId)
+          if (network) {
+            const updatedTrailIds = [...network.trailIds, data.savedTrails[0].id]
+            const res2 = await fetch(`/api/networks/${network.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name: network.name, trailIds: updatedTrailIds }),
+            })
+            const data2 = await res2.json()
+            if (data2.success && data2.network) {
+              setNetworks((prev) => prev.map((n) => (n.id === data2.network.id ? data2.network : n)))
+            }
+          }
+        }
+
+        if (pendingDigitizationTask && data.savedTrails[0]) {
+          await fetch(`/api/digitization-tasks/${pendingDigitizationTask.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ completedTrailId: data.savedTrails[0].id }),
+          })
+          setPendingDigitizationTask(null)
+        }
+
+        if (editingDraftLocalId) {
+          setDraftTrails((prev) => {
+            const next = prev.filter((d) => d.localId !== editingDraftLocalId)
+            persistDrafts(next)
+            return next
+          })
+          setEditingDraftLocalId(null)
+          setDraftSidebarPrefill(null)
+        }
+
+        setMode(null)
+        return null
+      }
+      return data.error ?? 'Save failed'
+    },
+    [
+      staged.compositePolyline,
+      staged.segments,
+      staged.totalDistanceKm,
+      user,
+      handleSaveDraft,
+      networks,
+      pendingDigitizationTask,
+      editingDraftLocalId,
+      setMode,
+    ]
+  )
 
   const handlePublishDraft = useCallback(async (localId: string): Promise<string | null> => {
     const draft = draftTrails.find((d) => d.localId === localId)
@@ -415,6 +681,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
             elevationGainFt: draft.elevationGainFt,
             source: draft.source,
             sourceRideId: draft.sourceRideId,
+            osmWayId: draft.osmWayId,
           }],
         }),
       })
@@ -661,201 +928,23 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     else setTrimEnd(null)
   }, [])
 
-  const handleSaveTrail = useCallback(
-    async (form: TrimFormState, publishOnSave: boolean): Promise<string | null> => {
-      if (!trimSegment) return 'No segment selected'
-
-      const polyline = averagedTrimPolyline ?? trimSegment.polyline
-      const source = averagedTrimPolyline ? 'averaged' : 'trim'
-
-      if (!publishOnSave || !user) {
-        handleSaveDraft(polyline, form, source, trimSegment.ride.id)
-        setMode(null)
-        setTrimStart(null)
-        setTrimEnd(null)
-        return null
-      }
-
-      const res = await fetch('/api/trails', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trails: [
-            {
-              name: form.name,
-              difficulty: form.difficulty,
-              direction: form.direction,
-              notes: form.notes || undefined,
-              polyline,
-              distanceKm: averagedTrimPolyline
-                ? polylineDistanceKm(averagedTrimPolyline)
-                : trimSegment.distanceKm,
-              elevationGainFt: trimSegment.elevationGainFt,
-              source,
-              sourceRideId: trimSegment.ride.id,
-            },
-          ],
-        }),
-      })
-
-      const data: SaveTrailResponse = await res.json()
-
-      if (data.success && data.savedTrails) {
-        setTrails((prev) => [...(data.savedTrails ?? []), ...prev])
-
-        if (form.networkId && data.savedTrails.length > 0) {
-          const network = networks.find((n) => n.id === form.networkId)
-          if (network) {
-            const updatedTrailIds = [...network.trailIds, data.savedTrails[0].id]
-            const res2 = await fetch(`/api/networks/${network.id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: network.name, trailIds: updatedTrailIds }),
-            })
-            const data2 = await res2.json()
-            if (data2.success && data2.network) {
-              setNetworks((prev) => prev.map((n) => (n.id === data2.network.id ? data2.network : n)))
-            }
-          }
-        }
-
-        setMode(null)
-        setTrimStart(null)
-        setTrimEnd(null)
-        return null
-      }
-
-      return data.error ?? 'Save failed'
-    },
-    [trimSegment, networks, user, handleSaveDraft]
-  )
-
-  const handleSaveDrawnTrail = useCallback(
-    async (form: TrimFormState, publishOnSave: boolean): Promise<string | null> => {
-      if (drawTrailPoints.length < 2) return 'Draw at least 2 points'
-      const polyline = drawTrailPoints
-
-      if (!publishOnSave || !user) {
-        handleSaveDraft(polyline, form, 'draw')
-        setMode(null)
-        return null
-      }
-
-      const res = await fetch('/api/trails', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trails: [{
-            name: form.name,
-            difficulty: form.difficulty,
-            direction: form.direction,
-            notes: form.notes || undefined,
-            polyline,
-            distanceKm: polylineDistanceKm(polyline),
-            elevationGainFt: 0,
-            source: 'draw',
-          }],
-        }),
-      })
-      const data: SaveTrailResponse = await res.json()
-      if (data.success && data.savedTrails) {
-        const saved = data.savedTrails[0]
-        setTrails((prev) => [...(data.savedTrails ?? []), ...prev])
-
-        if (form.networkId && saved) {
-          const network = networks.find((n) => n.id === form.networkId)
-          if (network) {
-            const updatedTrailIds = [...network.trailIds, saved.id]
-            const res2 = await fetch(`/api/networks/${network.id}`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: network.name, trailIds: updatedTrailIds }),
-            })
-            const data2 = await res2.json()
-            if (data2.success && data2.network) {
-              setNetworks((prev) => prev.map((n) => (n.id === data2.network.id ? data2.network : n)))
-            }
-          }
-        }
-
-        if (pendingDigitizationTask && saved) {
-          await fetch(`/api/digitization-tasks/${pendingDigitizationTask.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ completedTrailId: saved.id }),
-          })
-          setPendingDigitizationTask(null)
-        }
-
-        setMode(null)
-        return null
-      }
-      return data.error ?? 'Save failed'
-    },
-    [drawTrailPoints, user, handleSaveDraft, networks, pendingDigitizationTask]
-  )
-
-  const handleDrawTrailPointAdded = useCallback((latlng: [number, number]) => {
-    applyDrawTrailEdit((prev) => [...prev, latlng])
-  }, [applyDrawTrailEdit])
-
-  const handleDrawTrailPointRemoved = useCallback((index: number) => {
-    applyDrawTrailEdit((prev) => {
-      if (prev.length <= 2) return prev
-      return removePointAt(prev, index)
+  // When trim segment is complete, add it as a GPX staged segment
+  const handleAddTrimSegment = useCallback(() => {
+    if (!trimSegment) return
+    const polyline = averagedTrimPolyline ?? trimSegment.polyline
+    staged.addSegment({
+      id: crypto.randomUUID(),
+      source: 'gpx',
+      rideId: trimSegment.ride.id,
+      startIndex: trimSegment.startIndex,
+      endIndex: trimSegment.endIndex,
+      polyline,
     })
-  }, [applyDrawTrailEdit])
-
-  const handleDrawTrailInsertAfter = useCallback((indexBefore: number, latlng: [number, number]) => {
-    applyDrawTrailEdit((prev) => insertPointAfter(prev, indexBefore, latlng))
-  }, [applyDrawTrailEdit])
-
-  const handleDrawTrailPointMoved = useCallback((index: number, latlng: [number, number]) => {
-    applyDrawTrailEdit((prev) => {
-      if (index < 0 || index >= prev.length) return prev
-      const next = [...prev]
-      next[index] = latlng
-      return next
-    })
-  }, [applyDrawTrailEdit])
-
-  const handleDrawTrailUndo = useCallback(() => {
-    const past = drawTrailHistoryPastRef.current
-    if (past.length === 0) return
-    const current = drawTrailPointsRef.current
-    const prev = past[past.length - 1]
-    setDrawTrailHistoryPast(past.slice(0, -1))
-    setDrawTrailHistoryFuture([current, ...drawTrailHistoryFutureRef.current])
-    setDrawTrailPoints(prev)
-  }, [
-    drawTrailHistoryFuture.length,
-    drawTrailHistoryPast.length,
-    drawTrailPoints.length,
-    setDrawTrailHistoryFuture,
-    setDrawTrailHistoryPast,
-    setDrawTrailPoints,
-  ])
-
-  const handleDrawTrailRedo = useCallback(() => {
-    const future = drawTrailHistoryFutureRef.current
-    if (future.length === 0) return
-    const current = drawTrailPointsRef.current
-    const next = future[0]
-    setDrawTrailHistoryFuture(future.slice(1))
-    setDrawTrailHistoryPast([...drawTrailHistoryPastRef.current, current])
-    setDrawTrailPoints(next)
-  }, [
-    drawTrailHistoryFuture.length,
-    drawTrailHistoryPast.length,
-    drawTrailPoints.length,
-    setDrawTrailHistoryFuture,
-    setDrawTrailHistoryPast,
-    setDrawTrailPoints,
-  ])
-
-  const handleDrawTrailClear = useCallback(() => {
-    applyDrawTrailEdit(() => [])
-  }, [applyDrawTrailEdit])
+    setTrimStart(null)
+    setTrimEnd(null)
+    setAveragedTrimPolyline(null)
+    setAveragedRideCount(0)
+  }, [trimSegment, averagedTrimPolyline, staged.addSegment]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRefineUndo = useCallback(() => {
     const past = refineTrailHistoryPastRef.current
@@ -909,6 +998,14 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const handleRefineInsertAfter = useCallback((indexBefore: number, latlng: [number, number]) => {
     applyRefineTrailEdit((prev) => insertPointAfter(prev, indexBefore, latlng))
+  }, [applyRefineTrailEdit])
+
+  const handleRefineSectionErase = useCallback((fromIndex: number, toIndex: number) => {
+    applyRefineTrailEdit((prev) => {
+      const result = removePointRange(prev, fromIndex, toIndex)
+      if (result.length < 2) return prev
+      return result
+    })
   }, [applyRefineTrailEdit])
 
   const handleNetworkPointAdded = useCallback((latlng: [number, number]) => {
@@ -1158,18 +1255,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onSyncComplete={loadRides}
           editMode={editMode}
           onEditModeChange={handleEditModeChange}
-          trimStart={trimStart}
-          trimSegment={trimSegment}
-          onSaveTrail={handleSaveTrail}
-          onStepTrimPoint={handleStepTrimPoint}
-          onClearTrimPoint={handleClearTrimPoint}
-          averagedTrimPolyline={averagedTrimPolyline}
-          averagedRideCount={averagedRideCount}
-          onClearAveragedTrim={handleClearAveragedTrim}
-          corridorRadiusKm={corridorRadiusKm}
-          onCorridorRadiusChange={setCorridorRadiusKm}
-          outputSpacingKm={outputSpacingKm}
-          onOutputSpacingChange={setOutputSpacingKm}
           selectedTrail={selectedTrail}
           onSelectTrail={setSelectedTrail}
           onSaveEditedTrail={handleSaveEditedTrail}
@@ -1178,11 +1263,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           refinedPolyline={refinedPolyline}
           trailEditTool={trailEditTool}
           onSetTrailEditTool={setTrailEditTool}
-          canUndoDraw={drawTrailHistoryPast.length > 0}
-          canRedoDraw={drawTrailHistoryFuture.length > 0}
-          onDrawUndo={handleDrawTrailUndo}
-          onDrawRedo={handleDrawTrailRedo}
-          onDrawClear={handleDrawTrailClear}
           canUndoRefine={refineTrailHistoryPast.length > 0}
           canRedoRefine={refineTrailHistoryFuture.length > 0}
           onRefineUndo={handleRefineUndo}
@@ -1202,10 +1282,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           highResRideIds={highResRideIds}
           onFetchHighRes={handleFetchHighRes}
           fetchingHighResId={fetchingHighResId}
-          hasUnfetchedStravaRides={hasUnfetchedStravaRides}
-          onAverageLine={handleAverageLine}
-          onFetchHighResForCorridor={handleFetchHighResForCorridor}
-          fetchingHighResForCorridor={fetchingHighResForCorridor}
           ridePhotos={ridePhotos}
           photosVisibleRideIds={photosVisibleRideIds}
           fetchingPhotosId={fetchingPhotosId}
@@ -1213,8 +1289,11 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           draftTrails={draftTrails}
           onPublishDraft={handlePublishDraft}
           onDeleteDraft={handleDeleteDraft}
-          drawTrailPoints={drawTrailPoints}
-          onSaveDrawnTrail={handleSaveDrawnTrail}
+          onEditDraft={handleEditDraft}
+          draftSidebarPrefill={draftSidebarPrefill}
+          onClearDraftSidebarPrefill={clearDraftSidebarPrefill}
+          staged={staged}
+          onSaveAddedTrail={handleSaveAddedTrail}
           mapBounds={mapBounds}
           showOnMapOnly={showOnMapOnly}
           onToggleShowOnMapOnly={() => setShowOnMapOnly(v => !v)}
@@ -1300,20 +1379,33 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         onCancelPlace={handleCancelPlace}
         trailPhotos={mapTrailPhotos}
         onAcceptTrailPhoto={handleAcceptTrailPhoto}
-        drawTrailMode={drawTrailMode}
-        drawTrailPoints={drawTrailPoints}
-        onDrawTrailPointAdded={handleDrawTrailPointAdded}
-        onDrawTrailPointRemoved={handleDrawTrailPointRemoved}
-        onDrawTrailInsertAfter={handleDrawTrailInsertAfter}
-        onDrawTrailPointMoved={handleDrawTrailPointMoved}
         onBoundsChange={setMapBounds}
         trailEditTool={trailEditTool}
         onRefinePointRemoved={handleRefinePointRemoved}
         onRefineInsertAfter={handleRefineInsertAfter}
+        onRefineSectionErase={handleRefineSectionErase}
         onOpenPhotoLightbox={handleOpenPhotoLightbox}
         flyToRequest={mapFlyToRequest}
         officialMapLayer={officialMapLayer}
         officialMapAlignHandler={alignMapHandler}
+        addTrailMode={addTrailMode}
+        staged={staged}
+        osmWays={osmWays}
+        onOsmWaySelected={handleOsmWaySelected}
+        osmLoading={osmLoading}
+        osmError={osmError}
+        stravaSegments={stravaSegments}
+        onStravaSegmentSelected={handleStravaSegmentSelected}
+        stravaLoading={stravaLoading}
+        stravaError={stravaError}
+        showStravaTab={!!user}
+        gpxActiveRideId={gpxActiveRideId}
+        onSetGpxActiveRide={setGpxActiveRideId}
+        onAddTrimSegment={handleAddTrimSegment}
+        onStepTrimPoint={handleStepTrimPoint}
+        onClearTrimPoint={handleClearTrimPoint}
+        canUploadGpx={!!user}
+        onRidesUploaded={handleRidesUploaded}
       />
 
       {photoLightboxSrc && (

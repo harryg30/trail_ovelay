@@ -37,6 +37,28 @@ export function removePointAt(points: LatLng[], index: number): LatLng[] {
   return [...points.slice(0, index), ...points.slice(index + 1)]
 }
 
+/** Remove all vertices strictly between fromIndex and toIndex (keeps both boundary vertices). */
+export function removePointRange(points: LatLng[], fromIndex: number, toIndex: number): LatLng[] {
+  const lo = Math.min(fromIndex, toIndex)
+  const hi = Math.max(fromIndex, toIndex)
+  if (lo < 0 || hi >= points.length || hi - lo <= 1) return points
+  return [...points.slice(0, lo + 1), ...points.slice(hi)]
+}
+
+/** Keep vertices from index onward (drops the chain toward the trail start). No-op if index <= 0. */
+export function truncatePolylineFromIndex(points: LatLng[], index: number): LatLng[] {
+  if (index <= 0 || points.length === 0) return points
+  if (index >= points.length) return points
+  return points.slice(index)
+}
+
+/** Keep vertices from index 0 through index inclusive (drops the chain toward the trail end). No-op if index is already the last vertex. */
+export function truncatePolylineThroughIndex(points: LatLng[], index: number): LatLng[] {
+  if (index < 0 || points.length === 0) return points
+  if (index >= points.length - 1) return points
+  return points.slice(0, index + 1)
+}
+
 function projectPointToSegmentLatLonSpace(p: LatLng, a: LatLng, b: LatLng): LatLng {
   const abLat = b[0] - a[0]
   const abLon = b[1] - a[1]

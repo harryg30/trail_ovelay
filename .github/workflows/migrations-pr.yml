@@ -1,0 +1,57 @@
+# Validate migration SQL against a throwaway Postgres (not production).
+name: PR — validate migrations
+
+on:
+  pull_request:
+    paths:
+      - 'migrations/**'
+      - 'scripts/migrate-local.mjs'
+      - 'scripts/migrate.mjs'
+      - 'scripts/db-script-pool.mjs'
+      - 'scripts/load-env-local.mjs'
+      - 'lib/pg-connection-env.mjs'
+      - '.github/workflows/migrations-pr.yml'
+
+concurrency:
+  group: migrations-pr-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migrate-dry-ci:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: trail_overlay
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d trail_overlay"
+          --health-interval 4s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # CI wins over any .env.local (see scripts/load-env-local.mjs).
+      TRAIL_DB_PGHOST: localhost
+      TRAIL_DB_PGPORT: '5432'
+      TRAIL_DB_PGUSER: postgres
+      TRAIL_DB_PGPASSWORD: postgres
+      TRAIL_DB_PGDATABASE: trail_overlay
+      TRAIL_DB_PGSSLMODE: disable
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Apply all migrations (ephemeral Postgres)
+        run: npm run db:migrate
