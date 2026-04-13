@@ -9,12 +9,13 @@ interface AuthButtonProps {
 
 export default function AuthButton({ user }: AuthButtonProps) {
   if (!user) {
+    const isDev = process.env.NODE_ENV === 'development'
     return (
       <a
-        href="/api/auth/strava"
+        href={isDev ? '/api/auth/dev-login' : '/api/auth/strava'}
         className={cn(buttonVariants({ variant: 'catalog', size: 'sm' }), 'mt-2 w-full justify-center')}
       >
-        Connect with Strava
+        {isDev ? 'Dev Sign In' : 'Connect with Strava'}
       </a>
     )
   }

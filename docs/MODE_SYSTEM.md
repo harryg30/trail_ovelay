@@ -13,6 +13,10 @@ The current mode controls:
 Notes:
 - The **map cursor** may be further specialized by the active tool/phase (for example, draw/edit pencil vs eraser).
 - While drawing/refining geometry, background **trails/networks/ride hit areas** are intentionally non-interactive so the cursor and clicks clearly reflect the active operation.
+- **add-trail → Draw tool (pencil)**: click an edge or enlarged midpoint handle to insert a vertex on the **active** draw segment (the map cursor switches to the insert cursor over the wide edge hit band and handles); **right-click** a vertex to delete the polyline chain on that vertex's side toward the overall trail start or end (the clicked vertex becomes the new endpoint on that side).
+- **add-trail tools panel**: the floating panel is **centered** under the top edge of the map and is draggable via the top **Tools** bar; position is remembered in `localStorage` under `trail-overlay:add-trail-tools-panel-offset-v3`.
+- **add-trail → GPX tab**: **Upload GPX / ZIP** uses the same `/api/upload` flow as the catalog drawer (signed-in users); new rides appear in the ride list for trimming.
+- **Drafts**: **Edit** opens add-trail mode with the draft’s polyline staged as a single draw segment and the sidebar form prefilled; saving draft again updates the same draft row (publish removes it like a normal publish).
 
 ---
 

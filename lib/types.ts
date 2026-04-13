@@ -20,6 +20,7 @@ export interface Trail {
   notes?: string;
   source: string;
   sourceRideId?: string;
+  osmWayId?: number;
   uploadedByEmail?: string;
   createdAt: Date;
 }
@@ -52,9 +53,16 @@ export type EditMode =
   | 'refine-trail'
   | 'add-network'
   | 'edit-network'
-  | 'draw-trail'
   | 'add-trail-photo'
   | null
+
+export type AddTrailTool = 'draw' | 'gpx' | 'osm' | 'strava'
+
+export type StagedSegment =
+  | { id: string; source: 'draw'; polyline: [number, number][] }
+  | { id: string; source: 'gpx'; rideId: string; startIndex: number; endIndex: number; polyline: [number, number][] }
+  | { id: string; source: 'osm'; osmWayId: number; name?: string; polyline: [number, number][]; reversed?: boolean }
+  | { id: string; source: 'strava'; stravaSegmentId: number; name?: string; polyline: [number, number][]; reversed?: boolean }
 
 export interface DraftTrail {
   localId: string
@@ -68,6 +76,7 @@ export interface DraftTrail {
   notes?: string
   source: string
   sourceRideId?: string
+  osmWayId?: number
   networkId?: string
   createdAt: string
 }

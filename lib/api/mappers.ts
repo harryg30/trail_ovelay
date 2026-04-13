@@ -13,6 +13,7 @@ export type TrailRow = {
   notes: string | null
   source: string
   source_ride_id: string | null
+  osm_way_id: number | null
   uploaded_by_email: string | null
   created_at: string
 }
@@ -29,6 +30,7 @@ export function rowToTrail(row: TrailRow): Trail {
     notes: row.notes ?? undefined,
     source: row.source,
     sourceRideId: row.source_ride_id ?? undefined,
+    osmWayId: row.osm_way_id ?? undefined,
     uploadedByEmail: row.uploaded_by_email ?? undefined,
     createdAt: new Date(row.created_at),
   }

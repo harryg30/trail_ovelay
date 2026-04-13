@@ -1,4 +1,4 @@
-import type { EditMode } from '@/lib/types'
+import type { EditMode, AddTrailTool } from '@/lib/types'
 import { MODE_REGISTRY } from './index'
 import type { TrailEditTool } from '@/lib/modes/types'
 
@@ -10,20 +10,30 @@ export function resolveMapCursor(params: {
   editMode: EditMode
   editTrailMode: boolean
   refineMode: boolean
-  drawTrailMode: boolean
+  addTrailTool: AddTrailTool | null
+  drawTool: TrailEditTool
   trailEditTool: TrailEditTool
 }): string {
-  const { editMode, editTrailMode, refineMode, drawTrailMode, trailEditTool } = params
+  const { editMode, editTrailMode, refineMode, addTrailTool, drawTool, trailEditTool } = params
   if (!editMode) return ''
 
-  if (drawTrailMode) {
-    return trailEditTool === 'pencil' ? 'crosshair' : 'pointer'
+  if (editMode === 'add-trail' && addTrailTool) {
+    if (addTrailTool === 'draw') {
+      if (drawTool === 'pencil') return 'crosshair'
+      if (drawTool === 'section-eraser') return 'crosshair'
+      return 'pointer'
+    }
+    if (addTrailTool === 'gpx') return 'crosshair'
+    if (addTrailTool === 'osm') return 'pointer'
+    if (addTrailTool === 'strava') return 'pointer'
   }
 
   if (editMode === 'edit-trail') {
     if (editTrailMode) return 'pointer'
     if (refineMode) {
-      return trailEditTool === 'pencil' ? 'grab' : 'pointer'
+      if (trailEditTool === 'pencil') return 'grab'
+      if (trailEditTool === 'section-eraser') return 'crosshair'
+      return 'pointer'
     }
   }
 

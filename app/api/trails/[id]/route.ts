@@ -21,24 +21,30 @@ export async function PATCH(
     }
 
     const hasPolyline = Array.isArray(body.polyline) && body.polyline.length >= 2
+    const hasOsmWayId = body.osmWayId !== undefined
 
+    const setClauses = ['name=$1', 'difficulty=$2', 'direction=$3', 'notes=$4']
+    const queryParams: unknown[] = [body.name.trim(), body.difficulty, body.direction, body.notes ?? null]
+    let idx = 5
+
+    if (hasPolyline) {
+      setClauses.push(`polyline=$${idx}`, `distance_km=$${idx + 1}`)
+      queryParams.push(JSON.stringify(body.polyline), body.distanceKm ?? null)
+      idx += 2
+    }
+    if (hasOsmWayId) {
+      setClauses.push(`osm_way_id=$${idx}`)
+      queryParams.push(body.osmWayId ?? null)
+      idx++
+    }
+
+    queryParams.push(id)
     const row = await queryOne<TrailRow>(
-      hasPolyline
-        ? `UPDATE trails
-           SET name=$1, difficulty=$2, direction=$3, notes=$4, polyline=$5, distance_km=$6
-           WHERE id=$7
-           RETURNING id, name, difficulty, direction, polyline,
-             distance_km, elevation_gain_ft, notes,
-             source, source_ride_id, uploaded_by_email, created_at`
-        : `UPDATE trails
-           SET name=$1, difficulty=$2, direction=$3, notes=$4
-           WHERE id=$5
-           RETURNING id, name, difficulty, direction, polyline,
-             distance_km, elevation_gain_ft, notes,
-             source, source_ride_id, uploaded_by_email, created_at`,
-      hasPolyline
-        ? [body.name.trim(), body.difficulty, body.direction, body.notes ?? null, JSON.stringify(body.polyline), body.distanceKm ?? null, id]
-        : [body.name.trim(), body.difficulty, body.direction, body.notes ?? null, id]
+      `UPDATE trails SET ${setClauses.join(', ')} WHERE id=$${idx}
+       RETURNING id, name, difficulty, direction, polyline,
+         distance_km, elevation_gain_ft, notes,
+         source, source_ride_id, osm_way_id, uploaded_by_email, created_at`,
+      queryParams as string[]
     )
 
     if (!row) {

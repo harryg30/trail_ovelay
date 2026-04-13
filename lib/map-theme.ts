@@ -160,6 +160,20 @@ export function refineMidpointDivHtml(
   return `<div style="width:10px;height:10px;background:${palette.card};border:2px solid ${borderColor};border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>`
 }
 
+/** Insert midpoint for add-trail draw / wide tap target — visible dot centered in a larger hit area. */
+export function drawInsertMidpointDivHtml(
+  borderColor: string,
+  palette: MapPalette = MAP
+): string {
+  const inner = 10
+  const outer = 28
+  return (
+    `<div style="width:${outer}px;height:${outer}px;display:flex;align-items:center;justify-content:center;pointer-events:auto">` +
+    `<div style="width:${inner}px;height:${inner}px;background:${palette.card};border:2px solid ${borderColor};border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>` +
+    `</div>`
+  )
+}
+
 export function drawTrailNodeDivHtml(
   size: number,
   borderColor: string,

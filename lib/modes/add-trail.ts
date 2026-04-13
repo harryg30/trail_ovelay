@@ -2,6 +2,6 @@ import type { ModeDescriptor } from './types'
 
 export const addTrailMode: ModeDescriptor = {
   id: 'add-trail',
-  cursor: 'crosshair',
+  cursor: 'default',
   label: 'Add Trail',
 }
