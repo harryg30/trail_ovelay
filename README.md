@@ -256,16 +256,25 @@ Use this when the map or sidebar look empty against a local database that has no
 
 ### Production migrations (GitHub Actions)
 
-Pushes to `main` that change `migrations/**` or related DB scripts run [`.github/workflows/db-migrate-production.yml`](.github/workflows/db-migrate-production.yml), which executes `npm run db:migrate:prod`. You can also run it manually: **Actions → Production DB migrations → Run workflow**.
+Pushes to `main` that change `migrations/**` or related DB scripts run [`.github/workflows/db-migrate-production.yml`](.github/workflows/db-migrate-production.yml), which executes `npm run db:migrate:prod` against **Neon** using connection-string auth (same env model as local `npm run db:migrate:prod`). You can also run it manually: **Actions → Production DB migrations → Run workflow**.
 
-Configure **either** a single **`DATABASE_URL`** secret (recommended for Neon — use the **direct** connection string if you have both pooled and direct) **or** discrete **`TRAIL_DB_*`** secrets including non-empty **`TRAIL_DB_PGPASSWORD`**. Optional **`DATABASE_URL_MIGRATE`** overrides `TRAIL_DB_*` in the migrate script when you store a pooled URL in `DATABASE_URL` for other tooling but want migrations on the direct host.
+Configure **either** Neon connection string secrets or discrete **`TRAIL_DB_*`** + password:
+
+- **Recommended (Neon):** set **`DATABASE_URL_MIGRATE`** to the **direct** (non-pooler) connection string from the Neon dashboard so DDL runs off the pooler. If you also store a pooled URL elsewhere, you can set **`DATABASE_URL`** in Actions too; when both exist, the migrate script applies **`DATABASE_URL` first, then `DATABASE_URL_MIGRATE` wins** for host/user/password (see [`lib/pg-connection-env.mjs`](lib/pg-connection-env.mjs)).
+- **Single secret:** one **`DATABASE_URL`** is enough if it already targets the **direct** host (fine for a small project).
+- **Discrete vars:** non-empty **`TRAIL_DB_PGPASSWORD`** plus host, user, database, port (any Postgres-compatible host, including Neon).
+
+**Switching to a new Neon project:** update **`DATABASE_URL`** / **`DATABASE_URL_MIGRATE`** (and Vercel env) from the new project’s connection details, then re-run migrations if needed. GitHub secret names stay the same; only values change.
 
 ```bash
 # Option A — one secret (simplest for Neon)
 gh secret set DATABASE_URL --body "postgres://...@ep-xxx.region.aws.neon.tech/neondb?sslmode=require"
 
-# Option B — pooled app URL + direct migrate URL
+# Option B — pooled app URL + direct migrate URL (typical Neon + Vercel)
 gh secret set DATABASE_URL --body "postgres://...@ep-xxx-pooler.region.aws.neon.tech/neondb?sslmode=require"
+gh secret set DATABASE_URL_MIGRATE --body "postgres://...@ep-xxx.region.aws.neon.tech/neondb?sslmode=require"
+
+# Option B2 — Actions-only: direct URL in DATABASE_URL_MIGRATE (no DATABASE_URL secret)
 gh secret set DATABASE_URL_MIGRATE --body "postgres://...@ep-xxx.region.aws.neon.tech/neondb?sslmode=require"
 
 # Option C — discrete vars (any Postgres)

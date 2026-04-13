@@ -1,6 +1,14 @@
-# Run production DB migrations after merge to main.
-# Secrets: either DATABASE_URL (recommended for Neon) or discrete TRAIL_DB_* + TRAIL_DB_PGPASSWORD.
-# Optional: DATABASE_URL_MIGRATE in CI overrides TRAIL_DB_* for a direct (non-pooler) connection.
+# Production Postgres migrations (Neon).
+#
+# This job connects the same way as `npm run db:migrate:prod`: connection-string auth only.
+# Configure GitHub Actions secrets to match your Neon project (rotate these when you move to a new Neon DB).
+#
+# Recommended for Neon + Vercel:
+#   - DATABASE_URL_MIGRATE = direct (non-pooler) URL — used by this workflow for DDL (avoids pooler limits).
+#   - Optionally also set DATABASE_URL if your scripts expect both; migrate prefers MIGRATE when set.
+#   - Or a single DATABASE_URL if it already points at the direct host.
+#
+# Alternative: discrete TRAIL_DB_* + TRAIL_DB_PGPASSWORD (no connection string secret).
 name: Production DB migrations
 
 on:
@@ -32,7 +40,7 @@ jobs:
 
       - run: npm ci
 
-      - name: Preflight secrets
+      - name: Preflight (Neon connection secrets)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_URL_MIGRATE: ${{ secrets.DATABASE_URL_MIGRATE }}
@@ -45,24 +53,31 @@ jobs:
           set -euo pipefail
           missing=0
           if [ -n "${DATABASE_URL:-}" ] || [ -n "${DATABASE_URL_MIGRATE:-}" ]; then
-            echo "Using DATABASE_URL or DATABASE_URL_MIGRATE for migrations."
+            echo "Neon: using DATABASE_URL and/or DATABASE_URL_MIGRATE for migrations."
+            if [ -n "${DATABASE_URL:-}" ] && [ -z "${DATABASE_URL_MIGRATE:-}" ]; then
+              case "${DATABASE_URL}" in
+                *pooler*)
+                  echo "::warning::DATABASE_URL looks like Neon's pooler host. For production DDL, set DATABASE_URL_MIGRATE to the direct connection string from the Neon dashboard (see README)."
+                  ;;
+              esac
+            fi
             exit 0
           fi
           for v in TRAIL_DB_PGHOST TRAIL_DB_PGUSER TRAIL_DB_PGDATABASE TRAIL_DB_PGPORT; do
             if [ -z "${!v:-}" ]; then
-              echo "::error::Missing required secret: $v (or set DATABASE_URL)"
+              echo "::error::Missing required secret: $v (or set DATABASE_URL / DATABASE_URL_MIGRATE for Neon)"
               missing=1
             fi
           done
           if [ -z "${TRAIL_DB_PGPASSWORD:-}" ]; then
-            echo "::error::Missing TRAIL_DB_PGPASSWORD (or set DATABASE_URL with password)"
+            echo "::error::Missing TRAIL_DB_PGPASSWORD (or set Neon DATABASE_URL / DATABASE_URL_MIGRATE with user+password in the URL)"
             missing=1
           fi
           if [ "$missing" -ne 0 ]; then
             exit 1
           fi
 
-      - name: Run pending migrations
+      - name: Run pending migrations (Neon)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           DATABASE_URL_MIGRATE: ${{ secrets.DATABASE_URL_MIGRATE }}
