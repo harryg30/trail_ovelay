@@ -91,6 +91,7 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 
 ## Architecture Notes
 - **Production DB migrations (GitHub Actions):** [`.github/workflows/db-migrate-production.yml`](.github/workflows/db-migrate-production.yml) targets **Neon** with `DATABASE_URL` / `DATABASE_URL_MIGRATE` or discrete `TRAIL_DB_*` + password (same env rules as [`scripts/db-script-pool.mjs`](scripts/db-script-pool.mjs)); connection-string auth only.
+- **PR migration gate:** [`.github/workflows/migrations-pr.yml`](.github/workflows/migrations-pr.yml) on `pull_request` (path-filtered) runs `npm run db:migrate` against ephemeral Postgres in CI — not production.
 - Single Next.js/Vercel deployment (no separate API server)
 - Leaflet loaded via `dynamic()` with SSR disabled
 - CORS open on `/api/trails` and `/api/networks` for browser extension

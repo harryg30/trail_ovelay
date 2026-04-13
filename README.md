@@ -288,6 +288,8 @@ gh secret set TRAIL_DB_PGSSLMODE --body "require"
 
 List configured names (not values): `gh secret list`
 
+**Pull requests:** when a PR changes `migrations/**` or migration-related scripts, [`.github/workflows/migrations-pr.yml`](.github/workflows/migrations-pr.yml) runs `npm run db:migrate` against an **ephemeral Postgres 16** service in GitHub Actions (not Neon). Failures block the PR if any migration SQL is invalid or ordering breaks on a fresh database.
+
 ### Moving data from another Postgres (e.g. old Aurora)
 
 - **Fresh start:** point Vercel at Neon, run `npm run db:migrate:prod` (or migrate from an empty DB), deploy. No data transfer.
