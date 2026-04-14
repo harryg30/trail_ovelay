@@ -233,6 +233,33 @@ export default function LeftDrawer({
     })
   }, [unpinnedTrailPhotos, showOnMapOnly, mapBounds])
 
+  const trailPhotosByTrailId = useMemo(() => {
+    const byId = new Map<string, Map<string, TrailPhoto>>()
+
+    const add = (p: TrailPhoto) => {
+      const tid = p.trailId
+      if (!tid) return
+      let perTrail = byId.get(tid)
+      if (!perTrail) {
+        perTrail = new Map()
+        byId.set(tid, perTrail)
+      }
+      perTrail.set(p.id, p)
+    }
+
+    for (const p of communityTrailPhotos) add(p)
+    for (const p of unpinnedTrailPhotos) add(p)
+
+    const out = new Map<string, TrailPhoto[]>()
+    for (const [trailId, photoMap] of byId) {
+      const sorted = Array.from(photoMap.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+      out.set(trailId, sorted)
+    }
+    return out
+  }, [communityTrailPhotos, unpinnedTrailPhotos])
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
     if (files.length === 0) return
@@ -618,21 +645,7 @@ export default function LeftDrawer({
                     )
                   }
                   const { trail } = row
-                  const communityForTrail = communityTrailPhotos.filter(
-                    (p) => p.trailId === trail.id
-                  )
-                  const mineForTrail = unpinnedTrailPhotos.filter(
-                    (p) => p.trailId === trail.id
-                  )
-                  const trailPubById = new Map<string, TrailPhoto>()
-                  for (const p of communityForTrail) trailPubById.set(p.id, p)
-                  for (const p of mineForTrail) {
-                    if (!trailPubById.has(p.id)) trailPubById.set(p.id, p)
-                  }
-                  const trailPub = Array.from(trailPubById.values()).sort(
-                    (a, b) =>
-                      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-                  )
+                  const trailPub = trailPhotosByTrailId.get(trail.id) ?? []
                   const visibleTrailPub = activeBounds
                     ? trailPub.filter((p) => {
                         const pt = trailPhotoMapPoint(p)
@@ -842,6 +855,7 @@ export default function LeftDrawer({
 
         {editMode === 'edit-network' && (
           <EditNetworkContent
+            key={selectedNetwork?.id ?? 'none'}
             trails={trails}
             networks={networks}
             selectedNetwork={selectedNetwork}
@@ -1308,12 +1322,14 @@ function AddTrailSidebar({
   // One-shot: opening a draft for edit (map tools + sidebar form)
   useEffect(() => {
     if (!draftPrefill) return
-    setForm({
-      name: draftPrefill.name,
-      difficulty: draftPrefill.difficulty,
-      direction: draftPrefill.direction,
-      notes: draftPrefill.notes ?? '',
-      networkId: draftPrefill.networkId,
+    queueMicrotask(() => {
+      setForm({
+        name: draftPrefill.name,
+        difficulty: draftPrefill.difficulty,
+        direction: draftPrefill.direction,
+        notes: draftPrefill.notes ?? '',
+        networkId: draftPrefill.networkId,
+      })
     })
     networkUserChosenRef.current = !!draftPrefill.networkId
     onClearDraftPrefill()
@@ -1331,9 +1347,11 @@ function AddTrailSidebar({
         ? (osmNamed[0]?.name ?? '').trim()
         : osmNamed.map((s) => (s.name ?? '').trim()).filter(Boolean).join(' · ')
     if (!suggested) return
-    setForm((prev) => {
-      if (prev.name.trim() !== '') return prev
-      return { ...prev, name: suggested }
+    queueMicrotask(() => {
+      setForm((prev) => {
+        if (prev.name.trim() !== '') return prev
+        return { ...prev, name: suggested }
+      })
     })
   }, [staged.segments])
 
@@ -1342,7 +1360,9 @@ function AddTrailSidebar({
     if (networkUserChosenRef.current || networks.length === 0) return
     if (staged.compositePolyline.length < 2) return
     const id = inferNetworkIdForPolyline(staged.compositePolyline, networks)
-    setForm((prev) => ({ ...prev, networkId: id }))
+    queueMicrotask(() => {
+      setForm((prev) => ({ ...prev, networkId: id }))
+    })
   }, [staged.compositePolyline, networks])
 
   const handleSubmit = async (publishOnSave: boolean) => {

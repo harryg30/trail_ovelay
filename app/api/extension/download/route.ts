@@ -70,8 +70,7 @@ export async function GET() {
       compression: 'DEFLATE',
     })
 
-    const body = new Blob([new Uint8Array(buf)])
-    return new NextResponse(body, {
+    return new NextResponse(buf, {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',

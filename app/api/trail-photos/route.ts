@@ -146,7 +146,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('GET /api/trail-photos error:', error)
     return NextResponse.json(
-      { photos: [], error: String(error) },
+      { photos: [], error: 'Internal server error' },
       { status: 500, headers: GET_CORS_HEADERS }
     )
   }
@@ -267,8 +267,9 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json({ photo: rowToTrailPhoto(row) })
-  } catch (err: any) {
-    const code = err?.code as string | undefined
+  } catch (err: unknown) {
+    const e = err as { code?: unknown; message?: unknown }
+    const code = typeof e?.code === 'string' ? e.code : undefined
     const message = err instanceof Error ? err.message : String(err)
     console.error('POST /api/trail-photos error:', { code, message })
 

@@ -2,6 +2,15 @@ const DEFAULT_API_URL = 'http://localhost:3000'
 
 const PRESET_NAMES = ['yellow', 'red', 'blue', 'green']
 
+function tryOriginPattern(rawUrl) {
+  try {
+    const u = new URL(String(rawUrl ?? '').trim())
+    return `${u.origin}/*`
+  } catch {
+    return null
+  }
+}
+
 function tryNormalizeHex(s) {
   const t = String(s ?? '').trim()
   if (!t.startsWith('#')) return null
@@ -71,9 +80,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   saveBtn.addEventListener('click', () => {
     const url = input.value.trim().replace(/\/$/, '')
-    chrome.storage.sync.set({ apiUrl: url }, () => {
-      status.textContent = 'Saved.'
-      setTimeout(() => { status.textContent = '' }, 2000)
+    const originPattern = tryOriginPattern(url)
+    const shouldRequest = originPattern && originPattern.startsWith('https://')
+
+    const persist = () => {
+      chrome.storage.sync.set({ apiUrl: url }, () => {
+        status.textContent = 'Saved.'
+        setTimeout(() => { status.textContent = '' }, 2000)
+      })
+    }
+
+    if (!shouldRequest) {
+      persist()
+      return
+    }
+
+    chrome.permissions.request({ origins: [originPattern] }, (granted) => {
+      if (!granted) {
+        status.textContent = 'Permission denied — API URL not saved.'
+        setTimeout(() => { status.textContent = '' }, 2500)
+        return
+      }
+      persist()
     })
   })
 

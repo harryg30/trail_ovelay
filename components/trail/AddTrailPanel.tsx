@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import type { Ride, TrimPoint, TrimSegment, StagedSegment, AddTrailTool } from '@/lib/types'
 import type { TrailEditTool } from '@/lib/modes/types'
 import type { ActiveEnd } from '@/hooks/useStagedTrail'
@@ -130,11 +130,10 @@ export function AddTrailPanel({
     return rides.filter((r) => r.name.toLowerCase().includes(q)).slice(0, 50)
   }, [rides, rideQuery])
 
-  useEffect(() => {
-    if (activeTool !== 'gpx') {
-      setRideQuery('')
-    }
-  }, [activeTool])
+  const handleSetTool = (tool: AddTrailTool) => {
+    if (tool !== 'gpx') setRideQuery('')
+    onSetActiveTool(tool)
+  }
 
   return (
     <div
@@ -146,20 +145,20 @@ export function AddTrailPanel({
     >
       {/* Tab bar: min widths + nowrap so each mode’s icon and label stay one line; scroll if needed */}
       <div className="flex min-w-0 overflow-x-auto border-b border-border">
-        <button type="button" className={tabBtn(activeTool === 'draw')} onClick={() => onSetActiveTool('draw')}>
+        <button type="button" className={tabBtn(activeTool === 'draw')} onClick={() => handleSetTool('draw')}>
           <FontAwesomeIcon icon={faPencil} className="h-3 w-3 shrink-0" />
           Draw
         </button>
-        <button type="button" className={tabBtn(activeTool === 'gpx')} onClick={() => onSetActiveTool('gpx')}>
+        <button type="button" className={tabBtn(activeTool === 'gpx')} onClick={() => handleSetTool('gpx')}>
           <FontAwesomeIcon icon={faRoute} className="h-3 w-3 shrink-0" />
           GPX
         </button>
-        <button type="button" className={tabBtn(activeTool === 'osm')} onClick={() => onSetActiveTool('osm')}>
+        <button type="button" className={tabBtn(activeTool === 'osm')} onClick={() => handleSetTool('osm')}>
           <FontAwesomeIcon icon={faMapLocationDot} className="h-3 w-3 shrink-0" />
           OSM
         </button>
         {showStravaTab && (
-          <button type="button" className={tabBtn(activeTool === 'strava')} onClick={() => onSetActiveTool('strava')}>
+          <button type="button" className={tabBtn(activeTool === 'strava')} onClick={() => handleSetTool('strava')}>
             <svg className="h-3 w-3 shrink-0" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
               <path d="M158.4 0L7 292h89.2l62.2-131.4L220.6 292h88.5L158.4 0zm88.5 292l-88.5 186.7L69.8 292H24.1l134.3 220L292.6 292h-45.7z" />
             </svg>

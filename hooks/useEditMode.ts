@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import type { EditMode, TrimPoint, Trail, Network } from '@/lib/types'
 import type { TrailEditTool } from '@/lib/modes/types'
 
@@ -18,7 +18,9 @@ export function useEditMode() {
   const [trimStart, setTrimStart] = useState<TrimPoint | null>(null)
   const [trimEnd, setTrimEnd] = useState<TrimPoint | null>(null)
   const trimEndRef = useRef<TrimPoint | null>(null)
-  trimEndRef.current = trimEnd
+  useEffect(() => {
+    trimEndRef.current = trimEnd
+  }, [trimEnd])
 
   // Edit/refine trail state (edit-trail, refine-trail)
   const [selectedTrail, setSelectedTrail] = useState<Trail | null>(null)

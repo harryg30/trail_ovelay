@@ -141,65 +141,78 @@ let bridgeRequestSeq = 0;
 const TO_BRIDGE = "__trailOverlayToBridge";
 const FROM_BRIDGE = "__trailOverlayFromBridge";
 
-/** API base URL comes only from the extension popup (chrome.storage), via the isolated bridge. */
-function fetchApiUrlFromBridge() {
+function fetchFromBridgeWithTimeout(
+  requestType,
+  responseType,
+  fallbackValue,
+  mapResponse,
+  payload = {},
+  timeoutMs = 2000
+) {
   const requestId = ++bridgeRequestSeq;
   return new Promise((resolve) => {
-    window.postMessage(
-      { type: "GET_API_URL", requestId, [TO_BRIDGE]: true },
-      "*"
-    );
-    window.addEventListener("message", function handler(event) {
+    let settled = false;
+    let timer = null;
+
+    function finish(value) {
+      if (settled) return;
+      settled = true;
+      if (timer != null) clearTimeout(timer);
+      window.removeEventListener("message", handler);
+      resolve(value);
+    }
+
+    function handler(event) {
       if (
-        event.data?.type === "API_URL_RESPONSE" &&
+        event.data?.type === responseType &&
         event.data[FROM_BRIDGE] === true &&
         event.data.requestId === requestId
       ) {
-        window.removeEventListener("message", handler);
-        resolve(event.data.apiUrl || DEFAULT_API_URL);
+        finish(mapResponse(event.data));
       }
-    });
+    }
+
+    timer = setTimeout(() => finish(fallbackValue), timeoutMs);
+    window.addEventListener("message", handler);
+    window.postMessage(
+      { type: requestType, requestId, [TO_BRIDGE]: true, ...payload },
+      "*"
+    );
   });
+}
+
+/** API base URL comes only from the extension popup (chrome.storage), via the isolated bridge. */
+function fetchApiUrlFromBridge() {
+  return fetchFromBridgeWithTimeout(
+    "GET_API_URL",
+    "API_URL_RESPONSE",
+    DEFAULT_API_URL,
+    (data) => data.apiUrl || DEFAULT_API_URL,
+    {},
+    5000
+  );
 }
 
 function fetchTrails() {
-  const requestId = ++bridgeRequestSeq;
-  return new Promise((resolve) => {
-    window.postMessage(
-      { type: "GET_TRAILS", requestId, [TO_BRIDGE]: true },
-      "*"
-    );
-    window.addEventListener("message", function handler(event) {
-      if (
-        event.data?.type === "TRAILS_RESPONSE" &&
-        event.data[FROM_BRIDGE] === true &&
-        event.data.requestId === requestId
-      ) {
-        window.removeEventListener("message", handler);
-        resolve(event.data.trails);
-      }
-    });
-  });
+  return fetchFromBridgeWithTimeout(
+    "GET_TRAILS",
+    "TRAILS_RESPONSE",
+    [],
+    (data) => data.trails,
+    {},
+    8000
+  );
 }
 
 function fetchNetworks() {
-  const requestId = ++bridgeRequestSeq;
-  return new Promise((resolve) => {
-    window.postMessage(
-      { type: "GET_NETWORKS", requestId, [TO_BRIDGE]: true },
-      "*"
-    );
-    window.addEventListener("message", function handler(event) {
-      if (
-        event.data?.type === "NETWORKS_RESPONSE" &&
-        event.data[FROM_BRIDGE] === true &&
-        event.data.requestId === requestId
-      ) {
-        window.removeEventListener("message", handler);
-        resolve(event.data.networks);
-      }
-    });
-  });
+  return fetchFromBridgeWithTimeout(
+    "GET_NETWORKS",
+    "NETWORKS_RESPONSE",
+    [],
+    (data) => data.networks,
+    {},
+    8000
+  );
 }
 
 const DEFAULT_OVERLAY_PREFS = {
@@ -211,136 +224,73 @@ const DEFAULT_OVERLAY_PREFS = {
 };
 
 function fetchOverlayPrefsFromBridge() {
-  const requestId = ++bridgeRequestSeq;
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve({ ...DEFAULT_OVERLAY_PREFS }), 2000);
-    window.postMessage(
-      { type: "GET_OVERLAY_PREFS", requestId, [TO_BRIDGE]: true },
-      "*"
-    );
-    window.addEventListener("message", function handler(event) {
-      if (
-        event.data?.type === "OVERLAY_PREFS_RESPONSE" &&
-        event.data[FROM_BRIDGE] === true &&
-        event.data.requestId === requestId
-      ) {
-        clearTimeout(timer);
-        window.removeEventListener("message", handler);
-        resolve({
-          enabled: event.data.enabled !== false,
-          trailsVisible: event.data.trailsVisible !== false,
-          networksVisible: event.data.networksVisible !== false,
-          photosVisible: event.data.photosVisible !== false,
-          bookmarkHighlightColor:
-            typeof event.data.bookmarkHighlightColor === "string" &&
-            event.data.bookmarkHighlightColor.trim().length > 0
-              ? event.data.bookmarkHighlightColor.trim()
-              : DEFAULT_OVERLAY_PREFS.bookmarkHighlightColor
-        });
-      }
-    });
-  });
+  return fetchFromBridgeWithTimeout(
+    "GET_OVERLAY_PREFS",
+    "OVERLAY_PREFS_RESPONSE",
+    { ...DEFAULT_OVERLAY_PREFS },
+    (data) => ({
+      enabled: data.enabled !== false,
+      trailsVisible: data.trailsVisible !== false,
+      networksVisible: data.networksVisible !== false,
+      photosVisible: data.photosVisible !== false,
+      bookmarkHighlightColor:
+        typeof data.bookmarkHighlightColor === "string" &&
+        data.bookmarkHighlightColor.trim().length > 0
+          ? data.bookmarkHighlightColor.trim()
+          : DEFAULT_OVERLAY_PREFS.bookmarkHighlightColor
+    })
+  );
 }
 
 function fetchTrailBookmarksFromBridge() {
-  const requestId = ++bridgeRequestSeq;
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve([]), 2000);
-    window.postMessage(
-      { type: "GET_TRAIL_BOOKMARKS", requestId, [TO_BRIDGE]: true },
-      "*"
-    );
-    window.addEventListener("message", function handler(event) {
-      if (
-        event.data?.type === "TRAIL_BOOKMARKS_RESPONSE" &&
-        event.data[FROM_BRIDGE] === true &&
-        event.data.requestId === requestId
-      ) {
-        clearTimeout(timer);
-        window.removeEventListener("message", handler);
-        const ids = Array.isArray(event.data.ids) ? event.data.ids : [];
-        resolve(ids.map((x) => String(x ?? "").trim()).filter(Boolean));
-      }
-    });
-  });
+  return fetchFromBridgeWithTimeout(
+    "GET_TRAIL_BOOKMARKS",
+    "TRAIL_BOOKMARKS_RESPONSE",
+    [],
+    (data) => {
+      const ids = Array.isArray(data.ids) ? data.ids : [];
+      return ids.map((x) => String(x ?? "").trim()).filter(Boolean);
+    }
+  );
 }
 
 function persistTrailBookmarksToBridge(ids) {
-  const requestId = ++bridgeRequestSeq;
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(), 2000);
-    window.postMessage(
-      { type: "SET_TRAIL_BOOKMARKS", requestId, ids, [TO_BRIDGE]: true },
-      "*"
-    );
-    window.addEventListener("message", function handler(event) {
-      if (
-        event.data?.type === "TRAIL_BOOKMARKS_SET" &&
-        event.data[FROM_BRIDGE] === true &&
-        event.data.requestId === requestId
-      ) {
-        clearTimeout(timer);
-        window.removeEventListener("message", handler);
-        resolve();
-      }
-    });
-  });
+  return fetchFromBridgeWithTimeout(
+    "SET_TRAIL_BOOKMARKS",
+    "TRAIL_BOOKMARKS_SET",
+    undefined,
+    () => undefined,
+    { ids }
+  );
 }
 
 function fetchTrailPhotosFromBridge(bounds) {
-  const requestId = ++bridgeRequestSeq;
-  return new Promise((resolve) => {
-    window.postMessage(
-      {
-        type: "GET_TRAIL_PHOTOS",
-        requestId,
-        [TO_BRIDGE]: true,
-        north: bounds.north,
-        south: bounds.south,
-        east: bounds.east,
-        west: bounds.west,
-        limit: bounds.limit ?? 500
-      },
-      "*"
-    );
-    window.addEventListener("message", function handler(event) {
-      if (
-        event.data?.type === "TRAIL_PHOTOS_RESPONSE" &&
-        event.data[FROM_BRIDGE] === true &&
-        event.data.requestId === requestId
-      ) {
-        window.removeEventListener("message", handler);
-        resolve(event.data.photos || []);
-      }
-    });
-  });
+  return fetchFromBridgeWithTimeout(
+    "GET_TRAIL_PHOTOS",
+    "TRAIL_PHOTOS_RESPONSE",
+    [],
+    (data) => data.photos || [],
+    {
+      north: bounds.north,
+      south: bounds.south,
+      east: bounds.east,
+      west: bounds.west,
+      limit: bounds.limit ?? 500
+    },
+    8000
+  );
 }
 
 function fetchTrailPhotosByTrailFromBridge(trailId, limit = 80) {
-  const requestId = ++bridgeRequestSeq;
   const tid = normalizeTrailIdKey(trailId);
-  return new Promise((resolve) => {
-    window.postMessage(
-      {
-        type: "GET_TRAIL_PHOTOS_BY_TRAIL",
-        requestId,
-        [TO_BRIDGE]: true,
-        trailId: tid,
-        limit
-      },
-      "*"
-    );
-    window.addEventListener("message", function handler(event) {
-      if (
-        event.data?.type === "TRAIL_PHOTOS_RESPONSE" &&
-        event.data[FROM_BRIDGE] === true &&
-        event.data.requestId === requestId
-      ) {
-        window.removeEventListener("message", handler);
-        resolve(event.data.photos || []);
-      }
-    });
-  });
+  return fetchFromBridgeWithTimeout(
+    "GET_TRAIL_PHOTOS_BY_TRAIL",
+    "TRAIL_PHOTOS_RESPONSE",
+    [],
+    (data) => data.photos || [],
+    { trailId: tid, limit },
+    8000
+  );
 }
 
 function addClickNudge(map) {
@@ -908,25 +858,13 @@ async function refreshViewportTrailPhotoPreviews(map) {
 
 function setEnabled(value) {
   overlayEnabled = value;
-  const requestId = ++bridgeRequestSeq;
-  return new Promise((resolve) => {
-    const timer = setTimeout(resolve, 2000);
-    window.postMessage(
-      { type: "SET_ENABLED", enabled: value, requestId, [TO_BRIDGE]: true },
-      "*"
-    );
-    window.addEventListener("message", function handler(event) {
-      if (
-        event.data?.type === "ENABLED_SET" &&
-        event.data[FROM_BRIDGE] === true &&
-        event.data.requestId === requestId
-      ) {
-        clearTimeout(timer);
-        window.removeEventListener("message", handler);
-        resolve();
-      }
-    });
-  });
+  return fetchFromBridgeWithTimeout(
+    "SET_ENABLED",
+    "ENABLED_SET",
+    undefined,
+    () => undefined,
+    { enabled: value }
+  );
 }
 
 /** Full teardown: close UI and strip all overlay map sources/layers. */

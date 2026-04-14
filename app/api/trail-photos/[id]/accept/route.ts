@@ -88,8 +88,9 @@ export async function POST(
     }
 
     return NextResponse.json({ photo: rowToTrailPhoto(updated) })
-  } catch (err: any) {
-    const code = err?.code as string | undefined
+  } catch (err: unknown) {
+    const e = err as { code?: unknown; message?: unknown }
+    const code = typeof e?.code === 'string' ? e.code : undefined
     const message = err instanceof Error ? err.message : String(err)
     console.error('POST /api/trail-photos/[id]/accept error:', { code, message })
     return NextResponse.json({ error: 'Failed to accept photo' }, { status: 500 })
