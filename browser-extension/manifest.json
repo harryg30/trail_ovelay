@@ -4,11 +4,16 @@
   "version": "1.0.0",
   "description": "Overlays mountain bike trails on Strava maps",
   "permissions": [
-    "storage"
+    "storage",
+    "permissions"
   ],
   "host_permissions": [
     "https://www.strava.com/*",
-    "http://localhost:3000/*"
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js"

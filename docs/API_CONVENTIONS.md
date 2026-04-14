@@ -27,8 +27,10 @@ return apiSuccess({ trails })
 return apiSuccess({ trails }, CORS_HEADERS)
 ```
 
-**Do not change** the payload keys on public CORS routes (`/api/trails`, `/api/networks`).
-The browser extension reads `data.trails` and `data.networks` directly.
+**Do not change** the payload keys on public CORS routes (`/api/trails`, `/api/networks`, `GET /api/trail-photos`).
+The browser extension reads `data.trails`, `data.networks`, and `GET /api/trail-photos` → `data.photos` directly.
+
+`GET /api/trail-photos` also accepts **`trailId`** (with optional **`limit`**) instead of bbox params: same public visibility rules, ordered by `created_at` descending, for the extension trail detail gallery.
 
 ---
 
@@ -83,8 +85,13 @@ Available mappers:
 
 ## CORS
 
-Only `/api/trails` and `/api/networks` are CORS-open (browser extension reads them).
-Both define:
+These routes are CORS-open for **GET** (browser extension reads them from Strava):
+
+- `/api/trails`
+- `/api/networks`
+- `/api/trail-photos` — **GET only** (community published pins). `POST` remains same-origin + session.
+
+Each defines the same pattern:
 
 ```ts
 const CORS_HEADERS = {

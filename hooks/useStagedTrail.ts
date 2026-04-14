@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useMemo } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import type { AddTrailTool, StagedSegment } from '@/lib/types'
 import type { TrailEditTool } from '@/lib/modes/types'
 import { polylineDistanceKm, haversineKm } from '@/lib/geo-utils'
@@ -45,11 +45,17 @@ export function useStagedTrail() {
   const [historyFuture, setHistoryFuture] = useState<StagedSegment[][]>([])
 
   const segmentsRef = useRef(segments)
-  segmentsRef.current = segments
   const historyPastRef = useRef(historyPast)
-  historyPastRef.current = historyPast
   const historyFutureRef = useRef(historyFuture)
-  historyFutureRef.current = historyFuture
+  useEffect(() => {
+    segmentsRef.current = segments
+  }, [segments])
+  useEffect(() => {
+    historyPastRef.current = historyPast
+  }, [historyPast])
+  useEffect(() => {
+    historyFutureRef.current = historyFuture
+  }, [historyFuture])
 
   const pushHistory = useCallback((prev: StagedSegment[]) => {
     setHistoryPast((past) => [...past, prev])
@@ -125,7 +131,9 @@ export function useStagedTrail() {
   // All draw ops respect activeEnd: 'end' targets the last segment, 'start' targets the first.
 
   const activeEndRef = useRef(activeEnd)
-  activeEndRef.current = activeEnd
+  useEffect(() => {
+    activeEndRef.current = activeEnd
+  }, [activeEnd])
 
   function findDrawTarget(prev: StagedSegment[], end: ActiveEnd): { seg: StagedSegment; idx: number } | null {
     if (end === 'end') {

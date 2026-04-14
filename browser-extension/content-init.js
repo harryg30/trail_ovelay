@@ -1,6 +1,6 @@
 // Runs at document_start in MAIN world — before any page scripts.
 // Intercepts window.mapboxgl being set by Strava, then wraps Map constructor
-// to capture the first map instance at window._trailOverlayMap.
+// to capture the latest map instance at window._trailOverlayMap (fallback when vv_map is absent).
 ;(function () {
   function patchMapbox(mapboxgl) {
     if (!mapboxgl || !mapboxgl.Map || mapboxgl._trailOverlayPatched) return
@@ -9,10 +9,7 @@
     const OrigMap = mapboxgl.Map
     function PatchedMap(...args) {
       const instance = new OrigMap(...args)
-      if (!window._trailOverlayMap) {
-        console.log('[TrailOverlay] Captured map via constructor intercept')
-        window._trailOverlayMap = instance
-      }
+      window._trailOverlayMap = instance
       return instance
     }
     PatchedMap.prototype = OrigMap.prototype

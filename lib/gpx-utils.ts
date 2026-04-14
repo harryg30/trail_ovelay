@@ -9,7 +9,15 @@ function parseGPXContent(content: string, filename: string): Ride {
   const track = gpx.tracks[0];
   const points = track?.points ?? [];
 
-  const polyline: [number, number][] = points.map((p: any) => [p.lat, p.lon]);
+  const polyline: [number, number][] = (points as unknown[])
+    .map((p) => {
+      const lat = (p as { lat?: unknown })?.lat;
+      const lon = (p as { lon?: unknown })?.lon;
+      return typeof lat === "number" && typeof lon === "number"
+        ? ([lat, lon] as [number, number])
+        : null;
+    })
+    .filter((x): x is [number, number] => x != null);
 
   return {
     id: crypto.randomUUID(),
@@ -17,8 +25,13 @@ function parseGPXContent(content: string, filename: string): Ride {
     distance: gpx.tracks[0]?.distance?.total ?? 0,
     elevation: gpx.tracks[0]?.elevation?.pos ?? 0,
     polyline,
-    timestamp: points[0]?.time ? new Date(points[0].time) : new Date(),
-    pointCount: points.length,
+    timestamp: (() => {
+      const t = (points[0] as { time?: unknown } | undefined)?.time
+      if (t instanceof Date) return t
+      if (typeof t === "string") return new Date(t)
+      return new Date()
+    })(),
+    pointCount: polyline.length,
   };
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useRef, useEffect } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import type { Ride, TrimPoint, TrimSegment, StagedSegment, AddTrailTool } from '@/lib/types'
 import type { TrailEditTool } from '@/lib/modes/types'
 import type { ActiveEnd } from '@/hooks/useStagedTrail'
@@ -26,7 +26,7 @@ import { uploadRideFilesClient } from '@/lib/upload-rides-client'
 
 const toolBtn = (active: boolean) =>
   cn(
-    'flex size-7 items-center justify-center rounded-md border-2 transition-colors',
+    'flex size-7 shrink-0 items-center justify-center rounded-md border-2 transition-colors',
     active
       ? 'border-foreground bg-foreground text-background'
       : 'border-border bg-card text-foreground hover:bg-mud/80'
@@ -34,7 +34,7 @@ const toolBtn = (active: boolean) =>
 
 const tabBtn = (active: boolean) =>
   cn(
-    'flex-1 py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border-b-2',
+    'inline-flex min-w-[4.5rem] flex-1 basis-0 items-center justify-center gap-1.5 whitespace-nowrap py-1.5 text-[11px] font-bold uppercase tracking-wider transition-colors border-b-2',
     active
       ? 'border-primary text-primary'
       : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -130,11 +130,10 @@ export function AddTrailPanel({
     return rides.filter((r) => r.name.toLowerCase().includes(q)).slice(0, 50)
   }, [rides, rideQuery])
 
-  useEffect(() => {
-    if (activeTool !== 'gpx') {
-      setRideQuery('')
-    }
-  }, [activeTool])
+  const handleSetTool = (tool: AddTrailTool) => {
+    if (tool !== 'gpx') setRideQuery('')
+    onSetActiveTool(tool)
+  }
 
   return (
     <div
@@ -144,23 +143,23 @@ export function AddTrailPanel({
       )}
       onClick={(e) => e.stopPropagation()}
     >
-      {/* Tab bar */}
-      <div className="flex border-b border-border">
-        <button type="button" className={tabBtn(activeTool === 'draw')} onClick={() => onSetActiveTool('draw')}>
-          <FontAwesomeIcon icon={faPencil} className="mr-1.5 h-3 w-3" />
+      {/* Tab bar: min widths + nowrap so each mode’s icon and label stay one line; scroll if needed */}
+      <div className="flex min-w-0 overflow-x-auto border-b border-border">
+        <button type="button" className={tabBtn(activeTool === 'draw')} onClick={() => handleSetTool('draw')}>
+          <FontAwesomeIcon icon={faPencil} className="h-3 w-3 shrink-0" />
           Draw
         </button>
-        <button type="button" className={tabBtn(activeTool === 'gpx')} onClick={() => onSetActiveTool('gpx')}>
-          <FontAwesomeIcon icon={faRoute} className="mr-1.5 h-3 w-3" />
+        <button type="button" className={tabBtn(activeTool === 'gpx')} onClick={() => handleSetTool('gpx')}>
+          <FontAwesomeIcon icon={faRoute} className="h-3 w-3 shrink-0" />
           GPX
         </button>
-        <button type="button" className={tabBtn(activeTool === 'osm')} onClick={() => onSetActiveTool('osm')}>
-          <FontAwesomeIcon icon={faMapLocationDot} className="mr-1.5 h-3 w-3" />
+        <button type="button" className={tabBtn(activeTool === 'osm')} onClick={() => handleSetTool('osm')}>
+          <FontAwesomeIcon icon={faMapLocationDot} className="h-3 w-3 shrink-0" />
           OSM
         </button>
         {showStravaTab && (
-          <button type="button" className={tabBtn(activeTool === 'strava')} onClick={() => onSetActiveTool('strava')}>
-            <svg className="mr-1.5 h-3 w-3 inline-block" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
+          <button type="button" className={tabBtn(activeTool === 'strava')} onClick={() => handleSetTool('strava')}>
+            <svg className="h-3 w-3 shrink-0" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true">
               <path d="M158.4 0L7 292h89.2l62.2-131.4L220.6 292h88.5L158.4 0zm88.5 292l-88.5 186.7L69.8 292H24.1l134.3 220L292.6 292h-45.7z" />
             </svg>
             Strava
@@ -266,8 +265,8 @@ function StagingHistoryToolbar({
   clearDisabled: boolean
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">History</span>
+    <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto">
+      <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">History</span>
       <button type="button" title="Undo" className={toolBtn(false)} onClick={onUndo} disabled={!canUndo}>
         <FontAwesomeIcon icon={faRotateLeft} className={cn('h-3 w-3', !canUndo && 'opacity-40')} />
       </button>
@@ -295,7 +294,7 @@ function DrawTools({
   hasSegments: boolean
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-nowrap items-center gap-2 overflow-x-auto">
       <button type="button" title="Pencil" className={toolBtn(drawTool === 'pencil')} onClick={() => onSetDrawTool('pencil')}>
         <FontAwesomeIcon icon={faPencil} className="h-3 w-3" />
       </button>

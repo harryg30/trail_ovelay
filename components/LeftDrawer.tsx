@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input'
 import { uploadRideFilesClient } from '@/lib/upload-rides-client'
 import { cn } from '@/lib/utils'
 import AuthButton from '@/components/AuthButton'
+import GetExtensionButton from '@/components/GetExtensionButton'
 import ThemeToggle from '@/components/ThemeToggle'
 import { TrailEditDrawer } from '@/components/trail/TrailEditDrawer'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
@@ -232,6 +233,33 @@ export default function LeftDrawer({
     })
   }, [unpinnedTrailPhotos, showOnMapOnly, mapBounds])
 
+  const trailPhotosByTrailId = useMemo(() => {
+    const byId = new Map<string, Map<string, TrailPhoto>>()
+
+    const add = (p: TrailPhoto) => {
+      const tid = p.trailId
+      if (!tid) return
+      let perTrail = byId.get(tid)
+      if (!perTrail) {
+        perTrail = new Map()
+        byId.set(tid, perTrail)
+      }
+      perTrail.set(p.id, p)
+    }
+
+    for (const p of communityTrailPhotos) add(p)
+    for (const p of unpinnedTrailPhotos) add(p)
+
+    const out = new Map<string, TrailPhoto[]>()
+    for (const [trailId, photoMap] of byId) {
+      const sorted = Array.from(photoMap.values()).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+      out.set(trailId, sorted)
+    }
+    return out
+  }, [communityTrailPhotos, unpinnedTrailPhotos])
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
     if (files.length === 0) return
@@ -291,6 +319,9 @@ export default function LeftDrawer({
         <AuthButton user={user} />
         <div className="mt-3 w-full">
           <ThemeToggle className="w-full" size="sm" />
+        </div>
+        <div className="mt-3 w-full">
+          <GetExtensionButton />
         </div>
       </div>
 
@@ -614,9 +645,7 @@ export default function LeftDrawer({
                     )
                   }
                   const { trail } = row
-                  const trailPub = communityTrailPhotos.filter(
-                    (p) => p.trailId === trail.id && p.accepted
-                  )
+                  const trailPub = trailPhotosByTrailId.get(trail.id) ?? []
                   const visibleTrailPub = activeBounds
                     ? trailPub.filter((p) => {
                         const pt = trailPhotoMapPoint(p)
@@ -708,15 +737,32 @@ export default function LeftDrawer({
                                   <button
                                     key={photo.id}
                                     type="button"
-                                    className="h-12 w-12 shrink-0 overflow-hidden rounded-sm border-2 border-border"
+                                    className="relative h-12 w-12 shrink-0 overflow-hidden rounded-sm border-2 border-border"
                                     onClick={() => setTrailPhotoForAction(photo)}
-                                    title="View photo"
+                                    title={
+                                      photo.accepted
+                                        ? 'Trail photo — accepted on community map'
+                                        : 'Trail photo — pending acceptance'
+                                    }
+                                    aria-label={
+                                      photo.accepted
+                                        ? 'Trail photo, accepted on community map. Open actions.'
+                                        : 'Trail photo, pending acceptance. Open actions.'
+                                    }
                                   >
                                     <img
                                       src={photo.thumbnailUrl || photo.blobUrl}
                                       alt=""
                                       className="w-full h-full object-cover"
                                     />
+                                    {photo.accepted ? (
+                                      <span
+                                        className="pointer-events-none absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl-sm bg-primary text-[8px] text-primary-foreground shadow-sm"
+                                        aria-hidden
+                                      >
+                                        <FontAwesomeIcon icon={faCheck} className="h-2 w-2" />
+                                      </span>
+                                    ) : null}
                                   </button>
                                 ))}
                               </div>
@@ -809,6 +855,7 @@ export default function LeftDrawer({
 
         {editMode === 'edit-network' && (
           <EditNetworkContent
+            key={selectedNetwork?.id ?? 'none'}
             trails={trails}
             networks={networks}
             selectedNetwork={selectedNetwork}
@@ -1275,12 +1322,14 @@ function AddTrailSidebar({
   // One-shot: opening a draft for edit (map tools + sidebar form)
   useEffect(() => {
     if (!draftPrefill) return
-    setForm({
-      name: draftPrefill.name,
-      difficulty: draftPrefill.difficulty,
-      direction: draftPrefill.direction,
-      notes: draftPrefill.notes ?? '',
-      networkId: draftPrefill.networkId,
+    queueMicrotask(() => {
+      setForm({
+        name: draftPrefill.name,
+        difficulty: draftPrefill.difficulty,
+        direction: draftPrefill.direction,
+        notes: draftPrefill.notes ?? '',
+        networkId: draftPrefill.networkId,
+      })
     })
     networkUserChosenRef.current = !!draftPrefill.networkId
     onClearDraftPrefill()
@@ -1298,9 +1347,11 @@ function AddTrailSidebar({
         ? (osmNamed[0]?.name ?? '').trim()
         : osmNamed.map((s) => (s.name ?? '').trim()).filter(Boolean).join(' · ')
     if (!suggested) return
-    setForm((prev) => {
-      if (prev.name.trim() !== '') return prev
-      return { ...prev, name: suggested }
+    queueMicrotask(() => {
+      setForm((prev) => {
+        if (prev.name.trim() !== '') return prev
+        return { ...prev, name: suggested }
+      })
     })
   }, [staged.segments])
 
@@ -1309,7 +1360,9 @@ function AddTrailSidebar({
     if (networkUserChosenRef.current || networks.length === 0) return
     if (staged.compositePolyline.length < 2) return
     const id = inferNetworkIdForPolyline(staged.compositePolyline, networks)
-    setForm((prev) => ({ ...prev, networkId: id }))
+    queueMicrotask(() => {
+      setForm((prev) => ({ ...prev, networkId: id }))
+    })
   }, [staged.compositePolyline, networks])
 
   const handleSubmit = async (publishOnSave: boolean) => {

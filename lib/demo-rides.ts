@@ -41,8 +41,14 @@ async function fetchAndParseGpx(url: string, index: number): Promise<Ride> {
   gpx.parse(text)
 
   const track = gpx.tracks[0]
-  const points = track?.points ?? []
-  const polyline: [number, number][] = points.map((p: any) => [p.lat, p.lon])
+  const points: unknown[] = track?.points ?? []
+  const polyline: [number, number][] = points
+    .map((p) => {
+      const lat = (p as { lat?: unknown })?.lat
+      const lon = (p as { lon?: unknown })?.lon
+      return typeof lat === 'number' && typeof lon === 'number' ? ([lat, lon] as const) : null
+    })
+    .filter((x): x is [number, number] => x != null)
 
   return {
     id: `demo-${index + 1}`,
@@ -50,7 +56,12 @@ async function fetchAndParseGpx(url: string, index: number): Promise<Ride> {
     distance: track?.distance?.total ?? 0,
     elevation: track?.elevation?.pos ?? 0,
     polyline,
-    timestamp: points[0]?.time ? new Date(points[0].time) : new Date(),
-    pointCount: points.length,
+    timestamp: (() => {
+      const t = (points[0] as { time?: unknown } | undefined)?.time
+      if (t instanceof Date) return t
+      if (typeof t === 'string') return new Date(t)
+      return new Date()
+    })(),
+    pointCount: polyline.length,
   }
 }

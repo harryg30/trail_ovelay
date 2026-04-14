@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import type { Trail, Network } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import type { OfficialMapLayerPayload } from '@/lib/types'
@@ -43,14 +43,6 @@ export function EditNetworkContent({
   )
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (selectedNetwork) {
-      setName(selectedNetwork.name)
-      setSelectedTrailIds(new Set(selectedNetwork.trailIds))
-      setSaveError(null)
-    }
-  }, [selectedNetwork?.id])
 
   const toggleTrail = (id: string) => {
     setSelectedTrailIds((prev) => {

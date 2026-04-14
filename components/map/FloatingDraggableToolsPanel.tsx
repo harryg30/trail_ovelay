@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState, type ReactNode } from 'react'
 
 /** Horizontally centered at top; v3 clears offsets from the top-left experiment (v2). */
 const STORAGE_KEY = 'trail-overlay:add-trail-tools-panel-offset-v3'
@@ -21,27 +21,24 @@ function clampOffset(x: number, y: number): Offset {
  * Map overlay shell (centered below top edge) with a drag handle, persisted offset, and clamped bounds.
  */
 export function FloatingDraggableToolsPanel({ children, title = 'Tools' }: { children: ReactNode; title?: string }) {
-  const [offset, setOffset] = useState<Offset>({ x: 0, y: 0 })
-  const offsetRef = useRef<Offset>({ x: 0, y: 0 })
-  const dragRef = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null)
-  const hydrated = useRef(false)
-
-  useEffect(() => {
-    if (hydrated.current) return
-    hydrated.current = true
+  const initialOffset: Offset = (() => {
+    if (typeof window === 'undefined') return { x: 0, y: 0 }
     try {
       const raw = localStorage.getItem(STORAGE_KEY)
-      if (!raw) return
+      if (!raw) return { x: 0, y: 0 }
       const o = JSON.parse(raw) as Partial<Offset>
       if (typeof o.x === 'number' && typeof o.y === 'number') {
-        const next = clampOffset(o.x, o.y)
-        offsetRef.current = next
-        setOffset(next)
+        return clampOffset(o.x, o.y)
       }
     } catch {
       /* ignore */
     }
-  }, [])
+    return { x: 0, y: 0 }
+  })()
+
+  const [offset, setOffset] = useState<Offset>(() => initialOffset)
+  const offsetRef = useRef<Offset>(initialOffset)
+  const dragRef = useRef<{ px: number; py: number; ox: number; oy: number } | null>(null)
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
@@ -88,9 +85,9 @@ export function FloatingDraggableToolsPanel({ children, title = 'Tools' }: { chi
         transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px)`,
       }}
     >
-      <div className="flex max-w-[min(96vw,36rem)] flex-col overflow-hidden rounded-lg border-2 border-foreground bg-card shadow-[3px_3px_0_0_var(--foreground)]">
+      <div className="flex min-w-[min(100%,19rem)] max-w-[min(96vw,36rem)] flex-col overflow-hidden rounded-lg border-2 border-foreground bg-card shadow-[3px_3px_0_0_var(--foreground)]">
         <div
-          className="flex touch-none cursor-grab items-center justify-center gap-2 border-b border-border bg-muted/40 py-1.5 active:cursor-grabbing"
+          className="flex touch-none cursor-grab flex-nowrap items-center justify-center gap-2 whitespace-nowrap border-b border-border bg-muted/40 py-1.5 active:cursor-grabbing"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}
