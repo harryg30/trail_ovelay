@@ -7,6 +7,7 @@ components/
   LeftDrawer.tsx          ← Outer sidebar shell (~600 lines)
   LeafletMap.tsx          ← Leaflet map (SSR-disabled via dynamic())
   AuthButton.tsx
+  GetExtensionButton.tsx  ← Chrome Web Store link (NEXT_PUBLIC_CHROME_WEBSTORE_URL) or sideload dialog + ZIP
   AnnouncementModal.tsx
 
   ui/                     ← shadcn/ui-style primitives (Base UI + Tailwind + CVA)

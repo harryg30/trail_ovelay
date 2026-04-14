@@ -202,9 +202,14 @@ TRAIL_DB_PGSSLMODE=disable
 
 # Optional — first-load basemap (Catalog is the default; set osm for Classic)
 # NEXT_PUBLIC_MAP_BASE_STYLE=osm
+
+# Optional — Chrome Web Store listing URL for the sidebar “Get extension” button (new tab)
+# NEXT_PUBLIC_CHROME_WEBSTORE_URL=https://chromewebstore.google.com/detail/…
 ```
 
 `NEXT_PUBLIC_MAP_BASE_STYLE` — omit (or `stylized`) for **Catalog** as the first-load default; `osm` selects **Classic**. Both modes use **standard OpenStreetMap** raster tiles; Catalog only adds a light warm CSS filter so the base sits closer to the app’s paper/forest palette ([`lib/map-basemap.ts`](lib/map-basemap.ts)). **Classic / Catalog** is chosen from the layers tool button under **zoom to my location** (top-left) and persists in `localStorage` (`trail-overlay-basemap-style`), overriding the env default on return visits until cleared.
+
+`NEXT_PUBLIC_CHROME_WEBSTORE_URL` — optional full URL to your **Chrome Web Store** listing. When set, **Get extension** in the left drawer opens that URL in a new tab. When unset, the same control opens instructions for sideloading and a link to **`GET /api/extension/download`**, which returns a ZIP of [`browser-extension/`](browser-extension/) for **Load unpacked** in `chrome://extensions`.
 
 ---
 

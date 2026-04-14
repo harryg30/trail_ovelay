@@ -30,6 +30,7 @@ app/
     map-overlays/[id]/alignment/  # PATCH two-point align (auth)
     digitization-tasks/[id]/  # PATCH, DELETE (auth)
     dev/dump/             # GET (secret header) — JSON snapshot for local seed
+    extension/download/   # GET — ZIP of browser-extension/ for Chrome sideload
     health/
 components/
   LeafletMap.tsx        # Interactive map; trail/ride/network rendering; trimming UI
@@ -85,6 +86,7 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 | STRAVA_CLIENT_SECRET | Server-only |
 | SESSION_SECRET | 32-byte hex for JWT |
 | NEXT_PUBLIC_APP_URL | Base URL (browser-visible) |
+| NEXT_PUBLIC_CHROME_WEBSTORE_URL | Optional — Chrome Web Store URL for sidebar **Get extension**; if unset, UI offers sideload + `GET /api/extension/download` ZIP |
 | NODE_ENV | Controls cookie security |
 | PROD_APP_URL | Optional — dump origin for `npm run db:pull-prod`; falls back to `NEXT_PUBLIC_APP_URL` |
 | DEV_DUMP_SECRET | Shared with production; required header for `GET /api/dev/dump` |

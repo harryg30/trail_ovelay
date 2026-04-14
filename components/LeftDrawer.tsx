@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input'
 import { uploadRideFilesClient } from '@/lib/upload-rides-client'
 import { cn } from '@/lib/utils'
 import AuthButton from '@/components/AuthButton'
+import GetExtensionButton from '@/components/GetExtensionButton'
 import ThemeToggle from '@/components/ThemeToggle'
 import { TrailEditDrawer } from '@/components/trail/TrailEditDrawer'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
@@ -291,6 +292,9 @@ export default function LeftDrawer({
         <AuthButton user={user} />
         <div className="mt-3 w-full">
           <ThemeToggle className="w-full" size="sm" />
+        </div>
+        <div className="mt-3 w-full">
+          <GetExtensionButton />
         </div>
       </div>
 
