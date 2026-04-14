@@ -70,7 +70,11 @@ export async function GET() {
       compression: 'DEFLATE',
     })
 
-    return new NextResponse(buf, {
+    // NextResponse's BodyInit typing (in this Next version) does not accept Uint8Array/Buffer directly.
+    // Wrap bytes in a Blob to satisfy types while avoiding an extra copy.
+    const ab = buf.buffer as ArrayBuffer
+    const bytes = new Uint8Array(ab, buf.byteOffset, buf.byteLength)
+    return new NextResponse(new Blob([bytes]), {
       status: 200,
       headers: {
         'Content-Type': 'application/zip',

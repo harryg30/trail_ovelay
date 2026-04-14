@@ -56,10 +56,12 @@ async function fetchAndParseGpx(url: string, index: number): Promise<Ride> {
     distance: track?.distance?.total ?? 0,
     elevation: track?.elevation?.pos ?? 0,
     polyline,
-    timestamp:
-      typeof (points[0] as { time?: unknown } | undefined)?.time === 'string'
-        ? new Date((points[0] as { time: string }).time)
-        : new Date(),
+    timestamp: (() => {
+      const t = (points[0] as { time?: unknown } | undefined)?.time
+      if (t instanceof Date) return t
+      if (typeof t === 'string') return new Date(t)
+      return new Date()
+    })(),
     pointCount: polyline.length,
   }
 }
