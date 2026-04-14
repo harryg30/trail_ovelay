@@ -66,6 +66,8 @@ When ride photos from Strava are visible for a ride, thumbnails render in **Left
 ### Community trail photos without GPS
 Uploads from **Add trail photo** (`AddTrailPhotoContent`) support **Take photo** (camera) or **Choose from library** (JPEG/PNG/WebP). If geolocation is missing, rows stay in **LeftDrawer** under **Trail photos — pin on map** with the same View / Pin-to-map dialog. Placement uses `placingTrailPhoto` on the map (trail snap required). Accepting a pin updates `trail_lat`/`trail_lon` and fills `lat`/`lon` when they were null so bounds queries still work.
 
+Under each trail in the drawer list, the chevron expands thumbnails merged from community fetch plus the user’s pending trail-attached uploads; a **primary checkmark** in the thumbnail corner means `accepted` (visible on the community map / extension bbox API).
+
 ---
 
 ## Shared Components

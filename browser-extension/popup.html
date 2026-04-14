@@ -11,7 +11,7 @@
     }
     h3 { margin: 0 0 12px; font-size: 15px; }
     label { display: block; margin-bottom: 4px; font-size: 12px; color: #666; }
-    input {
+    input[type="url"] {
       width: 100%;
       box-sizing: border-box;
       padding: 7px 8px;
@@ -31,10 +31,45 @@
     }
     button:hover { background: #e04400; }
     #status { margin-top: 8px; font-size: 12px; color: #22c55e; min-height: 16px; }
-    .legend { margin-top: 16px; font-size: 12px; }
-    .legend h4 { margin: 0 0 6px; font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; }
-    .swatch { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .row-toggle {
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid #e5e5e5;
+    }
+    .asset-heading {
+      margin: 0 0 10px;
+      font-size: 12px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .toggle-label {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 13px;
+      color: #1a1a1a;
+      margin-bottom: 10px;
+    }
+    .toggle-label:last-of-type { margin-bottom: 0; }
+    .toggle-label input { margin-top: 2px; flex-shrink: 0; }
+    .toggle-hint {
+      margin: 12px 0 0;
+      font-size: 11px;
+      color: #666;
+      line-height: 1.4;
+    }
+    select, input[type="text"].hex-field {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 7px 8px;
+      font-size: 13px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      margin-top: 4px;
+    }
+    .field-hint { font-size: 11px; color: #666; margin-top: 6px; line-height: 1.35; }
   </style>
 </head>
 <body>
@@ -44,12 +79,31 @@
   <button id="save">Save</button>
   <div id="status"></div>
 
-  <div class="legend">
-    <h4>Difficulty</h4>
-    <div class="swatch"><div class="dot" style="background:#22c55e"></div> Easy</div>
-    <div class="swatch"><div class="dot" style="background:#f59e0b"></div> Intermediate</div>
-    <div class="swatch"><div class="dot" style="background:#ef4444"></div> Hard</div>
-    <div class="swatch"><div class="dot" style="background:#94a3b8"></div> Not set</div>
+  <div class="row-toggle">
+    <h4 class="asset-heading">Map layers</h4>
+    <label class="toggle-label" for="showTrails">
+      <input id="showTrails" type="checkbox">
+      <span>Trails</span>
+    </label>
+    <label class="toggle-label" for="showNetworks">
+      <input id="showNetworks" type="checkbox">
+      <span>Networks</span>
+    </label>
+    <label class="toggle-label" for="showTrailPhotos">
+      <input id="showTrailPhotos" type="checkbox">
+      <span>List thumbnails</span>
+    </label>
+    <label for="bookmarkHaloPreset" style="display:block;margin-top:14px;font-size:12px;color:#666;">Bookmark outline on map</label>
+    <select id="bookmarkHaloPreset" aria-label="Bookmark highlight color preset">
+      <option value="yellow">Yellow</option>
+      <option value="red">Red</option>
+      <option value="blue">Blue</option>
+      <option value="green">Green</option>
+      <option value="custom">Custom hex…</option>
+    </select>
+    <input id="bookmarkHaloHex" class="hex-field" type="text" maxlength="7" placeholder="#e6c619" spellcheck="false" style="display:none;margin-top:8px" aria-label="Custom bookmark highlight color hex">
+    <p class="field-hint">Wide halo on bookmarked trail lines. Choose a preset or <strong>Custom</strong> and enter <code>#rgb</code> or <code>#rrggbb</code>.</p>
+    <p class="toggle-hint">Turn the whole overlay on or off from Strava under <strong>Map display</strong> → Trail Overlay.</p>
   </div>
 
   <script src="popup.js"></script>

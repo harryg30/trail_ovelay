@@ -1,19 +1,143 @@
 const DEFAULT_API_URL = 'http://localhost:3000'
 
+const PRESET_NAMES = ['yellow', 'red', 'blue', 'green']
+
+function tryNormalizeHex(s) {
+  const t = String(s ?? '').trim()
+  if (!t.startsWith('#')) return null
+  const h = t.slice(1)
+  if (/^[0-9a-f]{6}$/i.test(h)) return `#${h.toLowerCase()}`
+  if (/^[0-9a-f]{3}$/i.test(h)) {
+    const a = h[0].toLowerCase()
+    const b = h[1].toLowerCase()
+    const c = h[2].toLowerCase()
+    return `#${a}${a}${b}${b}${c}${c}`
+  }
+  return null
+}
+
+function classifyHighlight(stored) {
+  const raw = String(stored ?? 'yellow').trim().toLowerCase()
+  if (PRESET_NAMES.includes(raw)) return { preset: raw, hex: '' }
+  const hex = tryNormalizeHex(raw)
+  if (hex) return { preset: 'custom', hex }
+  return { preset: 'yellow', hex: '' }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const input = document.getElementById('apiUrl')
   const saveBtn = document.getElementById('save')
   const status = document.getElementById('status')
+  const showTrails = document.getElementById('showTrails')
+  const showNetworks = document.getElementById('showNetworks')
+  const showTrailPhotos = document.getElementById('showTrailPhotos')
+  const bookmarkHaloPreset = document.getElementById('bookmarkHaloPreset')
+  const bookmarkHaloHex = document.getElementById('bookmarkHaloHex')
 
-  chrome.storage.sync.get({ apiUrl: DEFAULT_API_URL }, (items) => {
+  const storageDefaults = {
+    apiUrl: DEFAULT_API_URL,
+    overlayTrailsVisible: true,
+    overlayNetworksVisible: true,
+    overlayTrailPhotosVisible: true,
+    overlayBookmarkHighlightColor: 'yellow'
+  }
+
+  let hexSaveTimer = null
+
+  const syncHexVisibility = () => {
+    const isCustom = bookmarkHaloPreset.value === 'custom'
+    bookmarkHaloHex.style.display = isCustom ? 'block' : 'none'
+  }
+
+  const saveBookmarkHighlight = (value, okMessage) => {
+    chrome.storage.sync.set({ overlayBookmarkHighlightColor: value }, () => {
+      status.textContent = okMessage
+      setTimeout(() => { status.textContent = '' }, 2000)
+    })
+  }
+
+  chrome.storage.sync.get(storageDefaults, (items) => {
     input.value = items.apiUrl
+    showTrails.checked = items.overlayTrailsVisible !== false
+    showNetworks.checked = items.overlayNetworksVisible !== false
+    showTrailPhotos.checked = items.overlayTrailPhotosVisible !== false
+
+    const { preset, hex } = classifyHighlight(items.overlayBookmarkHighlightColor)
+    bookmarkHaloPreset.value = preset
+    if (hex) bookmarkHaloHex.value = hex
+    else if (preset === 'custom') bookmarkHaloHex.value = ''
+    syncHexVisibility()
   })
 
   saveBtn.addEventListener('click', () => {
-    const url = input.value.trim().replace(/\/$/, '') // strip trailing slash
+    const url = input.value.trim().replace(/\/$/, '')
     chrome.storage.sync.set({ apiUrl: url }, () => {
       status.textContent = 'Saved.'
       setTimeout(() => { status.textContent = '' }, 2000)
     })
+  })
+
+  showTrails.addEventListener('change', () => {
+    chrome.storage.sync.set({ overlayTrailsVisible: showTrails.checked }, () => {
+      status.textContent = showTrails.checked ? 'Trails on.' : 'Trails hidden.'
+      setTimeout(() => { status.textContent = '' }, 2000)
+    })
+  })
+
+  showNetworks.addEventListener('change', () => {
+    chrome.storage.sync.set({ overlayNetworksVisible: showNetworks.checked }, () => {
+      status.textContent = showNetworks.checked ? 'Networks on.' : 'Networks hidden.'
+      setTimeout(() => { status.textContent = '' }, 2000)
+    })
+  })
+
+  showTrailPhotos.addEventListener('change', () => {
+    chrome.storage.sync.set({ overlayTrailPhotosVisible: showTrailPhotos.checked }, () => {
+      status.textContent = showTrailPhotos.checked
+        ? 'List thumbnails on (uses map viewport).'
+        : 'List thumbnails off.'
+      setTimeout(() => { status.textContent = '' }, 2000)
+    })
+  })
+
+  bookmarkHaloPreset.addEventListener('change', () => {
+    syncHexVisibility()
+    if (bookmarkHaloPreset.value === 'custom') {
+      const hex = tryNormalizeHex(bookmarkHaloHex.value)
+      if (hex) {
+        bookmarkHaloHex.value = hex
+        saveBookmarkHighlight(hex, 'Bookmark outline color saved.')
+      } else {
+        bookmarkHaloHex.value = ''
+        bookmarkHaloHex.focus()
+        status.textContent = 'Enter a hex color (e.g. #e6c619).'
+        setTimeout(() => { status.textContent = '' }, 2500)
+      }
+      return
+    }
+    saveBookmarkHighlight(
+      bookmarkHaloPreset.value,
+      `Bookmark outline: ${bookmarkHaloPreset.options[bookmarkHaloPreset.selectedIndex].text}.`
+    )
+  })
+
+  bookmarkHaloHex.addEventListener('input', () => {
+    if (bookmarkHaloPreset.value !== 'custom') return
+    clearTimeout(hexSaveTimer)
+    hexSaveTimer = setTimeout(() => {
+      const hex = tryNormalizeHex(bookmarkHaloHex.value)
+      if (!hex) return
+      bookmarkHaloHex.value = hex
+      saveBookmarkHighlight(hex, 'Bookmark outline color saved.')
+    }, 400)
+  })
+
+  bookmarkHaloHex.addEventListener('blur', () => {
+    if (bookmarkHaloPreset.value !== 'custom') return
+    const hex = tryNormalizeHex(bookmarkHaloHex.value)
+    if (hex) {
+      bookmarkHaloHex.value = hex
+      saveBookmarkHighlight(hex, 'Bookmark outline color saved.')
+    }
   })
 })

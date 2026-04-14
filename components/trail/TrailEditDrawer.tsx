@@ -16,7 +16,7 @@ import { faEraser, faPencil, faRotateLeft, faRotateRight, faScissors } from '@fo
 const toolBtnActive = 'border-2 border-foreground bg-foreground text-background'
 const toolBtnIdle = 'border-2 border-border bg-card text-foreground hover:bg-mud/80'
 const iconActionBtn =
-  'rounded-md border-2 border-border bg-card p-2 text-foreground transition-colors hover:bg-mud/80 disabled:cursor-not-allowed disabled:opacity-40'
+  'shrink-0 rounded-md border-2 border-border bg-card p-2 text-foreground transition-colors hover:bg-mud/80 disabled:cursor-not-allowed disabled:opacity-40'
 
 export function TrailEditDrawer({
   variant,
@@ -119,7 +119,7 @@ export function TrailEditDrawer({
 
   const title = variant === 'draw' ? 'Draw trail' : 'Edit trail'
   const toolBase =
-    'flex items-center justify-center rounded-md border-2 p-2 transition-colors'
+    'flex shrink-0 items-center justify-center rounded-md border-2 p-2 transition-colors'
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
@@ -145,7 +145,7 @@ export function TrailEditDrawer({
         <p className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
           Tools
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
           <button
             type="button"
             title="Pencil"

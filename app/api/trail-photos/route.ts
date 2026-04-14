@@ -8,6 +8,17 @@ const MAX_UPLOAD_BYTES = 10 * 1024 * 1024 // 10MB
 const DEFAULT_LIMIT = 300
 const MAX_LIMIT = 1000
 
+/** GET only — browser extension reads published pins cross-origin. POST stays same-origin + cookie. */
+const GET_CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: GET_CORS_HEADERS })
+}
+
 type TrailPhotoRow = {
   id: string
   blob_url: string
@@ -49,53 +60,96 @@ function parseOptionalNumber(v: FormDataEntryValue | null): number | null {
   return Number.isFinite(n) ? n : null
 }
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const north = Number(searchParams.get('north'))
-  const south = Number(searchParams.get('south'))
-  const east = Number(searchParams.get('east'))
-  const west = Number(searchParams.get('west'))
-
-  const limitRaw = Number(searchParams.get('limit'))
-  const limit =
-    Number.isFinite(limitRaw) && limitRaw > 0
-      ? Math.min(Math.floor(limitRaw), MAX_LIMIT)
-      : DEFAULT_LIMIT
-
-  // If bounds are omitted, return a small recent sample rather than the whole world.
-  const hasBounds = [north, south, east, west].every((n) => Number.isFinite(n))
-
-  /** Community-visible: pinned to a trail only (not other users' unpinned uploads). */
-  const visibilitySql = `status = 'published'
+/** Community-visible: pinned to a trail only (not other users' unpinned uploads). */
+const TRAIL_PHOTOS_PUBLIC_VISIBILITY_SQL = `status = 'published'
            AND accepted = true
            AND trail_id IS NOT NULL
            AND trail_lat IS NOT NULL AND trail_lon IS NOT NULL`
 
-  const rows = hasBounds
-    ? await query<TrailPhotoRow>(
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url)
+    const trailIdParam = searchParams.get('trailId')
+    const trailIdFilter =
+      typeof trailIdParam === 'string' && trailIdParam.trim().length > 0
+        ? trailIdParam.trim()
+        : null
+
+    const limitRaw = Number(searchParams.get('limit'))
+    const limit =
+      Number.isFinite(limitRaw) && limitRaw > 0
+        ? Math.min(Math.floor(limitRaw), MAX_LIMIT)
+        : DEFAULT_LIMIT
+
+    if (trailIdFilter) {
+      const uuidLike =
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          trailIdFilter
+        )
+      if (!uuidLike) {
+        return NextResponse.json({ photos: [] }, { headers: GET_CORS_HEADERS })
+      }
+      // Cast so string query params always match the trails.id FK (extension + web).
+      const rows = await query<TrailPhotoRow>(
         `SELECT
            id, blob_url, thumbnail_url, lat, lon, taken_at,
            trail_id, trail_lat, trail_lon, accepted, status, created_by_user_id, created_at
          FROM trail_photos
-         WHERE ${visibilitySql}
+         WHERE ${TRAIL_PHOTOS_PUBLIC_VISIBILITY_SQL}
+           AND trail_id = $1::uuid
+         ORDER BY created_at DESC
+         LIMIT $2`,
+        [trailIdFilter.trim(), limit]
+      )
+      return NextResponse.json(
+        { photos: rows.map(rowToTrailPhoto) },
+        { headers: GET_CORS_HEADERS }
+      )
+    }
+
+    const north = Number(searchParams.get('north'))
+    const south = Number(searchParams.get('south'))
+    const east = Number(searchParams.get('east'))
+    const west = Number(searchParams.get('west'))
+
+    // If bounds are omitted, return a small recent sample rather than the whole world.
+    const hasBounds = [north, south, east, west].every((n) => Number.isFinite(n))
+
+    const rows = hasBounds
+      ? await query<TrailPhotoRow>(
+          `SELECT
+           id, blob_url, thumbnail_url, lat, lon, taken_at,
+           trail_id, trail_lat, trail_lon, accepted, status, created_by_user_id, created_at
+         FROM trail_photos
+         WHERE ${TRAIL_PHOTOS_PUBLIC_VISIBILITY_SQL}
            AND trail_lat <= $1 AND trail_lat >= $2
            AND trail_lon <= $3 AND trail_lon >= $4
          ORDER BY created_at DESC
          LIMIT $5`,
-        [north, south, east, west, limit]
-      )
-    : await query<TrailPhotoRow>(
-        `SELECT
+          [north, south, east, west, limit]
+        )
+      : await query<TrailPhotoRow>(
+          `SELECT
            id, blob_url, thumbnail_url, lat, lon, taken_at,
            trail_id, trail_lat, trail_lon, accepted, status, created_by_user_id, created_at
          FROM trail_photos
-         WHERE ${visibilitySql}
+         WHERE ${TRAIL_PHOTOS_PUBLIC_VISIBILITY_SQL}
          ORDER BY created_at DESC
          LIMIT $1`,
-        [Math.min(limit, 100)]
-      )
+          [Math.min(limit, 100)]
+        )
 
-  return NextResponse.json({ photos: rows.map(rowToTrailPhoto) })
+    return NextResponse.json(
+      { photos: rows.map(rowToTrailPhoto) },
+      { headers: GET_CORS_HEADERS }
+    )
+  } catch (error) {
+    console.error('GET /api/trail-photos error:', error)
+    return NextResponse.json(
+      { photos: [], error: String(error) },
+      { status: 500, headers: GET_CORS_HEADERS }
+    )
+  }
 }
 
 export async function POST(request: NextRequest) {

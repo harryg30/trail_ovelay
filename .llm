@@ -21,6 +21,7 @@ app/
     upload/             # POST GPX/ZIP → parse → insert rides
     trails/             # GET (CORS-open), POST
     trails/[id]/        # PATCH, DELETE
+    trail-photos/       # GET (CORS-open, published pins for extension), POST (auth)
     rides/              # GET (auth required)
     networks/           # GET (CORS-open), POST
     networks/[id]/      # PATCH, DELETE
@@ -96,10 +97,10 @@ direction     = 'one-way' | 'out-and-back' | 'loop' | 'not_set'
 - **PR migration gate:** [`.github/workflows/migrations-pr.yml`](.github/workflows/migrations-pr.yml) on `pull_request` (path-filtered) runs `npm run db:migrate` against ephemeral Postgres in CI — not production.
 - Single Next.js/Vercel deployment (no separate API server)
 - Leaflet loaded via `dynamic()` with SSR disabled
-- CORS open on `/api/trails` and `/api/networks` for browser extension
+- CORS open on `GET /api/trails`, `GET /api/networks`, and `GET /api/trail-photos` for browser extension
 - Trail trimming: client picks start/end indices on ride polyline → haversine math → save as trail
 - GPX parsed server-side on upload; polylines stored as JSONB
-- Browser extension injects into `strava.com/maps/create/*`, fetches trails from API
+- Browser extension injects into `strava.com/maps/create/*`, fetches trails, networks, and **community** trail-photo pins (`GET /api/trail-photos` only — not `/mine`, which needs app cookies)
 
 ## Trail draw / edit UX (left drawer)
 - **Draw trail** (`editMode === 'draw-trail'`): `TrailEditDrawer` variant `draw` in `LeftDrawer` — tools, history (draw undo/redo), network search, publish checkbox; map interaction via `trailEditTool` (`pencil` | `eraser`).

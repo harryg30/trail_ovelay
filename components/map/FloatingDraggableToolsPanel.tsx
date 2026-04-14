@@ -88,9 +88,9 @@ export function FloatingDraggableToolsPanel({ children, title = 'Tools' }: { chi
         transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px)`,
       }}
     >
-      <div className="flex max-w-[min(96vw,36rem)] flex-col overflow-hidden rounded-lg border-2 border-foreground bg-card shadow-[3px_3px_0_0_var(--foreground)]">
+      <div className="flex min-w-[min(100%,19rem)] max-w-[min(96vw,36rem)] flex-col overflow-hidden rounded-lg border-2 border-foreground bg-card shadow-[3px_3px_0_0_var(--foreground)]">
         <div
-          className="flex touch-none cursor-grab items-center justify-center gap-2 border-b border-border bg-muted/40 py-1.5 active:cursor-grabbing"
+          className="flex touch-none cursor-grab flex-nowrap items-center justify-center gap-2 whitespace-nowrap border-b border-border bg-muted/40 py-1.5 active:cursor-grabbing"
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={endDrag}

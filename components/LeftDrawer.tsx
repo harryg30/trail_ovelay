@@ -618,8 +618,20 @@ export default function LeftDrawer({
                     )
                   }
                   const { trail } = row
-                  const trailPub = communityTrailPhotos.filter(
-                    (p) => p.trailId === trail.id && p.accepted
+                  const communityForTrail = communityTrailPhotos.filter(
+                    (p) => p.trailId === trail.id
+                  )
+                  const mineForTrail = unpinnedTrailPhotos.filter(
+                    (p) => p.trailId === trail.id
+                  )
+                  const trailPubById = new Map<string, TrailPhoto>()
+                  for (const p of communityForTrail) trailPubById.set(p.id, p)
+                  for (const p of mineForTrail) {
+                    if (!trailPubById.has(p.id)) trailPubById.set(p.id, p)
+                  }
+                  const trailPub = Array.from(trailPubById.values()).sort(
+                    (a, b) =>
+                      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
                   )
                   const visibleTrailPub = activeBounds
                     ? trailPub.filter((p) => {
@@ -712,15 +724,32 @@ export default function LeftDrawer({
                                   <button
                                     key={photo.id}
                                     type="button"
-                                    className="h-12 w-12 shrink-0 overflow-hidden rounded-sm border-2 border-border"
+                                    className="relative h-12 w-12 shrink-0 overflow-hidden rounded-sm border-2 border-border"
                                     onClick={() => setTrailPhotoForAction(photo)}
-                                    title="View photo"
+                                    title={
+                                      photo.accepted
+                                        ? 'Trail photo — accepted on community map'
+                                        : 'Trail photo — pending acceptance'
+                                    }
+                                    aria-label={
+                                      photo.accepted
+                                        ? 'Trail photo, accepted on community map. Open actions.'
+                                        : 'Trail photo, pending acceptance. Open actions.'
+                                    }
                                   >
                                     <img
                                       src={photo.thumbnailUrl || photo.blobUrl}
                                       alt=""
                                       className="w-full h-full object-cover"
                                     />
+                                    {photo.accepted ? (
+                                      <span
+                                        className="pointer-events-none absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl-sm bg-primary text-[8px] text-primary-foreground shadow-sm"
+                                        aria-hidden
+                                      >
+                                        <FontAwesomeIcon icon={faCheck} className="h-2 w-2" />
+                                      </span>
+                                    ) : null}
                                   </button>
                                 ))}
                               </div>
