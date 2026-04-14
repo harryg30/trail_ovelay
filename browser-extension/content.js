@@ -7,6 +7,8 @@ const SOURCE_ID = "trail-overlay";
 const LAYER_ID = "trail-overlay-lines";
 /** Wider stroke under main line when `bookmarked` feature-state is true (color from extension settings). */
 const LAYER_ID_BOOKMARK_HALO = "trail-overlay-lines-bookmark-halo";
+/** Invisible wide line to make hover/click easier. */
+const LAYER_ID_HITBOX = "trail-overlay-lines-hitbox";
 
 const NETWORK_SOURCE_ID = "network-overlay";
 const NETWORK_FILL_LAYER = "network-overlay-fill";
@@ -17,8 +19,7 @@ const NETWORK_LABEL_LAYER = "network-overlay-label";
 const TRAIL_SONNER_PANEL_ID = "trail-overlay-sonner-panel";
 /** Bumps when panel DOM/CSS structure changes so stale roots are recreated. */
 const TRAIL_SONNER_PANEL_LAYOUT = "v2-bottom-up-tabs";
-/** Negative margin between bookmark cards (min card ~52px → ~14px sliver of tab behind). */
-const BOOKMARK_CARD_OVERLAP_PX = 38;
+// Bookmarks are hidden behind a single “Bookmarks” card; hover reveals list.
 /** Max trails listed in the scroll region (overflow summarized). */
 const TRAIL_SONNER_LIST_MAX = 200;
 /** Single z-index for the unified panel (below centered trail modal). */
@@ -42,6 +43,13 @@ const TRAIL_LINE_PAINT = {
     1,
     0.85
   ]
+};
+
+/** Increase hit target without changing visuals (slightly non-zero opacity to keep events reliable). */
+const TRAIL_LINE_HITBOX_PAINT = {
+  "line-color": "#000000",
+  "line-width": 18,
+  "line-opacity": 0.001
 };
 
 const BOOKMARK_HALO_PRESET_HEX = {
@@ -556,48 +564,13 @@ function addNetworksToMap(map, networks) {
 function detachTrailLineLayerInteractions(map) {
   const h = map.__trailOverlayLineHandlers;
   if (!h) return;
-  map.off("mousemove", LAYER_ID, h.onMousemove);
-  map.off("mouseleave", LAYER_ID, h.onMouseleave);
-  map.off("click", LAYER_ID, h.onClick);
+  map.off("mousemove", LAYER_ID_HITBOX, h.onMousemove);
+  map.off("mouseleave", LAYER_ID_HITBOX, h.onMouseleave);
+  map.off("click", LAYER_ID_HITBOX, h.onClick);
   map.__trailOverlayLineHandlers = null;
 }
 
-function refreshSonnerQuickBookmarkBar(map) {
-  const panel = document.getElementById(TRAIL_SONNER_PANEL_ID);
-  const btn = panel?.querySelector?.("[data-trail-overlay-quick-bm]");
-  if (!btn) return;
-  const ref = lastMapClickedTrailRef;
-  const disabled = !ref || ref.featureId == null;
-  btn.disabled = disabled;
-  Object.assign(btn.style, {
-    cursor: disabled ? "not-allowed" : "pointer",
-    opacity: disabled ? "0.55" : "1"
-  });
-  const starSlot = btn.querySelector(".trail-overlay-sonner-quick-bm-star");
-  if (starSlot) {
-    starSlot.setAttribute("aria-hidden", "true");
-    if (!disabled) {
-      updateDockCardBookmarkStar(starSlot, ref.featureId);
-      starSlot.removeAttribute("aria-label");
-      starSlot.removeAttribute("title");
-    } else {
-      starSlot.textContent = "☆";
-    }
-  }
-  const lab = btn.querySelector(".trail-overlay-sonner-quick-bm-label");
-  if (lab) {
-    const nm = ref?.trail?.name;
-    lab.textContent = nm ? `Map trail: ${nm}` : "Bookmark map trail";
-  }
-  btn.setAttribute(
-    "aria-label",
-    disabled
-      ? "Bookmark map trail — click a trail line on the map first"
-      : bookmarkedTrailIds.has(String(ref.featureId))
-        ? `Remove bookmark for ${ref.trail?.name || "trail"}`
-        : `Bookmark ${ref.trail?.name || "trail"}`
-  );
-}
+// (removed) quick bookmark row — bookmarks are the bottom entry
 
 function attachTrailLineLayerInteractions(map) {
   detachTrailLineLayerInteractions(map);
@@ -605,10 +578,40 @@ function attachTrailLineLayerInteractions(map) {
   const onMousemove = (e) => {
     map.getCanvas().style.cursor =
       e.features && e.features.length > 0 ? "pointer" : "";
+    const fidRaw = e.features?.[0]?.properties?.trailId;
+    const fid = fidRaw != null ? String(fidRaw) : null;
+    if (fid && fid !== lastMapHoveredTrailFeatureId) {
+      if (lastMapHoveredTrailFeatureId) {
+        setSonnerTrailRowHovered(lastMapHoveredTrailFeatureId, false);
+      }
+      lastMapHoveredTrailFeatureId = fid;
+      setSonnerTrailRowHovered(fid, true);
+      // Debounce recency + reorder so fast mouse movement doesn't reshuffle the list.
+      pendingHoverRecencyFeatureId = fid;
+      clearTimeout(hoverRecencyDebounceTimer);
+      hoverRecencyDebounceTimer = setTimeout(() => {
+        const stable = pendingHoverRecencyFeatureId;
+        if (!stable) return;
+        noteTrailHoverRecency(stable);
+        // Re-render list order with recency at the bottom (most-recent-first in DOM for column-reverse).
+        scheduleTrailDockRefresh(map);
+      }, 140);
+    } else if (!fid && lastMapHoveredTrailFeatureId) {
+      setSonnerTrailRowHovered(lastMapHoveredTrailFeatureId, false);
+      lastMapHoveredTrailFeatureId = null;
+      pendingHoverRecencyFeatureId = null;
+      clearTimeout(hoverRecencyDebounceTimer);
+    }
   };
 
   const onMouseleave = () => {
     map.getCanvas().style.cursor = "";
+    if (lastMapHoveredTrailFeatureId) {
+      setSonnerTrailRowHovered(lastMapHoveredTrailFeatureId, false);
+      lastMapHoveredTrailFeatureId = null;
+    }
+    pendingHoverRecencyFeatureId = null;
+    clearTimeout(hoverRecencyDebounceTimer);
   };
 
   const onClick = (e) => {
@@ -620,16 +623,12 @@ function attachTrailLineLayerInteractions(map) {
       trail: resolved.trail,
       featureId: resolved.featureId
     };
-    refreshSonnerQuickBookmarkBar(map);
-    openTrailInfoDrawer(map, resolved.trail, {
-      focusReturnEl: map.getCanvas?.() ?? null,
-      featureId: resolved.featureId
-    });
+    // Clicking a trail line should not open the info modal; the list/bookmarks handle that.
   };
 
-  map.on("mousemove", LAYER_ID, onMousemove);
-  map.on("mouseleave", LAYER_ID, onMouseleave);
-  map.on("click", LAYER_ID, onClick);
+  map.on("mousemove", LAYER_ID_HITBOX, onMousemove);
+  map.on("mouseleave", LAYER_ID_HITBOX, onMouseleave);
+  map.on("click", LAYER_ID_HITBOX, onClick);
   map.__trailOverlayLineHandlers = { onMousemove, onMouseleave, onClick };
 }
 
@@ -713,6 +712,13 @@ function addTrailsToMap(map, trails, networks) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: TRAIL_LINE_PAINT
       });
+      map.addLayer({
+        id: LAYER_ID_HITBOX,
+        type: "line",
+        source: SOURCE_ID,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: TRAIL_LINE_HITBOX_PAINT
+      });
     }
     ensureTrailBookmarkHaloLayer(map);
     attachTrailLineLayerInteractions(map);
@@ -746,6 +752,13 @@ function addTrailsToMap(map, trails, networks) {
     layout: { "line-join": "round", "line-cap": "round" },
     paint: TRAIL_LINE_PAINT
   });
+  map.addLayer({
+    id: LAYER_ID_HITBOX,
+    type: "line",
+    source: SOURCE_ID,
+    layout: { "line-join": "round", "line-cap": "round" },
+    paint: TRAIL_LINE_HITBOX_PAINT
+  });
 
   attachTrailLineLayerInteractions(map);
   applyBookmarkFeatureStatesToMap(map);
@@ -776,6 +789,7 @@ function stripTrailLineLayersFromMap(map) {
   clearDockLineHighlight(map);
   lastAppliedBookmarkIds = new Set();
   if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+  if (map.getLayer(LAYER_ID_HITBOX)) map.removeLayer(LAYER_ID_HITBOX);
   if (map.getLayer(LAYER_ID_BOOKMARK_HALO)) {
     map.removeLayer(LAYER_ID_BOOKMARK_HALO);
   }
@@ -820,6 +834,49 @@ let lastAppliedBookmarkIds = new Set();
 
 /** Last trail picked from the map line click (for quick bookmark row). `{ trail, featureId }` or `null`. */
 let lastMapClickedTrailRef = null;
+
+/** Map-hovered trail feature id (for highlighting row + recency ordering). */
+let lastMapHoveredTrailFeatureId = null;
+/** Most-recent-first list of hovered trail feature ids. */
+let recentHoveredTrailFeatureIds = [];
+/** Debounce list reordering while scrubbing across trails. */
+let hoverRecencyDebounceTimer = null;
+let pendingHoverRecencyFeatureId = null;
+
+function noteTrailHoverRecency(featureId) {
+  if (!featureId) return;
+  const fid = String(featureId);
+  recentHoveredTrailFeatureIds = [
+    fid,
+    ...recentHoveredTrailFeatureIds.filter((x) => x !== fid)
+  ].slice(0, 40);
+}
+
+function findSonnerTrailRowEl(featureId) {
+  const panel = document.getElementById(TRAIL_SONNER_PANEL_ID);
+  if (!panel) return null;
+  return panel.querySelector(
+    `.trail-overlay-sonner-trail-row[data-feature-id="${CSS.escape(String(featureId))}"]`
+  );
+}
+
+function setSonnerTrailRowHovered(featureId, on) {
+  const row = featureId ? findSonnerTrailRowEl(featureId) : null;
+  if (!row) return;
+  if (on) {
+    row.setAttribute("data-trail-overlay-map-hover", "1");
+    Object.assign(row.style, {
+      borderColor: "rgba(255,255,255,0.28)",
+      boxShadow: "0 10px 30px rgba(0,0,0,0.55)",
+      transform: "translateZ(0)"
+    });
+  } else {
+    row.removeAttribute("data-trail-overlay-map-hover");
+    row.style.borderColor = "rgba(255,255,255,0.14)";
+    row.style.boxShadow = "";
+    row.style.transform = "";
+  }
+}
 
 function scheduleViewportPhotoPreviewFetch(map) {
   if (!map) return;
@@ -1113,11 +1170,18 @@ function refreshSonnerPanelLayout(map) {
   const m = map && isMapboxLikeMap(map) ? map : trailOverlayMapRef;
   const container = getTrailOverlayMapDomContainer(m);
   const topInset = measureTrailPanelTopInsetPx(m);
+  const isHovered = panel.getAttribute("data-trail-overlay-bm-hover") === "1";
+  const isMin = panel.getAttribute("data-trail-overlay-minimized") === "1";
   panel.style.pointerEvents = "auto";
   // Bottom-anchored: panel grows upward from the bottom of the map box.
   panel.style.top = "auto";
   panel.style.right = "10px";
-  panel.style.bottom = "10px";
+  // Larger bottom inset when maximized (not hovered), smaller when bookmarks are open.
+  panel.style.bottom = isHovered
+    ? "max(14px, env(safe-area-inset-bottom, 0px))"
+    : isMin
+      ? "max(18px, env(safe-area-inset-bottom, 0px))"
+      : "max(26px, env(safe-area-inset-bottom, 0px))";
   panel.style.left = "auto";
   if (container) {
     const ch =
@@ -1125,15 +1189,18 @@ function refreshSonnerPanelLayout(map) {
       Math.floor(container.getBoundingClientRect().height);
     const reserveBottom = 16;
     const avail = Math.max(160, ch - topInset - reserveBottom);
-    const cap = Math.min(760, Math.floor(window.innerHeight * 0.86));
+    const cap = Math.min(920, Math.floor(window.innerHeight * 0.92));
     panel.style.maxHeight = `${Math.min(cap, avail)}px`;
   } else {
-    panel.style.maxHeight = "min(86vh, 760px)";
+    panel.style.maxHeight = "min(92vh, 920px)";
   }
   const bmHost = panel.querySelector(".trail-overlay-sonner-bookmarks");
   if (bmHost) {
-    // Default (non-hover) keeps it compact; hover mode overrides to fill panel.
-    bmHost.style.maxHeight = "min(56vh, 420px)";
+    bmHost.style.maxHeight = isHovered
+      ? "none"
+      : isMin
+        ? "52px"
+        : "48px";
     bmHost.style.minHeight = "0";
     bmHost.style.overflowY = "auto";
     bmHost.style.overflowX = "hidden";
@@ -1236,32 +1303,7 @@ function ensureSonnerPanelRoot(map) {
   const labelText = document.createElement("span");
   labelText.textContent = "Trails in view";
   Object.assign(labelText.style, { flex: "1", minWidth: "0" });
-  const minBtn = document.createElement("button");
-  minBtn.type = "button";
-  minBtn.setAttribute("data-trail-overlay-minimize-btn", "1");
-  minBtn.setAttribute("aria-label", "Minimize trail panel");
-  minBtn.textContent = "▾";
-  Object.assign(minBtn.style, {
-    flex: "0 0 auto",
-    marginLeft: "10px",
-    width: "22px",
-    height: "22px",
-    padding: "0",
-    borderRadius: "6px",
-    border: "1px solid rgba(255,255,255,0.16)",
-    background: "rgba(0,0,0,0.32)",
-    color: "rgba(244,244,245,0.75)",
-    cursor: "pointer",
-    lineHeight: "20px",
-    fontSize: "14px"
-  });
-  minBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const next = panel.getAttribute("data-trail-overlay-minimized") !== "1";
-    setSonnerPanelMinimized(panel, next);
-  });
   label.appendChild(labelText);
-  label.appendChild(minBtn);
 
   const scroll = document.createElement("div");
   scroll.className = "trail-overlay-sonner-trails-scroll";
@@ -1294,77 +1336,10 @@ function ensureSonnerPanelRoot(map) {
     padding: "4px 0 6px"
   });
 
-  const quickWrap = document.createElement("div");
-  quickWrap.className = "trail-overlay-sonner-quick-bm-wrap";
-  Object.assign(quickWrap.style, {
-    flex: "0 0 auto",
-    padding: "6px 0 8px",
-    borderTop: "1px solid rgba(255,255,255,0.08)"
-  });
-
-  const quickBtn = document.createElement("button");
-  quickBtn.type = "button";
-  quickBtn.setAttribute("data-trail-overlay-quick-bm", "1");
-  quickBtn.disabled = true;
-  Object.assign(quickBtn.style, {
-    width: "100%",
-    display: "flex",
-    flexDirection: "row",
-    alignItems: "center",
-    gap: "8px",
-    padding: "8px 10px",
-    borderRadius: "8px",
-    border: "1px solid rgba(255,255,255,0.12)",
-    background: "rgba(255,255,255,0.06)",
-    color: "#f4f4f5",
-    cursor: "pointer",
-    textAlign: "left",
-    fontSize: "12px"
-  });
-  const quickStar = document.createElement("span");
-  quickStar.className = "trail-overlay-sonner-quick-bm-star";
-  quickStar.textContent = "☆";
-  Object.assign(quickStar.style, {
-    flex: "0 0 auto",
-    width: "28px",
-    textAlign: "center",
-    fontSize: "16px",
-    lineHeight: "1"
-  });
-  const quickLab = document.createElement("span");
-  quickLab.className = "trail-overlay-sonner-quick-bm-label";
-  quickLab.textContent = "Bookmark map trail";
-  Object.assign(quickLab.style, {
-    flex: "1",
-    minWidth: "0",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap"
-  });
-  quickBtn.appendChild(quickStar);
-  quickBtn.appendChild(quickLab);
-  quickBtn.addEventListener("click", () => {
-    const m = trailOverlayMapRef;
-    if (!lastMapClickedTrailRef?.featureId || !m) return;
-    void toggleBookmarkForFeatureId(m, lastMapClickedTrailRef.featureId);
-  });
-  quickWrap.appendChild(quickBtn);
-
-  /* column-reverse: bottom of map → quick row, “+ more”, trail rows (grow upward), label at top. */
-  trailsCol.appendChild(quickWrap);
+  /* column-reverse: bottom of map → “+ more”, trail rows (grow upward), label at top. */
   trailsCol.appendChild(more);
   trailsCol.appendChild(scroll);
   trailsCol.appendChild(label);
-
-  const divider = document.createElement("div");
-  divider.className = "trail-overlay-sonner-divider";
-  divider.setAttribute("role", "separator");
-  Object.assign(divider.style, {
-    flex: "0 0 auto",
-    height: "1px",
-    background: "rgba(255,255,255,0.1)",
-    margin: "2px 10px"
-  });
 
   const bookmarks = document.createElement("div");
   bookmarks.className = "trail-overlay-sonner-bookmarks";
@@ -1374,7 +1349,7 @@ function ensureSonnerPanelRoot(map) {
     display: "flex",
     flexDirection: "column",
     gap: "0",
-    padding: "2px 10px 8px",
+    padding: "0 10px 6px",
     minHeight: "0",
     overflowY: "auto",
     overflowX: "hidden",
@@ -1391,11 +1366,44 @@ function ensureSonnerPanelRoot(map) {
 
   /* column-reverse on panel: first child sits at map bottom (bookmark stack). */
   panel.appendChild(bookmarks);
-  panel.appendChild(divider);
   panel.appendChild(trailsCol);
 
+  const controls = document.createElement("div");
+  controls.className = "trail-overlay-sonner-controls";
+  Object.assign(controls.style, {
+    flex: "0 0 auto",
+    display: "flex",
+    justifyContent: "flex-end",
+    padding: "0 10px 6px",
+    pointerEvents: "auto"
+  });
+  const minBtn = document.createElement("button");
+  minBtn.type = "button";
+  minBtn.setAttribute("data-trail-overlay-minimize-btn", "1");
+  minBtn.setAttribute("aria-label", "Minimize trail panel");
+  minBtn.textContent = "▾";
+  Object.assign(minBtn.style, {
+    width: "28px",
+    height: "28px",
+    padding: "0",
+    borderRadius: "10px",
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(0,0,0,0.40)",
+    color: "rgba(244,244,245,0.78)",
+    cursor: "pointer",
+    lineHeight: "26px",
+    fontSize: "14px"
+  });
+  minBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const next = panel.getAttribute("data-trail-overlay-minimized") !== "1";
+    setSonnerPanelMinimized(panel, next);
+  });
+  controls.appendChild(minBtn);
+  // In column-reverse, the last appended element sits at the top.
+  panel.appendChild(controls);
+
   container.appendChild(panel);
-  refreshSonnerQuickBookmarkBar(map);
   refreshSonnerPanelLayout(map);
   // Default to expanded.
   setSonnerPanelMinimized(panel, false);
@@ -1491,7 +1499,6 @@ async function persistBookmarksAndRefreshUi(map) {
       if (fid && bm) updateDockCardBookmarkStar(bm, fid);
     }
   }
-  refreshSonnerQuickBookmarkBar(map);
   updateSonnerPanelDisplayVisibility(map);
 }
 
@@ -1706,7 +1713,12 @@ function syncBookmarkToastStack(map) {
     }
   }
 
-  layoutBookmarkCardStackOverlap(stack);
+  // Default state: bookmarks hidden behind the cover card.
+  if (panel.getAttribute("data-trail-overlay-bm-hover") === "1") {
+    setBookmarkCardsVisible(stack, true);
+  } else {
+    setBookmarkCardsVisible(stack, false);
+  }
 }
 
 function hydrateBookmarksFromIds(ids) {
@@ -1730,7 +1742,6 @@ function applyExternalBookmarkIds(map, ids) {
       if (fid && bm) updateDockCardBookmarkStar(bm, fid);
     }
   }
-  refreshSonnerQuickBookmarkBar(map);
   updateSonnerPanelDisplayVisibility(map);
 }
 
@@ -1747,6 +1758,110 @@ function renderTrailPhotoGalleryInto(container, photos) {
     container.appendChild(empty);
     return;
   }
+
+  const ensureFullscreenViewer = () => {
+    let viewer = document.getElementById("trail-overlay-photo-fullscreen");
+    if (viewer) return viewer;
+
+    viewer = document.createElement("div");
+    viewer.id = "trail-overlay-photo-fullscreen";
+    viewer.setAttribute("role", "dialog");
+    viewer.setAttribute("aria-modal", "true");
+    viewer.setAttribute("aria-label", "Photo viewer");
+    Object.assign(viewer.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: String(TRAIL_INFO_DRAWER_Z + 5),
+      display: "none",
+      alignItems: "center",
+      justifyContent: "center",
+      padding:
+        "max(14px, env(safe-area-inset-top, 0px)) max(14px, env(safe-area-inset-right, 0px)) max(14px, env(safe-area-inset-bottom, 0px)) max(14px, env(safe-area-inset-left, 0px))",
+      background: "rgba(0,0,0,0.68)",
+      backdropFilter: "blur(3px)"
+    });
+
+    const inner = document.createElement("div");
+    inner.className = "trail-overlay-photo-fullscreen-inner";
+    Object.assign(inner.style, {
+      width: "min(1100px, 100%)",
+      height: "min(86vh, 920px)",
+      background: "rgba(18,18,20,0.97)",
+      border: "1px solid rgba(255,255,255,0.14)",
+      borderRadius: "14px",
+      boxShadow: "0 28px 90px rgba(0,0,0,0.65)",
+      overflow: "hidden",
+      position: "relative",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center"
+    });
+
+    const img = document.createElement("img");
+    img.className = "trail-overlay-photo-fullscreen-img";
+    img.alt = "";
+    Object.assign(img.style, {
+      width: "100%",
+      height: "100%",
+      objectFit: "contain",
+      background: "rgba(0,0,0,0.35)",
+      display: "block"
+    });
+
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "×";
+    close.setAttribute("aria-label", "Close photo viewer");
+    Object.assign(close.style, {
+      position: "absolute",
+      top: "10px",
+      right: "10px",
+      width: "40px",
+      height: "40px",
+      borderRadius: "12px",
+      border: "1px solid rgba(255,255,255,0.18)",
+      background: "rgba(0,0,0,0.55)",
+      color: "#fff",
+      fontSize: "24px",
+      lineHeight: "38px",
+      cursor: "pointer"
+    });
+
+    const hide = () => {
+      viewer.style.display = "none";
+      img.src = "";
+      document.removeEventListener("keydown", onKeydown);
+    };
+    const onKeydown = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        hide();
+      }
+    };
+
+    close.addEventListener("click", (e) => {
+      e.stopPropagation();
+      hide();
+    });
+    viewer.addEventListener("click", (e) => {
+      if (e.target === viewer) hide();
+    });
+    inner.addEventListener("click", (e) => e.stopPropagation());
+
+    viewer.__trailOverlayShow = (src) => {
+      img.src = src || "";
+      viewer.style.display = "flex";
+      document.addEventListener("keydown", onKeydown);
+      close.focus({ preventScroll: true });
+    };
+
+    inner.appendChild(img);
+    inner.appendChild(close);
+    viewer.appendChild(inner);
+    document.body.appendChild(viewer);
+    return viewer;
+  };
+
   const grid = document.createElement("div");
   Object.assign(grid.style, {
     display: "grid",
@@ -1762,7 +1877,7 @@ function renderTrailPhotoGalleryInto(container, photos) {
     if (!url) continue;
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.setAttribute("aria-label", "Open full-size photo in a new tab");
+    btn.setAttribute("aria-label", "Open photo");
     Object.assign(btn.style, {
       padding: "0",
       border: "1px solid rgba(255,255,255,0.15)",
@@ -1787,7 +1902,10 @@ function renderTrailPhotoGalleryInto(container, photos) {
     });
     btn.appendChild(img);
     btn.addEventListener("click", () => {
-      window.open(full, "_blank", "noopener,noreferrer");
+      const viewer = ensureFullscreenViewer();
+      if (typeof viewer.__trailOverlayShow === "function") {
+        viewer.__trailOverlayShow(full);
+      }
     });
     grid.appendChild(btn);
   }
@@ -2513,106 +2631,90 @@ function sonnerTrailScrollSetDistanceFromEnd(scrollEl, distFromEnd) {
 }
 
 /** Safari-style stacked tabs: each card overlaps the one below; scroll pinned to newest (bottom). */
-function layoutBookmarkCardStackOverlap(stack) {
+function setBookmarkCardsVisible(stack, visible) {
   if (!stack) return;
-  if (stack.getAttribute("data-trail-overlay-expanded") === "1") return;
-  const cards = [...stack.querySelectorAll("[data-bookmark-feature-id]")];
-  cards.forEach((card, i) => {
-    card.style.position = "relative";
-    card.style.zIndex = String(100 + i);
-    card.style.marginTop = i === 0 ? "0" : `-${BOOKMARK_CARD_OVERLAP_PX}px`;
-  });
-  requestAnimationFrame(() => {
-    stack.scrollTop = Math.max(0, stack.scrollHeight - stack.clientHeight);
-  });
+  for (const card of stack.querySelectorAll("[data-bookmark-feature-id]")) {
+    card.style.display = visible ? "flex" : "none";
+  }
 }
 
 function setSonnerBookmarkHoverMode(panel, on) {
   if (!panel) return;
   const trailsCol = panel.querySelector(".trail-overlay-sonner-trails-col");
-  const divider = panel.querySelector(".trail-overlay-sonner-divider");
   const stack = panel.querySelector(".trail-overlay-sonner-bookmarks");
   if (!stack) return;
-  if (panel.getAttribute("data-trail-overlay-minimized") === "1") return;
   // When hovering bookmarks we want the cover to act like the entry card only.
   const cover = stack.querySelector(".trail-overlay-sonner-bookmarks-cover");
+  const isMin = panel.getAttribute("data-trail-overlay-minimized") === "1";
 
   if (on) {
     panel.setAttribute("data-trail-overlay-bm-hover", "1");
     stack.setAttribute("data-trail-overlay-expanded", "1");
     if (trailsCol) trailsCol.style.display = "none";
-    if (divider) divider.style.display = "none";
 
-    // Take over the panel height and unstack the cards.
+    // Take over the panel height and show the full list.
     stack.style.flex = "1";
     stack.style.maxHeight = "none";
     stack.style.gap = "8px";
     stack.style.paddingTop = "10px";
-    stack.style.paddingBottom = "12px";
+    // Extra bottom padding so the last card/cover isn't clipped.
+    stack.style.paddingBottom = "16px";
     if (cover) {
       cover.style.marginBottom = "10px";
       const hint = cover.querySelector(".trail-overlay-sonner-bookmarks-cover-hint");
       if (hint) hint.textContent = "Bookmarks";
     }
 
-    const cards = [...stack.querySelectorAll("[data-bookmark-feature-id]")];
-    cards.forEach((card, i) => {
-      card.style.marginTop = "0";
-      card.style.zIndex = String(200 + i);
-    });
+    setBookmarkCardsVisible(stack, true);
     return;
   }
 
   panel.removeAttribute("data-trail-overlay-bm-hover");
   stack.removeAttribute("data-trail-overlay-expanded");
-  if (trailsCol) trailsCol.style.display = "flex";
-  if (divider) divider.style.display = "block";
+  if (trailsCol) trailsCol.style.display = isMin ? "none" : "flex";
 
-  // Restore overlap style.
+  // Collapse back to a single “Bookmarks” card.
   stack.style.flex = "0 1 auto";
   stack.style.gap = "0";
-  stack.style.paddingTop = "6px";
-  stack.style.paddingBottom = "10px";
+  stack.style.paddingTop = "2px";
+  stack.style.paddingBottom = "8px";
   if (cover) {
     cover.style.marginBottom = "6px";
     const hint = cover.querySelector(".trail-overlay-sonner-bookmarks-cover-hint");
     if (hint) hint.textContent = "Hover to open";
   }
-  layoutBookmarkCardStackOverlap(stack);
+  setBookmarkCardsVisible(stack, false);
   refreshSonnerPanelLayout(trailOverlayMapRef);
 }
 
 function setSonnerPanelMinimized(panel, on) {
   if (!panel) return;
   const trailsCol = panel.querySelector(".trail-overlay-sonner-trails-col");
-  const divider = panel.querySelector(".trail-overlay-sonner-divider");
   const stack = panel.querySelector(".trail-overlay-sonner-bookmarks");
-  const toggleBtn = panel.querySelector("[data-trail-overlay-minimize-btn]");
+  const toggleBtns = panel.querySelectorAll("[data-trail-overlay-minimize-btn]");
   if (!stack) return;
 
   if (on) {
     panel.setAttribute("data-trail-overlay-minimized", "1");
     if (trailsCol) trailsCol.style.display = "none";
-    if (divider) divider.style.display = "none";
     stack.style.flex = "0 0 auto";
-    stack.style.maxHeight = "92px";
+    stack.style.maxHeight = "52px";
     stack.style.overflowY = "auto";
-    stack.style.paddingTop = "6px";
-    stack.style.paddingBottom = "10px";
+    stack.style.paddingTop = "2px";
+    stack.style.paddingBottom = "8px";
     stack.style.gap = "0";
-    layoutBookmarkCardStackOverlap(stack);
-    if (toggleBtn) toggleBtn.textContent = "▴";
+    setBookmarkCardsVisible(stack, false);
+    for (const b of toggleBtns) b.textContent = "▴";
     return;
   }
 
   panel.removeAttribute("data-trail-overlay-minimized");
   if (trailsCol) trailsCol.style.display = "flex";
-  if (divider) divider.style.display = "block";
   stack.style.flex = "0 1 auto";
   stack.style.gap = "0";
-  if (toggleBtn) toggleBtn.textContent = "▾";
+  for (const b of toggleBtns) b.textContent = "▾";
   refreshSonnerPanelLayout(trailOverlayMapRef);
-  layoutBookmarkCardStackOverlap(stack);
+  setBookmarkCardsVisible(stack, false);
 }
 
 function ensureBookmarksCover(stack) {
@@ -2626,7 +2728,7 @@ function ensureBookmarksCover(stack) {
     top: "0",
     zIndex: "500",
     height: "40px",
-    margin: "0 0 6px",
+    margin: "0",
     display: "flex",
     alignItems: "center",
     pointerEvents: "auto",
@@ -2636,6 +2738,23 @@ function ensureBookmarksCover(stack) {
     background: "rgba(22,22,26,0.92)",
     boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
     cursor: "pointer"
+  });
+  const icon = document.createElement("div");
+  icon.setAttribute("aria-hidden", "true");
+  icon.textContent = "🔖";
+  Object.assign(icon.style, {
+    width: "34px",
+    height: "34px",
+    marginLeft: "6px",
+    marginRight: "2px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "16px",
+    background: "rgba(0,0,0,0.22)",
+    border: "1px solid rgba(255,255,255,0.14)",
+    borderRadius: "10px",
+    flex: "0 0 auto"
   });
   const label = document.createElement("div");
   label.textContent = "Bookmarks";
@@ -2661,6 +2780,7 @@ function ensureBookmarksCover(stack) {
     paddingRight: "10px",
     flex: "0 0 auto"
   });
+  cover.appendChild(icon);
   cover.appendChild(label);
   cover.appendChild(hint);
   stack.prepend(cover);
@@ -2717,7 +2837,22 @@ function updateTrailDockCore(map) {
   if (!scroll || !more) return;
 
   const inView = getTrailsInViewport(map, cachedTrails);
-  const capped = inView.slice(0, TRAIL_SONNER_LIST_MAX);
+  let capped = inView.slice(0, TRAIL_SONNER_LIST_MAX);
+  if (recentHoveredTrailFeatureIds.length > 0 && capped.length > 1) {
+    const rank = new Map();
+    recentHoveredTrailFeatureIds.forEach((fid, i) => rank.set(fid, i));
+    capped = capped
+      .map((row, originalIndex) => ({ row, originalIndex }))
+      .sort((a, b) => {
+        const aId = trailMapFeatureId(a.row.trail, a.row.index);
+        const bId = trailMapFeatureId(b.row.trail, b.row.index);
+        const ar = rank.has(aId) ? rank.get(aId) : Number.POSITIVE_INFINITY;
+        const br = rank.has(bId) ? rank.get(bId) : Number.POSITIVE_INFINITY;
+        if (ar !== br) return ar - br;
+        return a.originalIndex - b.originalIndex;
+      })
+      .map((x) => x.row);
+  }
   const overflow = inView.length - capped.length;
 
   const fullSig = trailDockStripFullSignature(inView.length, capped, overflow);
