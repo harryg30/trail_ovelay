@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import type { Trail, Network, TrailRevision, TrailRevisionComment, TrailPhoto } from '@/lib/types'
+import { DIFFICULTY_LABELS, DIFFICULTY_BADGE_VARIANT, DIRECTION_LABELS } from '@/lib/trail-constants'
 import type { SessionUser } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -13,7 +14,9 @@ import {
   faRotateLeft,
   faChevronDown,
   faChevronRight,
+  faChevronLeft,
   faSpinner,
+  faXmark,
 } from '@fortawesome/free-solid-svg-icons'
 
 interface TrailDetailPanelProps {
@@ -22,6 +25,9 @@ interface TrailDetailPanelProps {
   user: SessionUser | null
   onClose: () => void
   onEdit: (trail: Trail) => void
+  onPhotoOpen?: (photoId: string) => void
+  onPhotoClose?: () => void
+  initialPhotoId?: string
 }
 
 type Section = 'summary' | 'gallery' | 'comments' | 'versions'
@@ -46,11 +52,14 @@ const ACTION_LABELS: Record<string, { label: string; cls: string }> = {
   rollback: { label: 'Rolled back', cls: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-400/30' },
 }
 
-export function TrailDetailPanel({ trail, networks, user, onClose, onEdit }: TrailDetailPanelProps) {
-  const [openSections, setOpenSections] = useState<Set<Section>>(new Set(['summary']))
+export function TrailDetailPanel({ trail, networks, user, onClose, onEdit, onPhotoOpen, onPhotoClose, initialPhotoId }: TrailDetailPanelProps) {
+  const [openSections, setOpenSections] = useState<Set<Section>>(new Set(['summary', 'gallery', 'comments', 'versions']))
+  const [copied, setCopied] = useState(false)
+  const initialPhotoRestoredRef = useRef(false)
 
   const [photos, setPhotos] = useState<TrailPhoto[] | null>(null)
   const [photosLoading, setPhotosLoading] = useState(false)
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
 
   const [comments, setComments] = useState<TrailRevisionComment[] | null>(null)
   const [commentsLoading, setCommentsLoading] = useState(false)
@@ -74,10 +83,16 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit }: Tra
     setPhotos(null)
     setComments(null)
     setRevisions(null)
-    setOpenSections(new Set(['summary']))
+    setOpenSections(new Set(['summary', 'gallery', 'comments', 'versions']))
     setCommentBody('')
     setCommentError(null)
     setRollbackError(null)
+    setLightboxIndex(null)
+    initialPhotoRestoredRef.current = false
+    loadPhotos()
+    loadComments()
+    loadRevisions()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trail.id])
 
   const trailNetworks = networks.filter(n => n.trailIds.includes(trail.id))
@@ -103,7 +118,18 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit }: Tra
     try {
       const res = await fetch(`/api/trail-photos?trailId=${trail.id}&limit=50`)
       const data = await res.json()
-      if (mountedRef.current) setPhotos(data.photos ?? [])
+      if (mountedRef.current) {
+        const loaded = data.photos ?? []
+        setPhotos(loaded)
+        if (initialPhotoId && !initialPhotoRestoredRef.current) {
+          initialPhotoRestoredRef.current = true
+          const idx = loaded.findIndex((p: TrailPhoto) => p.id === initialPhotoId)
+          if (idx >= 0) {
+            setLightboxIndex(idx)
+            onPhotoOpen?.(loaded[idx].id)
+          }
+        }
+      }
     } catch {
       if (mountedRef.current) setPhotos([])
     } finally {
@@ -187,25 +213,12 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit }: Tra
     }
   }
 
-  const difficultyLabel =
-    trail.difficulty === 'easy' ? '● Green Circle' :
-    trail.difficulty === 'intermediate' ? '■ Blue Square' :
-    trail.difficulty === 'hard' ? '◆ Black Diamond' :
-    trail.difficulty === 'pro' ? '◆◆ Double Black Diamond' : null
-
-  const difficultyVariant =
-    trail.difficulty === 'easy' ? 'trail' :
-    trail.difficulty === 'intermediate' ? 'catalog' :
-    trail.difficulty === 'hard' ? 'ink' :
-    trail.difficulty === 'pro' ? 'default' : null
-
-  const directionLabel =
-    trail.direction === 'one-way' ? 'One-way' :
-    trail.direction === 'out-and-back' ? 'Out & back' :
-    trail.direction === 'loop' ? 'Loop' : null
+  const difficultyLabel = DIFFICULTY_LABELS[trail.difficulty] ?? null
+  const difficultyVariant = DIFFICULTY_BADGE_VARIANT[trail.difficulty] ?? null
+  const directionLabel = DIRECTION_LABELS[trail.direction] ?? null
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto">
+    <div className="flex flex-col">
       {/* Panel header */}
       <div className="sticky top-0 z-10 flex items-center gap-2 border-b-2 border-border bg-card px-4 py-3">
         <button
@@ -220,6 +233,18 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit }: Tra
         <h2 className="flex-1 min-w-0 font-display text-sm font-normal uppercase tracking-wide text-foreground truncate">
           {trail.name}
         </h2>
+        <button
+          type="button"
+          onClick={async () => {
+            await navigator.clipboard.writeText(window.location.href)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+          }}
+          className="shrink-0 text-xs font-bold uppercase tracking-wide text-muted-foreground hover:text-foreground transition-colors"
+          title="Copy share link"
+        >
+          {copied ? 'Copied!' : 'Share'}
+        </button>
         {user && (
           <button
             type="button"
@@ -289,12 +314,11 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit }: Tra
             <p className="text-xs text-muted-foreground">No photos yet.</p>
           ) : (
             <div className="grid grid-cols-3 gap-1.5">
-              {photos.map(photo => (
-                <a
+              {photos.map((photo, i) => (
+                <button
                   key={photo.id}
-                  href={photo.blobUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  type="button"
+                  onClick={() => { setLightboxIndex(i); onPhotoOpen?.(photo.id) }}
                   className="relative aspect-square overflow-hidden rounded-md border-2 border-border hover:border-foreground/40 transition-colors"
                 >
                   <img
@@ -302,7 +326,7 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit }: Tra
                     alt=""
                     className="absolute inset-0 h-full w-full object-cover"
                   />
-                </a>
+                </button>
               ))}
             </div>
           )}
@@ -435,6 +459,64 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit }: Tra
               </ul>
             </>
           )}
+        </div>
+      )}
+      {/* Photo lightbox */}
+      {lightboxIndex !== null && photos && photos[lightboxIndex] && (
+        <div
+          className="fixed inset-0 z-[4001] flex items-center justify-center bg-black/80"
+          onClick={() => { setLightboxIndex(null); onPhotoClose?.() }}
+        >
+          <div
+            className="relative flex items-center justify-center max-w-4xl w-full px-14"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Prev */}
+            {lightboxIndex > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const i = lightboxIndex - 1
+                  setLightboxIndex(i)
+                  onPhotoOpen?.(photos[i].id)
+                }}
+                className="absolute left-2 flex items-center justify-center h-10 w-10 text-white/80 hover:text-white transition-colors"
+                aria-label="Previous photo"
+              >
+                <FontAwesomeIcon icon={faChevronLeft} className="w-5 h-5" />
+              </button>
+            )}
+            {/* Image */}
+            <img
+              src={photos[lightboxIndex].blobUrl}
+              alt=""
+              className="max-h-[80vh] max-w-full w-auto rounded-md shadow-2xl object-contain"
+            />
+            {/* Next */}
+            {lightboxIndex < photos.length - 1 && (
+              <button
+                type="button"
+                onClick={() => {
+                  const i = lightboxIndex + 1
+                  setLightboxIndex(i)
+                  onPhotoOpen?.(photos[i].id)
+                }}
+                className="absolute right-2 flex items-center justify-center h-10 w-10 text-white/80 hover:text-white transition-colors"
+                aria-label="Next photo"
+              >
+                <FontAwesomeIcon icon={faChevronRight} className="w-5 h-5" />
+              </button>
+            )}
+            {/* Close */}
+            <button
+              type="button"
+              onClick={() => { setLightboxIndex(null); onPhotoClose?.() }}
+              className="absolute -top-10 right-2 flex items-center justify-center h-8 w-8 rounded-full bg-black/50 text-white/80 hover:text-white transition-colors"
+              aria-label="Close"
+            >
+              <FontAwesomeIcon icon={faXmark} className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
     </div>

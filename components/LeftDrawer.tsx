@@ -12,11 +12,13 @@ import type {
   TrailPhoto,
   OfficialMapLayerPayload,
   StagedSegment,
+  TrailActivityItem,
 } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import type { MapBounds } from '@/lib/geo-utils'
 import { polylineInBounds, pointInBounds, trailPhotoMapPoint, inferNetworkIdForPolyline } from '@/lib/geo-utils'
 import { Badge } from '@/components/ui/badge'
+import { DIFFICULTY_BADGE_VARIANT } from '@/lib/trail-constants'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { uploadRideFilesClient } from '@/lib/upload-rides-client'
@@ -33,15 +35,12 @@ import { DrawNetworkContent } from '@/components/network/DrawNetworkContent'
 import { EditNetworkContent } from '@/components/network/EditNetworkContent'
 import { DraftsList } from '@/components/trail/DraftsList'
 import { AddTrailPhotoContent } from '@/components/photo/AddTrailPhotoContent'
-import type { TrailEditTool } from '@/lib/modes/types'
 import type { StagedTrailApi } from '@/hooks/useStagedTrail'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import {
   faCamera,
   faCheck,
   faCrosshairs,
-  faChevronDown,
-  faChevronRight,
   faDownload,
   faEye,
   faEyeSlash,
@@ -68,14 +67,6 @@ interface LeftDrawerProps {
   onSaveEditedTrail: (form: TrimFormState) => Promise<string | null>
   onDeleteTrail: () => Promise<string | null>
   refineError: string | null
-  refinedPolyline: [number, number][] | null
-  trailEditTool: TrailEditTool
-  onSetTrailEditTool: (t: TrailEditTool) => void
-  canUndoRefine: boolean
-  canRedoRefine: boolean
-  onRefineUndo: () => void
-  onRefineRedo: () => void
-  onRefineClear: () => void
   networks: Network[]
   selectedNetwork: Network | null
   drawNetworkPoints: [number, number][]
@@ -128,6 +119,14 @@ interface LeftDrawerProps {
   onOpenViewTrail: (trail: Trail) => void
   onCloseViewTrail: () => void
   onEditViewTrail: (trail: Trail) => void
+  onSelectActivityItem?: (item: TrailActivityItem) => void
+  /** Controlled tab (lifted to parent for URL sync). */
+  tab: 'trails' | 'activity' | 'networks'
+  onTabChange: (tab: 'trails' | 'activity' | 'networks') => void
+  /** Photo lightbox state for URL sync. */
+  initialPhotoId?: string
+  onPhotoOpen?: (photoId: string) => void
+  onPhotoClose?: () => void
 }
 
 export default function LeftDrawer({
@@ -146,14 +145,6 @@ export default function LeftDrawer({
   onSaveEditedTrail,
   onDeleteTrail,
   refineError,
-  refinedPolyline,
-  trailEditTool,
-  onSetTrailEditTool,
-  canUndoRefine,
-  canRedoRefine,
-  onRefineUndo,
-  onRefineRedo,
-  onRefineClear,
   networks,
   selectedNetwork,
   drawNetworkPoints,
@@ -203,6 +194,12 @@ export default function LeftDrawer({
   onOpenViewTrail,
   onCloseViewTrail,
   onEditViewTrail,
+  onSelectActivityItem,
+  tab,
+  onTabChange,
+  initialPhotoId,
+  onPhotoOpen,
+  onPhotoClose,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -211,13 +208,6 @@ export default function LeftDrawer({
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [syncing, setSyncing] = useState(false)
   const [syncMessage, setSyncMessage] = useState<string | null>(null)
-  const [ridesQuery, setRidesQuery] = useState('')
-  const [ridesPageSize, setRidesPageSize] = useState(() => {
-    if (typeof window === 'undefined') return 10
-    const saved = localStorage.getItem('ridesPageSize')
-    return saved ? Number(saved) : 10
-  })
-  const [ridesPage, setRidesPage] = useState(0)
   const [trailsQuery, setTrailsQuery] = useState('')
   const [trailsPageSize, setTrailsPageSize] = useState(() => {
     if (typeof window === 'undefined') return 10
@@ -225,16 +215,10 @@ export default function LeftDrawer({
     return saved ? Number(saved) : 10
   })
   const [trailsPage, setTrailsPage] = useState(0)
-  /** Ride photo chosen in drawer — prompt View vs Pin to map */
-  const [ridePhotoForAction, setRidePhotoForAction] = useState<RidePhoto | null>(null)
-
-  const ridePhotoNeedsMapPin = (p: RidePhoto) => !p.accepted && p.lat == null
   const trailPhotoNeedsMapPin = (p: TrailPhoto) => !p.accepted
 
   const [trailPhotoForAction, setTrailPhotoForAction] = useState<TrailPhoto | null>(null)
-  const [expandedTrailPhotoTrails, setExpandedTrailPhotoTrails] = useState<Set<string>>(() => new Set())
-  type DrawerTab = 'trails' | 'activity' | 'networks' | 'rides'
-  const [drawerTab, setDrawerTab] = useState<DrawerTab>('trails')
+  const drawerTab = tab
 
   const visibleUnpinnedForPin = useMemo(() => {
     const pending = unpinnedTrailPhotos.filter((p) => trailPhotoNeedsMapPin(p))
@@ -246,32 +230,6 @@ export default function LeftDrawer({
     })
   }, [unpinnedTrailPhotos, showOnMapOnly, mapBounds])
 
-  const trailPhotosByTrailId = useMemo(() => {
-    const byId = new Map<string, Map<string, TrailPhoto>>()
-
-    const add = (p: TrailPhoto) => {
-      const tid = p.trailId
-      if (!tid) return
-      let perTrail = byId.get(tid)
-      if (!perTrail) {
-        perTrail = new Map()
-        byId.set(tid, perTrail)
-      }
-      perTrail.set(p.id, p)
-    }
-
-    for (const p of communityTrailPhotos) add(p)
-    for (const p of unpinnedTrailPhotos) add(p)
-
-    const out = new Map<string, TrailPhoto[]>()
-    for (const [trailId, photoMap] of byId) {
-      const sorted = Array.from(photoMap.values()).sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      )
-      out.set(trailId, sorted)
-    }
-    return out
-  }, [communityTrailPhotos, unpinnedTrailPhotos])
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -321,7 +279,7 @@ export default function LeftDrawer({
     editMode !== 'add-trail' && !(editMode === 'edit-trail' && selectedTrail)
 
   return (
-    <div className="flex h-screen w-full max-w-[392px] shrink-0 flex-col overflow-y-auto border-r-2 border-foreground bg-card shadow-[4px_0_0_0_var(--foreground)] sm:w-[392px]">
+    <div className="flex h-screen w-full max-w-[392px] shrink-0 flex-col border-r-2 border-foreground bg-card shadow-[4px_0_0_0_var(--foreground)] sm:w-[392px]">
       {/* Header */}
       <div className="catalog-title-strip border-b-2 border-foreground px-4 py-4">
         <h1 className="mb-3 leading-none">
@@ -409,40 +367,41 @@ export default function LeftDrawer({
       </div>
       )}
 
-      {/* Tab navigation — hidden when viewing trail detail */}
-      {!viewingTrail && (
+      {/* Tab navigation */}
       <div className="flex border-b-2 border-border">
-        {(['trails', 'activity', 'networks', 'rides'] as const).map((tab) => (
+        {(['trails', 'activity', 'networks'] as const).map((tab) => (
           <button
             key={tab}
             type="button"
-            onClick={() => setDrawerTab(tab)}
+            onClick={() => { onTabChange(tab); if (viewingTrail) onCloseViewTrail() }}
             className={cn(
               'flex-1 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors',
-              drawerTab === tab
+              !viewingTrail && drawerTab === tab
                 ? 'border-b-2 border-foreground text-foreground -mb-0.5'
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >
             {tab === 'trails' ? 'Trails' :
-             tab === 'activity' ? 'Activity' :
-             tab === 'networks' ? 'Networks' : 'Rides'}
+             tab === 'activity' ? 'Activity' : 'Networks'}
           </button>
         ))}
       </div>
-      )}
 
-      {/* Trail detail panel — takes over the content area */}
+      {/* Scrollable content area — everything below the tab bar */}
+      <div className="drawer-scroll flex-1 min-h-0 overflow-y-auto">
+
+      {/* Trail detail panel */}
       {viewingTrail && (
-        <div className="flex-1 overflow-y-auto">
-          <TrailDetailPanel
-            trail={viewingTrail}
-            networks={networks}
-            user={user}
-            onClose={onCloseViewTrail}
-            onEdit={onEditViewTrail}
-          />
-        </div>
+        <TrailDetailPanel
+          trail={viewingTrail}
+          networks={networks}
+          user={user}
+          onClose={onCloseViewTrail}
+          onEdit={onEditViewTrail}
+          initialPhotoId={initialPhotoId}
+          onPhotoOpen={onPhotoOpen}
+          onPhotoClose={onPhotoClose}
+        />
       )}
 
       {/* Activity tab */}
@@ -452,6 +411,7 @@ export default function LeftDrawer({
           mapBounds={mapBounds}
           trails={trails}
           onOpenViewTrail={onOpenViewTrail}
+          onSelectActivityItem={onSelectActivityItem}
         />
       )}
 
@@ -527,16 +487,16 @@ export default function LeftDrawer({
             {refineError && <p className="text-xs text-destructive">{refineError}</p>}
             <TrailEditDrawer
               variant="edit"
-              trailEditTool={trailEditTool}
-              onSetTool={onSetTrailEditTool}
-              canUndo={canUndoRefine}
-              canRedo={canRedoRefine}
-              onUndo={onRefineUndo}
-              onRedo={onRefineRedo}
-              onClear={onRefineClear}
+              trailEditTool={staged.drawTool}
+              onSetTool={staged.setDrawTool}
+              canUndo={staged.canUndo}
+              canRedo={staged.canRedo}
+              onUndo={staged.undo}
+              onRedo={staged.redo}
+              onClear={staged.clearAll}
               points={selectedTrail.polyline}
               selectedTrail={selectedTrail}
-              refinedPolyline={refinedPolyline}
+              refinedPolyline={staged.compositePolyline.length >= 2 ? staged.compositePolyline : null}
               onSaveDraw={onSaveAddedTrail}
               onSaveEdit={onSaveEditedTrail}
               onCancel={() => {
@@ -707,15 +667,6 @@ export default function LeftDrawer({
                     )
                   }
                   const { trail } = row
-                  const trailPub = trailPhotosByTrailId.get(trail.id) ?? []
-                  const visibleTrailPub = activeBounds
-                    ? trailPub.filter((p) => {
-                        const pt = trailPhotoMapPoint(p)
-                        return pt != null && pointInBounds(pt, activeBounds)
-                      })
-                    : trailPub
-                  const expanded = expandedTrailPhotoTrails.has(trail.id)
-                  const hasPhotos = trailPub.length > 0
                   return (
                     <Fragment key={`t-wrap-${trail.id}-${row.networkId ?? 'u'}-${i}`}>
                       <li
@@ -726,40 +677,18 @@ export default function LeftDrawer({
                             : ''
                         )}
                       >
-                        {hasPhotos ? (
-                          <button
-                            type="button"
-                            className="text-muted-foreground hover:text-muted-foreground p-0.5 shrink-0"
-                            aria-expanded={expanded}
-                            title={expanded ? 'Hide photos' : 'Show photos on this trail'}
-                            onClick={() => {
-                              setExpandedTrailPhotoTrails((prev) => {
-                                const n = new Set(prev)
-                                if (n.has(trail.id)) n.delete(trail.id)
-                                else n.add(trail.id)
-                                return n
-                              })
-                            }}
-                          >
-                            <FontAwesomeIcon icon={expanded ? faChevronDown : faChevronRight} className="w-3 h-3" />
-                          </button>
-                        ) : (
-                          <span className="w-4 shrink-0" aria-hidden />
-                        )}
-                        <span className="text-foreground truncate flex-1 min-w-0">{trail.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => onOpenViewTrail(trail)}
+                          className="text-foreground truncate flex-1 min-w-0 text-left hover:underline underline-offset-2"
+                        >
+                          {trail.name}
+                        </button>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-muted-foreground text-xs">{trail.distanceKm.toFixed(1)} km</span>
                           {trail.difficulty !== 'not_set' && (
                             <Badge
-                              variant={
-                                trail.difficulty === 'easy'
-                                  ? 'trail'
-                                  : trail.difficulty === 'intermediate'
-                                    ? 'catalog'
-                                    : trail.difficulty === 'hard'
-                                      ? 'ink'
-                                      : 'default'
-                              }
+                              variant={DIFFICULTY_BADGE_VARIANT[trail.difficulty] as 'trail' | 'catalog' | 'ink' | 'default' ?? 'default'}
                               className="tabular-nums"
                             >
                               {trail.difficulty === 'easy' ? '● Green' :
@@ -788,50 +717,6 @@ export default function LeftDrawer({
                           )}
                         </div>
                       </li>
-                      {expanded && hasPhotos && (
-                        <li className="ml-6 mr-1 mb-1">
-                          <div className="rounded-md border-2 border-border bg-card px-2 py-2">
-                            {visibleTrailPub.length === 0 ? (
-                              <p className="text-xs text-muted-foreground">No photos in current map view.</p>
-                            ) : (
-                              <div className="flex flex-wrap gap-1.5">
-                                {visibleTrailPub.map((photo) => (
-                                  <button
-                                    key={photo.id}
-                                    type="button"
-                                    className="relative h-12 w-12 shrink-0 overflow-hidden rounded-sm border-2 border-border"
-                                    onClick={() => setTrailPhotoForAction(photo)}
-                                    title={
-                                      photo.accepted
-                                        ? 'Trail photo — accepted on community map'
-                                        : 'Trail photo — pending acceptance'
-                                    }
-                                    aria-label={
-                                      photo.accepted
-                                        ? 'Trail photo, accepted on community map. Open actions.'
-                                        : 'Trail photo, pending acceptance. Open actions.'
-                                    }
-                                  >
-                                    <img
-                                      src={photo.thumbnailUrl || photo.blobUrl}
-                                      alt=""
-                                      className="w-full h-full object-cover"
-                                    />
-                                    {photo.accepted ? (
-                                      <span
-                                        className="pointer-events-none absolute right-0 top-0 flex h-4 w-4 items-center justify-center rounded-bl-sm bg-primary text-[8px] text-primary-foreground shadow-sm"
-                                        aria-hidden
-                                      >
-                                        <FontAwesomeIcon icon={faCheck} className="h-2 w-2" />
-                                      </span>
-                                    ) : null}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        </li>
-                      )}
                     </Fragment>
                   )
                 })}
@@ -968,311 +853,7 @@ export default function LeftDrawer({
       </div>
       )}
 
-      {/* Rides tab */}
-      {!viewingTrail && drawerTab === 'rides' && (
-      <div className="px-4 py-4 border-t-2 border-border flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <h2 className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
-            Rides ({rides.length})
-          </h2>
-          <div className="flex items-center gap-2">
-            {rides.some(r => !hiddenRideIds.has(r.id)) && (
-              <button
-                type="button"
-                onClick={onHideAllRides}
-                className="text-xs font-bold uppercase tracking-wide text-electric underline-offset-2 hover:underline"
-                title="Hide all rides"
-              >
-                Hide all
-              </button>
-            )}
-            <select
-              value={ridesPageSize}
-              onChange={(e) => { const v = Number(e.target.value); setRidesPageSize(v); localStorage.setItem('ridesPageSize', String(v)); setRidesPage(0) }}
-              className="shrink-0 rounded-sm border-2 border-foreground bg-card px-1 py-0.5 text-xs font-semibold text-foreground shadow-[1px_1px_0_0_var(--foreground)]"
-            >
-              <option value={5}>5 / page</option>
-              <option value={10}>10 / page</option>
-              <option value={25}>25 / page</option>
-            </select>
-          </div>
-        </div>
-        {(placingPhoto || placingTrailPhoto) && (
-          <div className="mx-4 mb-2 flex items-center justify-between gap-2 border-2 border-foreground bg-primary/15 px-3 py-2 shadow-[2px_2px_0_0_var(--foreground)]">
-            <p className="text-xs font-semibold text-foreground">
-              {placingTrailPhoto && !placingPhoto
-                ? 'Tap the map on or near a trail line to pin this trail photo.'
-                : 'Tap the map on or near a trail line to pin this photo.'}
-            </p>
-            <Button
-              type="button"
-              variant="ghostMud"
-              size="xs"
-              onClick={onCancelPinOnMap}
-              className="shrink-0"
-            >
-              Cancel
-            </Button>
-          </div>
-        )}
-        {rides.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No rides uploaded yet.</p>
-        ) : (() => {
-          const activeBounds = showOnMapOnly && mapBounds ? mapBounds : null
-          const filteredRides = (ridesQuery.trim()
-            ? rides.filter(r => r.name.toLowerCase().includes(ridesQuery.toLowerCase()))
-            : rides
-          ).filter(r => !activeBounds || polylineInBounds(r.polyline, activeBounds))
-           .slice().sort((a, b) => {
-            const aVisible = !hiddenRideIds.has(a.id)
-            const bVisible = !hiddenRideIds.has(b.id)
-            return aVisible === bVisible ? 0 : aVisible ? -1 : 1
-          })
-          const totalPages = Math.max(1, Math.ceil(filteredRides.length / ridesPageSize))
-          const safePage = Math.min(ridesPage, totalPages - 1)
-          const pagedRides = filteredRides.slice(safePage * ridesPageSize, (safePage + 1) * ridesPageSize)
-          return (
-            <>
-              <Input
-                type="text"
-                value={ridesQuery}
-                onChange={(e) => { setRidesQuery(e.target.value); setRidesPage(0) }}
-                placeholder="Search rides…"
-                className="w-full"
-              />
-              {pagedRides.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No rides match.</p>
-              ) : (
-                <ul className="flex flex-col gap-1">
-                  {pagedRides.map((ride) => {
-                    const hidden = hiddenRideIds.has(ride.id)
-                    const isHighRes = highResRideIds.has(ride.id)
-                    const isFetching = fetchingHighResId === ride.id
-                    const isPending = pendingHighResRideId === ride.id
-                    const isFetchingPhotos = fetchingPhotosId === ride.id
-                    const photos = ridePhotos[ride.id]
-                    const photosLoaded = photos !== undefined
-                    const photosVisible = photosVisibleRideIds.has(ride.id)
-                    return (
-                      <li key={ride.id} className="flex flex-col rounded-md border border-border bg-mud/35">
-                        <div className={`flex items-center justify-between py-2 px-3 text-sm ${hidden ? 'opacity-50' : ''}`}>
-                          <span className="text-foreground truncate pr-2">{ride.name}</span>
-                          <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-muted-foreground text-xs">
-                              {(ride.distance / 1000).toFixed(1)} km
-                            </span>
-                            {ride.stravaActivityId && (
-                              <button
-                                type="button"
-                                onClick={() => isHighRes ? undefined : setPendingHighResRideId(isPending ? null : ride.id)}
-                                disabled={isFetching || isHighRes}
-                                title={isHighRes ? 'High-res loaded' : 'Download high-res polyline from Strava'}
-                                className="text-muted-foreground transition-colors hover:text-electric disabled:cursor-default disabled:opacity-40"
-                              >
-                                {isFetching ? (
-                                  <FontAwesomeIcon icon={faSpinner} spin className="w-4 h-4" />
-                                ) : isHighRes ? (
-                                  <FontAwesomeIcon icon={faCheck} className="h-4 w-4 text-electric" />
-                                ) : (
-                                  <FontAwesomeIcon icon={faDownload} className="w-4 h-4" />
-                                )}
-                              </button>
-                            )}
-                            {ride.stravaActivityId && (
-                              <button
-                                type="button"
-                                onClick={() => onFetchAndTogglePhotos(ride.id)}
-                                disabled={isFetchingPhotos}
-                                title={photosVisible ? 'Hide photos' : photosLoaded ? 'Show photos' : 'Fetch photos from Strava'}
-                                className="relative text-muted-foreground transition-colors hover:text-primary disabled:cursor-default disabled:opacity-40"
-                              >
-                                {isFetchingPhotos ? (
-                                  <FontAwesomeIcon icon={faSpinner} spin className="w-4 h-4" />
-                                ) : (
-                                  <FontAwesomeIcon icon={faCamera} className={cn('h-4 w-4', photosVisible && 'text-primary')} />
-                                )}
-                                {photosLoaded && photos.length > 0 && (
-                                  <span className="absolute -right-1.5 -top-1.5 flex size-3.5 items-center justify-center rounded-full bg-primary text-[9px] font-bold leading-none text-primary-foreground">
-                                    {photos.length > 9 ? '9+' : photos.length}
-                                  </span>
-                                )}
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => onToggleRide(ride.id)}
-                              title={hidden ? 'Show on map' : 'Hide from map'}
-                              className="text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                              <FontAwesomeIcon icon={hidden ? faEyeSlash : faEye} className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                        {photosVisible && photosLoaded && photos.length > 0 && (
-                          <div className="border-t-2 border-border px-3 pb-2 pt-1">
-                            <p className="mb-1.5 text-[10px] font-display font-normal uppercase tracking-[0.2em] text-muted-foreground">
-                              Photos
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {photos.map((photo) => (
-                                <button
-                                  key={photo.id}
-                                  type="button"
-                                  onClick={() => setRidePhotoForAction(photo)}
-                                  title={
-                                    ridePhotoNeedsMapPin(photo)
-                                      ? 'View or pin to trail'
-                                      : 'View photo'
-                                  }
-                                  className={cn(
-                                    'relative h-14 w-14 shrink-0 overflow-hidden rounded-md border-2 transition-all',
-                                    placingPhoto?.id === photo.id
-                                      ? 'border-primary ring-2 ring-primary/35'
-                                      : 'border-border hover:border-foreground/40'
-                                  )}
-                                >
-                                  <img
-                                    src={photo.thumbnailUrl || photo.blobUrl}
-                                    alt=""
-                                    className="w-full h-full object-cover"
-                                  />
-                                  {ridePhotoNeedsMapPin(photo) && (
-                                    <span className="absolute inset-x-0 bottom-0 bg-primary/95 py-0.5 text-center text-[9px] font-bold uppercase tracking-wide text-primary-foreground">
-                                      Pin
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {isPending && (
-                          <div className="px-3 pb-2 flex flex-col gap-1.5">
-                            <p className="rounded-sm border-2 border-foreground bg-mud/60 px-2 py-1.5 text-xs font-medium text-foreground">
-                              Uses 1 Strava API call (limit 200/day). High-res data is only stored in memory for this session.
-                            </p>
-                            <div className="flex gap-2">
-                              <Button
-                                type="button"
-                                variant="catalog"
-                                size="sm"
-                                className="flex-1"
-                                onClick={() => { setPendingHighResRideId(null); onFetchHighRes(ride.id) }}
-                              >
-                                Fetch
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outlineThick"
-                                size="sm"
-                                onClick={() => setPendingHighResRideId(null)}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-between pt-1">
-                  <Button
-                    type="button"
-                    variant="outlineThick"
-                    size="xs"
-                    onClick={() => setRidesPage(p => Math.max(0, p - 1))}
-                    disabled={safePage === 0}
-                  >
-                    Prev
-                  </Button>
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    Page {safePage + 1} of {totalPages}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outlineThick"
-                    size="xs"
-                    onClick={() => setRidesPage(p => Math.min(totalPages - 1, p + 1))}
-                    disabled={safePage === totalPages - 1}
-                  >
-                    Next
-                  </Button>
-                </div>
-              )}
-            </>
-          )
-        })()}
-      </div>
-      )}
-
-      {ridePhotoForAction && (
-        <div
-          className="fixed inset-0 z-[5000] flex items-center justify-center p-4 bg-black/40"
-          role="presentation"
-          onClick={() => setRidePhotoForAction(null)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="ride-photo-action-title"
-            className="catalog-panel flex w-full max-w-sm flex-col gap-3 p-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex gap-3">
-              <img
-                src={ridePhotoForAction.thumbnailUrl || ridePhotoForAction.blobUrl}
-                alt=""
-                className="h-20 w-20 shrink-0 rounded-md border-2 border-foreground object-cover"
-              />
-              <div className="min-w-0">
-                <p id="ride-photo-action-title" className="font-display text-base font-normal uppercase tracking-wide text-foreground">
-                  Ride photo
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  View full size, or pin to a trail on the map.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Button
-                type="button"
-                variant="default"
-                className="w-full"
-                onClick={() => {
-                  onOpenPhotoLightbox(ridePhotoForAction.blobUrl)
-                  setRidePhotoForAction(null)
-                }}
-              >
-                View
-              </Button>
-              {ridePhotoNeedsMapPin(ridePhotoForAction) && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="w-full"
-                  onClick={() => {
-                    onPlaceRidePhoto(ridePhotoForAction)
-                    setRidePhotoForAction(null)
-                  }}
-                >
-                  Pin to map…
-                </Button>
-              )}
-              <Button
-                type="button"
-                variant="outlineThick"
-                className="w-full"
-                onClick={() => setRidePhotoForAction(null)}
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      </div>{/* end scrollable content area */}
 
       {trailPhotoForAction && (
         <div

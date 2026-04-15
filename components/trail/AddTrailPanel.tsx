@@ -230,6 +230,14 @@ export function AddTrailPanel({
             segments={stravaSegments}
             onSegmentSelected={onStravaSegmentSelected}
             isSegmentSelected={isStravaSegmentSelected}
+            rides={rides}
+            activeRideId={activeRideId}
+            onSetActiveRide={onSetActiveRide}
+            trimStart={trimStart}
+            trimSegment={trimSegment}
+            onStepTrimPoint={onStepTrimPoint}
+            onClearTrimPoint={onClearTrimPoint}
+            onAddTrimSegment={onAddTrimSegment}
           />
         )}
       </div>
@@ -515,6 +523,14 @@ function StravaTools({
   segments,
   onSegmentSelected,
   isSegmentSelected,
+  rides,
+  activeRideId,
+  onSetActiveRide,
+  trimStart,
+  trimSegment,
+  onStepTrimPoint,
+  onClearTrimPoint,
+  onAddTrimSegment,
 }: {
   loading: boolean
   error: string | null
@@ -522,69 +538,168 @@ function StravaTools({
   segments: StravaSegmentFeature[]
   onSegmentSelected: (feature: StravaSegmentFeature) => void
   isSegmentSelected: (segmentId: number) => boolean
+  rides: Ride[]
+  activeRideId: string | null
+  onSetActiveRide: (id: string | null) => void
+  trimStart: TrimPoint | null
+  trimSegment: TrimSegment | null
+  onStepTrimPoint: (which: 'start' | 'end', delta: number) => void
+  onClearTrimPoint: (which: 'start' | 'end') => void
+  onAddTrimSegment: () => void
 }) {
-  const [query, setQuery] = useState('')
+  const [subTab, setSubTab] = useState<'rides' | 'segments'>('rides')
+  const [segQuery, setSegQuery] = useState('')
+  const [rideQuery, setRideQuery] = useState('')
+  const rideListRef = useRef<HTMLDivElement | null>(null)
 
-  const filtered = useMemo(() => {
-    if (!query.trim()) return segments
-    const q = query.toLowerCase()
+  const filteredSegments = useMemo(() => {
+    if (!segQuery.trim()) return segments
+    const q = segQuery.toLowerCase()
     return segments.filter((s) => s.name.toLowerCase().includes(q))
-  }, [segments, query])
+  }, [segments, segQuery])
+
+  const filteredRides = useMemo(() => {
+    if (!rideQuery.trim()) return rides
+    const q = rideQuery.toLowerCase()
+    return rides.filter((r) => r.name.toLowerCase().includes(q))
+  }, [rides, rideQuery])
 
   return (
     <div className="flex flex-col gap-2">
-      {segmentCount > 0 && (
-        <Input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search segments…"
-          className="h-7 text-xs"
-        />
-      )}
-      {loading && (
-        <div className="flex items-center gap-2 text-[11px] text-muted-foreground animate-pulse">
-          <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-          </svg>
-          Loading Strava segments…
-        </div>
-      )}
-      {error && (
-        <p className="text-[11px] text-destructive">{error}</p>
-      )}
-      {!loading && !error && segmentCount === 0 && (
-        <p className="text-[11px] text-muted-foreground">
-          Zoom in to load Strava segments, then click to select.
-        </p>
-      )}
-      {!loading && filtered.length > 0 && (
-        <div className="max-h-[140px] overflow-y-auto flex flex-col gap-0.5">
-          {filtered.map((seg) => {
-            const selected = isSegmentSelected(seg.segmentId)
-            const distKm = (seg.distance / 1000).toFixed(2)
-            return (
+      {/* Sub-tab toggle */}
+      <div className="flex rounded-sm border-2 border-foreground overflow-hidden text-[10px] font-bold uppercase tracking-wider">
+        <button
+          type="button"
+          onClick={() => setSubTab('rides')}
+          className={cn(
+            'flex-1 py-1 transition-colors',
+            subTab === 'rides' ? 'bg-foreground text-background' : 'text-foreground hover:bg-mud/60'
+          )}
+        >
+          Rides
+        </button>
+        <button
+          type="button"
+          onClick={() => setSubTab('segments')}
+          className={cn(
+            'flex-1 py-1 transition-colors border-l-2 border-foreground',
+            subTab === 'segments' ? 'bg-foreground text-background' : 'text-foreground hover:bg-mud/60'
+          )}
+        >
+          Segments
+        </button>
+      </div>
+
+      {/* Rides sub-tab */}
+      {subTab === 'rides' && (
+        <>
+          <Input
+            type="text"
+            value={rideQuery}
+            onChange={(e) => setRideQuery(e.target.value)}
+            placeholder="Search rides…"
+            className="h-7 text-xs"
+          />
+          <div ref={rideListRef} className="max-h-[120px] overflow-y-auto flex flex-col gap-0.5">
+            {filteredRides.length === 0 && (
+              <p className="text-[11px] text-muted-foreground py-1">No rides match.</p>
+            )}
+            {filteredRides.map((ride) => (
               <button
-                key={seg.segmentId}
+                key={ride.id}
                 type="button"
-                onClick={() => onSegmentSelected(seg)}
+                onClick={() => onSetActiveRide(activeRideId === ride.id ? null : ride.id)}
                 className={cn(
                   'flex items-center justify-between rounded px-2 py-1 text-left text-[11px] transition-colors',
-                  selected
+                  activeRideId === ride.id
                     ? 'bg-primary/15 text-primary font-semibold'
                     : 'text-foreground hover:bg-mud/60'
                 )}
               >
-                <span className="truncate flex-1 min-w-0 mr-2">{seg.name}</span>
-                <span className="shrink-0 text-muted-foreground tabular-nums">{distKm} km</span>
+                <span className="truncate flex-1 min-w-0 mr-2">{ride.name}</span>
+                <span className="shrink-0 text-muted-foreground tabular-nums">{(ride.distance / 1000).toFixed(1)} km</span>
               </button>
-            )
-          })}
-        </div>
+            ))}
+          </div>
+          {activeRideId && !trimStart && (
+            <p className="text-[11px] text-muted-foreground">Click the ride on the map to set start point.</p>
+          )}
+          {trimStart && !trimSegment && (
+            <p className="text-[11px] font-semibold text-primary">Start set — click to set end point.</p>
+          )}
+          {trimSegment && (
+            <div className="flex flex-col gap-1.5">
+              <EndpointControls onStep={onStepTrimPoint} onClear={onClearTrimPoint} />
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {trimSegment.distanceKm.toFixed(2)} km · {trimSegment.polyline.length} pts
+                </span>
+                <Button type="button" variant="default" size="xs" onClick={onAddTrimSegment}>
+                  Add segment
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
-      {!loading && !error && segmentCount > 0 && filtered.length === 0 && query && (
-        <p className="text-[11px] text-muted-foreground">No segments match &ldquo;{query}&rdquo;</p>
+
+      {/* Segments sub-tab */}
+      {subTab === 'segments' && (
+        <>
+          {segmentCount > 0 && (
+            <Input
+              type="text"
+              value={segQuery}
+              onChange={(e) => setSegQuery(e.target.value)}
+              placeholder="Search segments…"
+              className="h-7 text-xs"
+            />
+          )}
+          {loading && (
+            <div className="flex items-center gap-2 text-[11px] text-muted-foreground animate-pulse">
+              <svg className="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Loading Strava segments…
+            </div>
+          )}
+          {error && (
+            <p className="text-[11px] text-destructive">{error}</p>
+          )}
+          {!loading && !error && segmentCount === 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              Zoom in to load Strava segments, then click to select.
+            </p>
+          )}
+          {!loading && filteredSegments.length > 0 && (
+            <div className="max-h-[140px] overflow-y-auto flex flex-col gap-0.5">
+              {filteredSegments.map((seg) => {
+                const selected = isSegmentSelected(seg.segmentId)
+                const distKm = (seg.distance / 1000).toFixed(2)
+                return (
+                  <button
+                    key={seg.segmentId}
+                    type="button"
+                    onClick={() => onSegmentSelected(seg)}
+                    className={cn(
+                      'flex items-center justify-between rounded px-2 py-1 text-left text-[11px] transition-colors',
+                      selected
+                        ? 'bg-primary/15 text-primary font-semibold'
+                        : 'text-foreground hover:bg-mud/60'
+                    )}
+                  >
+                    <span className="truncate flex-1 min-w-0 mr-2">{seg.name}</span>
+                    <span className="shrink-0 text-muted-foreground tabular-nums">{distKm} km</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+          {!loading && !error && segmentCount > 0 && filteredSegments.length === 0 && segQuery && (
+            <p className="text-[11px] text-muted-foreground">No segments match &ldquo;{segQuery}&rdquo;</p>
+          )}
+        </>
       )}
     </div>
   )

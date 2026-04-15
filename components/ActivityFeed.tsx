@@ -14,6 +14,7 @@ interface ActivityFeedProps {
   mapBounds: MapBounds | null
   trails: Trail[]
   onOpenViewTrail: (trail: Trail) => void
+  onSelectActivityItem?: (item: TrailActivityItem) => void
 }
 
 const PAGE_SIZE = 50
@@ -37,7 +38,7 @@ function formatRelativeTime(date: Date): string {
   return date.toLocaleDateString()
 }
 
-export function ActivityFeed({ showOnMapOnly, mapBounds, trails, onOpenViewTrail }: ActivityFeedProps) {
+export function ActivityFeed({ showOnMapOnly, mapBounds, trails, onOpenViewTrail, onSelectActivityItem }: ActivityFeedProps) {
   const [items, setItems] = useState<TrailActivityItem[]>([])
   const [loading, setLoading] = useState(false)
   const [offset, setOffset] = useState(0)
@@ -112,46 +113,39 @@ export function ActivityFeed({ showOnMapOnly, mapBounds, trails, onOpenViewTrail
             const isDeleted = item.action === 'delete'
 
             return (
-              <li
-                key={item.revisionId}
-                className="flex items-start gap-2 border-b border-border py-2.5 last:border-0"
-              >
-                <span
-                  className={cn(
-                    'mt-0.5 shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
-                    meta.cls
-                  )}
+              <li key={item.revisionId} className="border-b border-border last:border-0">
+                <button
+                  type="button"
+                  className="flex w-full items-start gap-2 py-2.5 text-left hover:bg-muted/40 transition-colors rounded-sm px-1 -mx-1"
+                  onClick={() => onSelectActivityItem ? onSelectActivityItem(item) : matchedTrail && onOpenViewTrail(matchedTrail)}
                 >
-                  {meta.label}
-                </span>
-                <div className="min-w-0 flex-1">
-                  {matchedTrail && !isDeleted ? (
-                    <button
-                      type="button"
-                      onClick={() => onOpenViewTrail(matchedTrail)}
-                      className="text-sm font-semibold text-foreground hover:underline underline-offset-2 text-left"
-                    >
-                      {item.trailName}
-                    </button>
-                  ) : (
+                  <span
+                    className={cn(
+                      'mt-0.5 shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+                      meta.cls
+                    )}
+                  >
+                    {meta.label}
+                  </span>
+                  <div className="min-w-0 flex-1">
                     <span className={cn('text-sm font-semibold', isDeleted ? 'text-muted-foreground line-through' : 'text-foreground')}>
                       {item.trailName}
                     </span>
-                  )}
-                  <div className="flex items-baseline gap-1.5 mt-0.5 flex-wrap">
-                    <span className="text-xs text-muted-foreground">
-                      {item.createdByName ?? 'Unknown'}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatRelativeTime(item.createdAt)}
-                    </span>
+                    <div className="flex items-baseline gap-1.5 mt-0.5 flex-wrap">
+                      <span className="text-xs text-muted-foreground">
+                        {item.createdByName ?? 'Unknown'}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        {formatRelativeTime(item.createdAt)}
+                      </span>
+                    </div>
+                    {(item.summary || item.changeSetComment) && (
+                      <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
+                        {item.summary ?? item.changeSetComment}
+                      </p>
+                    )}
                   </div>
-                  {(item.summary || item.changeSetComment) && (
-                    <p className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2">
-                      {item.summary ?? item.changeSetComment}
-                    </p>
-                  )}
-                </div>
+                </button>
               </li>
             )
           })}

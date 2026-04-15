@@ -141,57 +141,59 @@ export function TrailEditDrawer({
         )}
       </div>
 
-      <div className="flex flex-col gap-2">
-        <p className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
-          Tools
-        </p>
-        <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
-          <button
-            type="button"
-            title="Pencil"
-            aria-label="Pencil tool"
-            aria-pressed={trailEditTool === 'pencil'}
-            onClick={() => onSetTool('pencil')}
-            className={`${toolBase} ${trailEditTool === 'pencil' ? toolBtnActive : toolBtnIdle}`}
-          >
-            <FontAwesomeIcon icon={faPencil} className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            title="Eraser"
-            aria-label="Eraser tool"
-            aria-pressed={trailEditTool === 'eraser'}
-            onClick={() => onSetTool('eraser')}
-            className={`${toolBase} ${trailEditTool === 'eraser' ? toolBtnActive : toolBtnIdle}`}
-          >
-            <FontAwesomeIcon icon={faEraser} className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            title="Section eraser"
-            aria-label="Section eraser tool"
-            aria-pressed={trailEditTool === 'section-eraser'}
-            onClick={() => onSetTool('section-eraser')}
-            className={`${toolBase} ${trailEditTool === 'section-eraser' ? toolBtnActive : toolBtnIdle}`}
-          >
-            <FontAwesomeIcon icon={faScissors} className="w-4 h-4" />
-          </button>
-          <button type="button" className={iconActionBtn} onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo">
-            <FontAwesomeIcon icon={faRotateLeft} className="w-4 h-4" />
-          </button>
-          <button type="button" className={iconActionBtn} onClick={onRedo} disabled={!canRedo} title="Redo" aria-label="Redo">
-            <FontAwesomeIcon icon={faRotateRight} className="w-4 h-4" />
-          </button>
-          <Button type="button" variant="outlineThick" size="sm" onClick={onClear}>
-            Clear
-          </Button>
+      {variant === 'draw' && (
+        <div className="flex flex-col gap-2">
+          <p className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
+            Tools
+          </p>
+          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
+            <button
+              type="button"
+              title="Pencil"
+              aria-label="Pencil tool"
+              aria-pressed={trailEditTool === 'pencil'}
+              onClick={() => onSetTool('pencil')}
+              className={`${toolBase} ${trailEditTool === 'pencil' ? toolBtnActive : toolBtnIdle}`}
+            >
+              <FontAwesomeIcon icon={faPencil} className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              title="Eraser"
+              aria-label="Eraser tool"
+              aria-pressed={trailEditTool === 'eraser'}
+              onClick={() => onSetTool('eraser')}
+              className={`${toolBase} ${trailEditTool === 'eraser' ? toolBtnActive : toolBtnIdle}`}
+            >
+              <FontAwesomeIcon icon={faEraser} className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              title="Section eraser"
+              aria-label="Section eraser tool"
+              aria-pressed={trailEditTool === 'section-eraser'}
+              onClick={() => onSetTool('section-eraser')}
+              className={`${toolBase} ${trailEditTool === 'section-eraser' ? toolBtnActive : toolBtnIdle}`}
+            >
+              <FontAwesomeIcon icon={faScissors} className="w-4 h-4" />
+            </button>
+            <button type="button" className={iconActionBtn} onClick={onUndo} disabled={!canUndo} title="Undo" aria-label="Undo">
+              <FontAwesomeIcon icon={faRotateLeft} className="w-4 h-4" />
+            </button>
+            <button type="button" className={iconActionBtn} onClick={onRedo} disabled={!canRedo} title="Redo" aria-label="Redo">
+              <FontAwesomeIcon icon={faRotateRight} className="w-4 h-4" />
+            </button>
+            <Button type="button" variant="outlineThick" size="sm" onClick={onClear}>
+              Clear
+            </Button>
+          </div>
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            {trailEditTool === 'section-eraser'
+              ? 'Section eraser: click two points to erase the section between them.'
+              : 'Pencil: click line or drag points to edit; tap midpoints to insert. Eraser: remove a point.'}
+          </p>
         </div>
-        <p className="text-[11px] leading-snug text-muted-foreground">
-          {trailEditTool === 'section-eraser'
-            ? 'Section eraser: click two points to erase the section between them.'
-            : 'Pencil: click line or drag points to edit; tap midpoints to insert. Eraser: remove a point.'}
-        </p>
-      </div>
+      )}
 
       <div>
         <p className="font-display mb-2 text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">

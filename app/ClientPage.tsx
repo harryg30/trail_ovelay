@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
+import { useRouter, useSearchParams } from 'next/navigation'
 import LeftDrawer from '@/components/LeftDrawer'
 import AnnouncementModal from '@/components/AnnouncementModal'
+import { ChangeDetailModal } from '@/components/trail/ChangeDetailModal'
 import { ANNOUNCEMENT_VERSION, ANNOUNCEMENT } from '@/lib/announcement'
 import type {
   Ride,
@@ -17,6 +19,7 @@ import type {
   TrailPhoto,
   OfficialMapLayerPayload,
   StagedSegment,
+  TrailActivityItem,
 } from '@/lib/types'
 import type { SessionUser } from '@/lib/auth'
 import {
@@ -52,7 +55,50 @@ function persistDrafts(drafts: DraftTrail[]) {
   localStorage.setItem(DRAFTS_STORAGE_KEY, JSON.stringify(drafts))
 }
 
-export default function ClientPage({ user }: { user: SessionUser | null }) {
+interface InitialParams {
+  tab: string | null
+  trailId: number | null
+  photoId: string | null
+  revision: string | null
+  lat: number | null
+  lng: number | null
+  zoom: number | null
+}
+
+export default function ClientPage({
+  user,
+  initialTrail = null,
+  initialParams,
+}: {
+  user: SessionUser | null
+  initialTrail?: Trail | null
+  initialParams?: InitialParams
+}) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
+
+  // Lifted from LeftDrawer so we can sync to the URL
+  const [drawerTab, setDrawerTab] = useState<'trails' | 'activity' | 'networks'>(
+    (initialParams?.tab as 'trails' | 'activity' | 'networks' | undefined) ?? 'trails'
+  )
+
+  // Photo open from TrailDetailPanel lightbox; cleared after first use so it doesn't re-restore
+  const [pendingInitialPhotoId, setPendingInitialPhotoId] = useState<string | null>(
+    initialParams?.photoId ?? null
+  )
+
+  // Debounce timer for map view URL sync
+  const viewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Merge partial params into URL without clobbering other params
+  const updateParams = useCallback((updates: Record<string, string | null>) => {
+    const p = new URLSearchParams(searchParams.toString())
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null) p.delete(k); else p.set(k, v)
+    }
+    router.replace(`?${p.toString()}`, { scroll: false })
+  }, [router, searchParams])
+
   const [rides, setRides] = useState<Ride[]>([])
   const [trails, setTrails] = useState<Trail[]>([])
   const [networks, setNetworks] = useState<Network[]>([])
@@ -103,11 +149,9 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const staged = useStagedTrail()
 
-  const addTrailMode = editMode === 'add-trail'
+  const addTrailMode = editMode === 'add-trail' || (editMode === 'edit-trail' && !!selectedTrail)
   const trimMode = addTrailMode && staged.activeTool === 'gpx'
   const mapTrailPickMode = editMode === 'edit-trail' && !selectedTrail
-  const geometryEditMode =
-    editMode === 'edit-trail' && !!selectedTrail && refinedPolyline !== null
   const drawNetworkMode = editMode === 'add-network'
   const editNetworkMode = editMode === 'edit-network'
   const drawToolActive = addTrailMode && staged.activeTool === 'draw'
@@ -134,19 +178,21 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const lastEditTrailIdRef = useRef<string | null>(null)
   useEffect(() => {
-    if (editMode !== 'edit-trail') {
-      lastEditTrailIdRef.current = null
+    if (editMode !== 'edit-trail' || !selectedTrail) {
+      // Leaving edit-trail: clear any staged geometry we loaded (handles edit→add-trail transition)
+      if (lastEditTrailIdRef.current !== null) {
+        staged.resetAll()
+        lastEditTrailIdRef.current = null
+      }
       return
     }
-    if (!selectedTrail) return
     if (lastEditTrailIdRef.current !== selectedTrail.id) {
       lastEditTrailIdRef.current = selectedTrail.id
-      setRefinedPolyline([...selectedTrail.polyline])
-      setRefineTrailHistoryPast([])
-      setRefineTrailHistoryFuture([])
+      staged.loadDrawSegment(selectedTrail.polyline) // replaces all segments + clears history
+      staged.setActiveTool('draw')
       setRefineError(null)
     }
-  }, [editMode, selectedTrail, setRefinedPolyline, setRefineError, setRefineTrailHistoryFuture, setRefineTrailHistoryPast])
+  }, [editMode, selectedTrail]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const polylinesEqual = useCallback((a: [number, number][], b: [number, number][]) => {
     if (a === b) return true
@@ -195,7 +241,44 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null)
   const osmTooZoomedOut = addTrailMode && !!mapBounds && (mapBounds.north - mapBounds.south) > 0.15
   const [showOnMapOnly, setShowOnMapOnly] = useState(false)
-  const [viewingTrail, setViewingTrail] = useState<Trail | null>(null)
+  const [viewingTrail, setViewingTrail] = useState<Trail | null>(initialTrail)
+  const [selectedActivityItem, setSelectedActivityItem] = useState<TrailActivityItem | null>(null)
+
+  // Track whether URL sync effects have fired for the first time.
+  // We skip the first fire so we don't clobber URL params that were set by the server.
+  const urlSyncMountedRef = useRef(false)
+
+  // Sync tab to URL
+  useEffect(() => {
+    if (!urlSyncMountedRef.current) return
+    updateParams({ tab: drawerTab === 'trails' ? null : drawerTab })
+  }, [drawerTab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync viewing trail + clear photo when trail changes/closes
+  useEffect(() => {
+    if (!urlSyncMountedRef.current) {
+      urlSyncMountedRef.current = true
+      return  // skip first fire — URL already correct from server render
+    }
+    updateParams({
+      trail: viewingTrail ? String(viewingTrail.id) : null,
+      photo: null,  // clear photo on trail change; TrailDetailPanel restores it via onPhotoOpen if initialPhotoId is set
+    })
+    if (!viewingTrail) setPendingInitialPhotoId(null)
+  }, [viewingTrail?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync selected activity item (revision modal) to URL
+  useEffect(() => {
+    if (!urlSyncMountedRef.current) return
+    updateParams({
+      revision: selectedActivityItem?.revisionId ?? null,
+      // Keep trail param pointing at the revision's trail while modal is open
+      trail: selectedActivityItem
+        ? selectedActivityItem.trailId
+        : viewingTrail ? String(viewingTrail.id) : null,
+    })
+  }, [selectedActivityItem?.revisionId]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [mapFlyToRequest, setMapFlyToRequest] = useState<{
     seq: number
     kind: 'trail' | 'network'
@@ -429,10 +512,42 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     fetch('/api/trails')
       .then((r) => r.json())
       .then((data) => {
-        if (data.success) setTrails(data.trails)
+        if (!data.success) return
+        const loadedTrails: Trail[] = data.trails
+        setTrails(loadedTrails)
+
+        // Restore initial trail from URL: prefer the full freshly-fetched version,
+        // fall back to the server-pre-fetched initialTrail (which may lack some fields)
+        if (initialTrail && !viewingTrail) {
+          const match = loadedTrails.find(t => t.id === initialTrail.id)
+          if (match) setViewingTrail(match)
+        }
+
+        // Restore revision modal from URL
+        if (initialParams?.revision && initialParams?.trailId) {
+          const trailForRevision = loadedTrails.find(t => String(t.id) === String(initialParams.trailId))
+          if (trailForRevision) {
+            fetch(`/api/trails/${initialParams.trailId}/revisions?limit=200`)
+              .then(r => r.json())
+              .then(d => {
+                const rev = (d.revisions ?? []).find((r: { id: string }) => r.id === initialParams.revision)
+                if (rev) {
+                  setSelectedActivityItem({
+                    revisionId: rev.id,
+                    trailId: String(initialParams.trailId),
+                    trailName: trailForRevision.name,
+                    action: rev.action,
+                    summary: rev.summary,
+                    createdAt: new Date(rev.createdAt),
+                  })
+                }
+              })
+              .catch(console.error)
+          }
+        }
       })
       .catch(console.error)
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetch('/api/networks')
@@ -815,6 +930,26 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     setSelectedTrail(trail)
   }, [])
 
+  const handleSelectActivityItem = useCallback((item: TrailActivityItem) => {
+    setSelectedActivityItem(item)
+  }, [])
+
+  const handlePhotoOpen = useCallback((photoId: string) => {
+    setPendingInitialPhotoId(null)  // consumed; prevent re-restore on subsequent opens
+    updateParams({ photo: photoId })
+  }, [updateParams])
+
+  const handlePhotoClose = useCallback(() => {
+    updateParams({ photo: null })
+  }, [updateParams])
+
+  const handleViewChange = useCallback((lat: number, lng: number, zoom: number) => {
+    if (viewTimerRef.current) clearTimeout(viewTimerRef.current)
+    viewTimerRef.current = setTimeout(() => {
+      updateParams({ lat: String(lat), lng: String(lng), zoom: String(zoom) })
+    }, 500)
+  }, [updateParams])
+
   const handleOpenViewTrail = useCallback((trail: Trail) => {
     setViewingTrail(trail)
     // Exit any edit mode so the detail panel has full focus
@@ -838,12 +973,12 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
 
   const handleSaveEditedTrail = useCallback(
     async (form: TrimFormState): Promise<string | null> => {
-      if (!selectedTrail || !refinedPolyline) return 'Nothing to save'
-      if (refinedPolyline.length < 2) return 'Trail needs at least 2 points'
+      if (!selectedTrail) return 'Nothing to save'
+      const polyline = staged.compositePolyline
+      if (polyline.length < 2) return 'Trail needs at least 2 points'
       setRefineError(null)
       try {
-        const distanceKm =
-          refinedPolyline.length > 1 ? polylineDistanceKm(refinedPolyline) : selectedTrail.distanceKm
+        const distanceKm = staged.totalDistanceKm > 0 ? staged.totalDistanceKm : selectedTrail.distanceKm
         const res = await fetch(`/api/trails/${selectedTrail.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -852,7 +987,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
             difficulty: form.difficulty,
             direction: form.direction,
             notes: form.notes || undefined,
-            polyline: refinedPolyline,
+            polyline,
             distanceKm,
           }),
         })
@@ -860,7 +995,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         if (data.success && data.trail) {
           setTrails((prev) => prev.map((t) => (t.id === data.trail.id ? data.trail : t)))
           setSelectedTrail(null)
-          setRefinedPolyline(null)
           setMode(null)
           return null
         }
@@ -871,7 +1005,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         return 'Network error'
       }
     },
-    [selectedTrail, refinedPolyline, setMode, setRefineError, setRefinedPolyline, setSelectedTrail]
+    [selectedTrail, staged.compositePolyline, staged.totalDistanceKm, setMode, setRefineError, setSelectedTrail] // eslint-disable-line react-hooks/exhaustive-deps
   )
 
   const handleDeleteTrail = useCallback(async (): Promise<string | null> => {
@@ -1278,14 +1412,6 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onSaveEditedTrail={handleSaveEditedTrail}
           onDeleteTrail={handleDeleteTrail}
           refineError={refineError}
-          refinedPolyline={refinedPolyline}
-          trailEditTool={trailEditTool}
-          onSetTrailEditTool={setTrailEditTool}
-          canUndoRefine={refineTrailHistoryPast.length > 0}
-          canRedoRefine={refineTrailHistoryFuture.length > 0}
-          onRefineUndo={handleRefineUndo}
-          onRefineRedo={handleRefineRedo}
-          onRefineClear={handleRefineClear}
           networks={networks}
           hiddenNetworkIds={hiddenNetworkIds}
           onToggleNetwork={handleToggleNetwork}
@@ -1335,6 +1461,12 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onOpenViewTrail={handleOpenViewTrail}
           onCloseViewTrail={handleCloseViewTrail}
           onEditViewTrail={handleEditFromViewTrail}
+          onSelectActivityItem={handleSelectActivityItem}
+          tab={drawerTab}
+          onTabChange={setDrawerTab}
+          initialPhotoId={pendingInitialPhotoId ?? undefined}
+          onPhotoOpen={handlePhotoOpen}
+          onPhotoClose={handlePhotoClose}
         />
       </div>
 
@@ -1382,8 +1514,8 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         editTrailMode={mapTrailPickMode}
         selectedTrailId={selectedTrail?.id ?? null}
         onTrailSelected={handleTrailSelected}
-        refineMode={geometryEditMode}
-        refinePolyline={geometryEditMode ? refinedPolyline : null}
+        refineMode={false}
+        refinePolyline={null}
         onPolylineRefined={handlePolylineRefined}
         networks={networks}
         hiddenNetworkIds={hiddenNetworkIds}
@@ -1429,6 +1561,13 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         canUploadGpx={!!user}
         onRidesUploaded={handleRidesUploaded}
         onOpenViewTrail={handleOpenViewTrail}
+        onViewChange={handleViewChange}
+        initialCenter={
+          initialParams?.lat != null && initialParams?.lng != null
+            ? [initialParams.lat, initialParams.lng]
+            : undefined
+        }
+        initialZoom={initialParams?.zoom ?? undefined}
       />
 
       {photoLightboxSrc && (
@@ -1465,6 +1604,19 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
             </div>
           </div>
         </div>
+      )}
+
+      {selectedActivityItem && (
+        <ChangeDetailModal
+          item={selectedActivityItem}
+          trails={trails}
+          sessionUser={user}
+          onClose={() => setSelectedActivityItem(null)}
+          onOpenTrail={(trail) => {
+            setSelectedActivityItem(null)
+            handleOpenViewTrail(trail)
+          }}
+        />
       )}
 
       <AnnouncementModal isOpen={showAnnouncement} onClose={handleCloseAnnouncement} content={ANNOUNCEMENT} />

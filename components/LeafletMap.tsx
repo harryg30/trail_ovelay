@@ -16,6 +16,7 @@ import type {
   OfficialMapLayerPayload,
 } from '@/lib/types'
 import { imagePixelToLatLng } from '@/lib/map-overlay-transform'
+import { DIFFICULTY_LABELS } from '@/lib/trail-constants'
 import type { TrailEditTool } from '@/lib/modes/types'
 import type { OsmWayFeature } from '@/lib/overpass'
 import type { StravaSegmentFeature } from '@/lib/strava-segments'
@@ -116,6 +117,12 @@ export interface LeafletMapProps {
   onRidesUploaded?: (rides: Ride[]) => void
   /** Open trail detail panel in sidebar (non-edit click). */
   onOpenViewTrail?: (trail: Trail) => void
+  /** Called on move/zoom with current center + zoom for URL sync. */
+  onViewChange?: (lat: number, lng: number, zoom: number) => void
+  /** Initial map center for restoring from URL. */
+  initialCenter?: [number, number]
+  /** Initial zoom level for restoring from URL. */
+  initialZoom?: number
 }
 
 export default function LeafletMap({
@@ -180,6 +187,9 @@ export default function LeafletMap({
   canUploadGpx = false,
   onRidesUploaded,
   onOpenViewTrail,
+  onViewChange,
+  initialCenter,
+  initialZoom,
 }: LeafletMapProps) {
   const drawToolActive = addTrailMode && staged?.activeTool === 'draw'
   const osmToolActive = addTrailMode && staged?.activeTool === 'osm'
@@ -259,6 +269,8 @@ export default function LeafletMap({
   officialMapAlignHandlerRef.current = officialMapAlignHandler
   const onOsmWaySelectedRef = useRef(onOsmWaySelected)
   onOsmWaySelectedRef.current = onOsmWaySelected
+  const onViewChangeRef = useRef(onViewChange)
+  onViewChangeRef.current = onViewChange
   const onStravaSegmentSelectedRef = useRef(onStravaSegmentSelected)
   onStravaSegmentSelectedRef.current = onStravaSegmentSelected
   trimModeRef.current = trimMode
@@ -459,7 +471,10 @@ export default function LeafletMap({
     setBasemapStyle(baseStyle)
     basemapStyleRef.current = baseStyle
 
-    const map = L.map(containerRef.current).setView([39.8283, -98.5795], 5)
+    const map = L.map(containerRef.current).setView(
+      initialCenter ?? [39.8283, -98.5795],
+      initialZoom ?? 5
+    )
 
     // Panes to ensure stable layer ordering (networks always below everything else).
     const networksPane = map.createPane('networksPane')
@@ -499,8 +514,17 @@ export default function LeafletMap({
       })
     }
 
-    map.on('zoomend', () => { setZoom(map.getZoom()); fireBoundsChange() })
-    map.on('moveend', fireBoundsChange)
+    const fireViewChange = () => {
+      const c = map.getCenter()
+      onViewChangeRef.current?.(
+        parseFloat(c.lat.toFixed(5)),
+        parseFloat(c.lng.toFixed(5)),
+        map.getZoom()
+      )
+    }
+
+    map.on('zoomend', () => { setZoom(map.getZoom()); fireBoundsChange(); fireViewChange() })
+    map.on('moveend', () => { fireBoundsChange(); fireViewChange() })
     fireBoundsChange()
 
     map.on('click', (e: L.LeafletMouseEvent) => {
@@ -827,10 +851,7 @@ export default function LeafletMap({
     trailsLayerRef.current.clearLayers()
 
     trails.forEach((trail) => {
-      const difficultyLabel = trail.difficulty === 'easy' ? '● Green Circle' :
-        trail.difficulty === 'intermediate' ? '■ Blue Square' :
-        trail.difficulty === 'hard' ? '◆ Black Diamond' :
-        trail.difficulty === 'pro' ? '◆◆ Double Black Diamond' : ''
+      const difficultyLabel = DIFFICULTY_LABELS[trail.difficulty] ?? ''
       const trailPopupContent = `<strong>${trail.name}</strong><br/>${difficultyLabel ? difficultyLabel + ' · ' : ''}${trail.distanceKm.toFixed(1)} km`
 
       const clickHandler = (e: L.LeafletMouseEvent) => {
@@ -2028,6 +2049,7 @@ export default function LeafletMap({
           />
         </FloatingDraggableToolsPanel>
       )}
+
 
       {/* Mobile floating action button: enter add-trail-photo mode even when drawer is closed */}
       {isCoarsePointer && onEditModeChange && (
