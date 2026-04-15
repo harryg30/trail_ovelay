@@ -2,7 +2,7 @@
 // Strava uses Mapbox GL JS (not Leaflet). Adds trail polylines via addSource/addLayer.
 // Coordinates: DB stores [lat, lng]; Mapbox requires [lng, lat].
 
-const DEFAULT_API_URL = "http://localhost:3000";
+const DEFAULT_API_URL = "https://trail-overlay.vercel.app";
 const SOURCE_ID = "trail-overlay";
 const LAYER_ID = "trail-overlay-lines";
 /** Wider stroke under main line when `bookmarked` feature-state is true (color from extension settings). */

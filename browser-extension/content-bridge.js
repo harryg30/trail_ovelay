@@ -1,6 +1,6 @@
 // ISOLATED world: handles extension APIs + fetching
 
-const DEFAULT_API_URL = "http://localhost:3000";
+const DEFAULT_API_URL = "https://trail-overlay.vercel.app";
 
 /** Envelope so Strava/page postMessage traffic cannot collide with our protocol. */
 const TO_BRIDGE = "__trailOverlayToBridge";

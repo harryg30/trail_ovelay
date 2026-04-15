@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = 'http://localhost:3000'
+const DEFAULT_API_URL = 'https://trail-overlay.vercel.app'
 
 const PRESET_NAMES = ['yellow', 'red', 'blue', 'green']
 
@@ -80,8 +80,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   saveBtn.addEventListener('click', () => {
     const url = input.value.trim().replace(/\/$/, '')
-    const originPattern = tryOriginPattern(url)
-    const shouldRequest = originPattern && originPattern.startsWith('https://')
+    const allowedOrigin = 'https://trail-overlay.vercel.app'
+    const parsed = tryOriginPattern(url)
+    const selectedOrigin = parsed ? parsed.replace(/\/\*$/, '') : null
 
     const persist = () => {
       chrome.storage.sync.set({ apiUrl: url }, () => {
@@ -90,19 +91,19 @@ document.addEventListener('DOMContentLoaded', () => {
       })
     }
 
-    if (!shouldRequest) {
-      persist()
+    if (!selectedOrigin) {
+      status.textContent = 'Enter a valid URL.'
+      setTimeout(() => { status.textContent = '' }, 2500)
       return
     }
 
-    chrome.permissions.request({ origins: [originPattern] }, (granted) => {
-      if (!granted) {
-        status.textContent = 'Permission denied — API URL not saved.'
-        setTimeout(() => { status.textContent = '' }, 2500)
-        return
-      }
-      persist()
-    })
+    if (selectedOrigin !== allowedOrigin) {
+      status.textContent = 'Use https://trail-overlay.vercel.app'
+      setTimeout(() => { status.textContent = '' }, 2500)
+      return
+    }
+
+    persist()
   })
 
   showTrails.addEventListener('change', () => {

@@ -1,12 +1,19 @@
 {
   "latest": {
-    "version": "1.0.0",
-    "file": "v1.0.0/trail-overlay-for-strava-v1.0.0.zip",
-    "sizeBytes": 30275,
-    "sha256": "11a1e6c28ab27235fe69cd71b1468864b47882868a6f2fdd14561541679d4fe9",
-    "createdAt": "2026-04-15T16:13:16.153Z"
+    "version": "1.0.1",
+    "file": "v1.0.1/trail-overlay-for-strava-v1.0.1.zip",
+    "sizeBytes": 40008,
+    "sha256": "d0487afd400a5486b22dff777cc94412e57b551e12626d1a96d7e409aed6d72f",
+    "createdAt": "2026-04-15T17:26:51.744Z"
   },
   "releases": [
+    {
+      "version": "1.0.1",
+      "file": "v1.0.1/trail-overlay-for-strava-v1.0.1.zip",
+      "sizeBytes": 40008,
+      "sha256": "d0487afd400a5486b22dff777cc94412e57b551e12626d1a96d7e409aed6d72f",
+      "createdAt": "2026-04-15T17:26:51.744Z"
+    },
     {
       "version": "1.0.0",
       "file": "v1.0.0/trail-overlay-for-strava-v1.0.0.zip",
