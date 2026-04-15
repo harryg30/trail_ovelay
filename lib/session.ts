@@ -10,8 +10,11 @@ export const SESSION_COOKIE_OPTIONS = {
   maxAge: 60 * 60 * 24 * 30, // 30 days in seconds
 }
 
-interface SessionPayload {
+export type AuthProvider = 'strava' | 'google' | 'dev'
+
+export interface SessionPayload {
   userId: string
+  provider?: AuthProvider // Default to 'strava' for backward compatibility
 }
 
 function getKey(): Uint8Array {
@@ -29,7 +32,8 @@ function getKey(): Uint8Array {
 }
 
 export async function encryptSession(payload: SessionPayload): Promise<string> {
-  return new EncryptJWT({ userId: payload.userId })
+  const provider = payload.provider || 'strava'
+  return new EncryptJWT({ userId: payload.userId, provider })
     .setProtectedHeader({ alg: 'dir', enc: 'A256GCM' })
     .setIssuedAt()
     .setExpirationTime('30d')
@@ -40,7 +44,12 @@ export async function decryptSession(token: string): Promise<SessionPayload | nu
   try {
     const { payload } = await jwtDecrypt(token, getKey())
     if (typeof payload.userId !== 'string') return null
-    return { userId: payload.userId }
+    const rawProvider = payload.provider
+    const provider: AuthProvider =
+      rawProvider === 'google' || rawProvider === 'dev' || rawProvider === 'strava'
+        ? rawProvider
+        : 'strava'
+    return { userId: payload.userId, provider }
   } catch {
     return null
   }

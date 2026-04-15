@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query, queryOne } from '@/lib/db'
-import { getSessionUserId } from '@/lib/auth'
+import { getSessionUserId, getSessionProvider } from '@/lib/auth'
 
 interface UserTokenRow {
   access_token: string
@@ -82,6 +82,15 @@ export async function GET(request: NextRequest): Promise<Response> {
   const userId = await getSessionUserId()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Only Strava-authenticated users can access Strava features
+  const provider = await getSessionProvider()
+  if (provider !== 'strava') {
+    return NextResponse.json(
+      { error: 'Strava features require authentication with Strava. Please sign in with your Strava account.' },
+      { status: 403 }
+    )
   }
 
   const sp = request.nextUrl.searchParams

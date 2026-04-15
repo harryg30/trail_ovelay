@@ -25,6 +25,7 @@ export default function ThemeToggle({ className, size = 'md' }: ThemeToggleProps
         type="button"
         onClick={() => isDark && mounted && setTheme('light')}
         disabled={!mounted}
+        suppressHydrationWarning
         className={cn(
           'flex flex-1 items-center justify-center gap-1.5 border-2 border-r-0 border-foreground font-bold uppercase tracking-wide transition-colors',
           pad,
@@ -45,6 +46,7 @@ export default function ThemeToggle({ className, size = 'md' }: ThemeToggleProps
         type="button"
         onClick={() => !isDark && mounted && setTheme('dark')}
         disabled={!mounted}
+        suppressHydrationWarning
         className={cn(
           'flex flex-1 items-center justify-center gap-1.5 border-2 border-foreground font-bold uppercase tracking-wide transition-colors',
           pad,
