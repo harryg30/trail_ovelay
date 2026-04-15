@@ -58,7 +58,7 @@ function persistDrafts(drafts: DraftTrail[]) {
 
 interface InitialParams {
   tab: string | null
-  trailId: number | null
+  trailId: string | null
   photoId: string | null
   revision: string | null
   lat: number | null
@@ -532,7 +532,7 @@ export default function ClientPage({
 
         // Restore revision modal from URL
         if (initialParams?.revision && initialParams?.trailId) {
-          const trailForRevision = loadedTrails.find(t => String(t.id) === String(initialParams.trailId))
+          const trailForRevision = loadedTrails.find(t => t.id === initialParams.trailId)
           if (trailForRevision) {
             fetch(`/api/trails/${initialParams.trailId}/revisions?limit=200`)
               .then(r => r.json())
@@ -541,7 +541,7 @@ export default function ClientPage({
                 if (rev) {
                   setSelectedActivityItem({
                     revisionId: rev.id,
-                    trailId: String(initialParams.trailId),
+                    trailId: initialParams.trailId!,
                     trailName: trailForRevision.name,
                     action: rev.action,
                     summary: rev.summary,

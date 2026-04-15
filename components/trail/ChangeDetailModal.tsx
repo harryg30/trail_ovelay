@@ -5,6 +5,8 @@ import dynamic from 'next/dynamic'
 import type {
   TrailActivityItem,
   TrailRevision,
+  TrailRevisionPayload,
+  TrailRevisionAction,
   TrailRevisionComment,
   Trail,
 } from '@/lib/types'
@@ -40,12 +42,84 @@ function formatRelativeTime(date: Date): string {
 }
 
 function formatDifficulty(d: string): string {
-  return { easy: 'Green', intermediate: 'Blue', hard: 'Black', pro: 'Double Black', not_set: '—' }[d] ?? d
+  return { easy: 'green', intermediate: 'blue', hard: 'black', pro: 'double-black', not_set: 'not set' }[d] ?? d
 }
 
 function formatDirection(d: string): string {
-  return { 'one-way': 'One-way', 'out-and-back': 'Out & back', loop: 'Loop', not_set: '—' }[d] ?? d
+  return { 'one-way': 'one-way', 'out-and-back': 'out & back', loop: 'loop', not_set: 'not set' }[d] ?? d
 }
+
+// ── Diff building ────────────────────────────────────────────────────────────
+
+type DiffLine = {
+  kind: 'context' | 'removed' | 'added' | 'spacer'
+  field: string
+  value: string
+}
+
+function buildDiffLines(
+  before: TrailRevisionPayload | null,
+  after: TrailRevisionPayload | null,
+  action: TrailRevisionAction,
+): DiffLine[] {
+  type FieldDef = { label: string; get: (p: TrailRevisionPayload) => string }
+
+  const fields: FieldDef[] = [
+    { label: 'name',       get: p => p.name },
+    { label: 'difficulty', get: p => formatDifficulty(p.difficulty) },
+    { label: 'direction',  get: p => formatDirection(p.direction) },
+    { label: 'distance',   get: p => `${p.distanceKm.toFixed(2)} km` },
+    { label: 'elevation',  get: p => `${Math.round(p.elevationGainFt)} ft` },
+    { label: 'notes',      get: p => p.notes?.trim() || '' },
+  ]
+
+  const lines: DiffLine[] = []
+
+  // Geometry field — compare by point count + distance
+  const geoChanged =
+    before && after &&
+    (before.polyline.length !== after.polyline.length ||
+      before.distanceKm !== after.distanceKm)
+
+  for (const { label, get } of fields) {
+    const bVal = before ? get(before) : null
+    const aVal = after  ? get(after)  : null
+
+    // Skip empty notes entirely
+    if (label === 'notes' && !bVal && !aVal) continue
+
+    if (action === 'create') {
+      if (aVal) lines.push({ kind: 'added',   field: label, value: aVal })
+    } else if (action === 'delete') {
+      if (bVal) lines.push({ kind: 'removed', field: label, value: bVal })
+    } else {
+      // update / rollback
+      if (bVal !== aVal) {
+        if (bVal != null) lines.push({ kind: 'removed', field: label, value: bVal })
+        if (aVal != null) lines.push({ kind: 'added',   field: label, value: aVal })
+      } else {
+        if (aVal != null) lines.push({ kind: 'context', field: label, value: aVal })
+      }
+    }
+  }
+
+  // Geometry row
+  if (geoChanged && before && after) {
+    lines.push({ kind: 'spacer',   field: '', value: '' })
+    lines.push({ kind: 'removed', field: 'shape', value: `${before.polyline.length} pts · ${before.distanceKm.toFixed(2)} km` })
+    lines.push({ kind: 'added',   field: 'shape', value: `${after.polyline.length} pts · ${after.distanceKm.toFixed(2)} km` })
+  } else if (action === 'create' && after) {
+    lines.push({ kind: 'added',   field: 'shape', value: `${after.polyline.length} pts · ${after.distanceKm.toFixed(2)} km` })
+  } else if (action === 'delete' && before) {
+    lines.push({ kind: 'removed', field: 'shape', value: `${before.polyline.length} pts · ${before.distanceKm.toFixed(2)} km` })
+  } else if ((action === 'update' || action === 'rollback') && after) {
+    lines.push({ kind: 'context', field: 'shape', value: `${after.polyline.length} pts · ${after.distanceKm.toFixed(2)} km` })
+  }
+
+  return lines
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
 
 interface ChangeDetailModalProps {
   item: TrailActivityItem
@@ -105,11 +179,11 @@ export function ChangeDetailModal({ item, trails, sessionUser, onClose, onOpenTr
 
   useEffect(() => { loadComments() }, [loadComments])
 
-  // Derive before/after polylines
+  // Derive before/after
   const selectedRevision = revisions?.find(r => r.id === item.revisionId) ?? null
-  const selectedIndex = revisions ? revisions.findIndex(r => r.id === item.revisionId) : -1
+  const selectedIndex    = revisions ? revisions.findIndex(r => r.id === item.revisionId) : -1
   // revisions are newest-first, so prior = index + 1
-  const priorRevision = revisions && selectedIndex >= 0 ? revisions[selectedIndex + 1] ?? null : null
+  const priorRevision    = revisions && selectedIndex >= 0 ? revisions[selectedIndex + 1] ?? null : null
 
   const afterPolyline: [number, number][] | null =
     item.action === 'delete' ? null : (selectedRevision?.payload.polyline ?? null)
@@ -118,7 +192,7 @@ export function ChangeDetailModal({ item, trails, sessionUser, onClose, onOpenTr
     item.action === 'delete' ? (selectedRevision?.payload.polyline ?? null) :
     (priorRevision?.payload.polyline ?? null)
 
-  // Reset view default based on available data
+  // Reset map view when revisions load
   useEffect(() => {
     if (!revisions) return
     if (!beforePolyline && afterPolyline) setView('after')
@@ -127,9 +201,13 @@ export function ChangeDetailModal({ item, trails, sessionUser, onClose, onOpenTr
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revisions])
 
-  const metaPayload = item.action === 'delete'
-    ? selectedRevision?.payload
-    : (selectedRevision?.payload ?? null)
+  const afterPayload: TrailRevisionPayload | null =
+    item.action === 'delete' ? (selectedRevision?.payload ?? null) : (selectedRevision?.payload ?? null)
+  const beforePayload: TrailRevisionPayload | null =
+    (item.action === 'update' || item.action === 'rollback') ? (priorRevision?.payload ?? null) : null
+
+  const diffLines = buildDiffLines(beforePayload, afterPayload, item.action)
+  const hasBoth   = !!(beforePolyline && afterPolyline)
 
   const matchedTrail = trails.find(t => t.id === item.trailId) ?? null
   const meta = ACTION_META[item.action] ?? { label: item.action, cls: 'bg-border text-foreground border-border' }
@@ -156,8 +234,6 @@ export function ChangeDetailModal({ item, trails, sessionUser, onClose, onOpenTr
     }
   }
 
-  const hasBoth = !!(beforePolyline && afterPolyline)
-
   return (
     <>
       {/* Backdrop */}
@@ -176,12 +252,7 @@ export function ChangeDetailModal({ item, trails, sessionUser, onClose, onOpenTr
       >
         {/* Header */}
         <div className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-4">
-          <span
-            className={cn(
-              'shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
-              meta.cls
-            )}
-          >
+          <span className={cn('shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide', meta.cls)}>
             {meta.label}
           </span>
           <h2 className="min-w-0 flex-1 truncate text-sm font-bold text-foreground">
@@ -280,44 +351,92 @@ export function ChangeDetailModal({ item, trails, sessionUser, onClose, onOpenTr
             </div>
           </div>
 
-          {/* ── Right: Metadata + Comments ── */}
+          {/* ── Right: Diff + Comments ── */}
           <div className="flex min-h-0 flex-1 flex-col">
 
-            {/* Metadata strip */}
-            {metaPayload && (
-              <div className="grid shrink-0 grid-cols-2 gap-x-4 gap-y-1 border-b border-border px-4 py-3 text-xs">
-                <div>
-                  <span className="text-muted-foreground">Distance</span>
-                  <span className="ml-1.5 font-medium text-foreground">
-                    {metaPayload.distanceKm.toFixed(2)} km
-                  </span>
+            {/* Git-style diff block */}
+            <div className="shrink-0 border-b border-border">
+              {revisions === null && !revisionsError ? (
+                <div className="flex items-center gap-2 px-4 py-3 text-xs text-muted-foreground">
+                  <FontAwesomeIcon icon={faSpinner} spin className="w-3 h-3" />
+                  Loading diff…
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Elevation</span>
-                  <span className="ml-1.5 font-medium text-foreground">
-                    {Math.round(metaPayload.elevationGainFt)} ft
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Difficulty</span>
-                  <span className="ml-1.5 font-medium text-foreground">
-                    {formatDifficulty(metaPayload.difficulty)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Direction</span>
-                  <span className="ml-1.5 font-medium text-foreground">
-                    {formatDirection(metaPayload.direction)}
-                  </span>
-                </div>
-                {metaPayload.notes && (
-                  <div className="col-span-2">
-                    <span className="text-muted-foreground">Notes</span>
-                    <span className="ml-1.5 text-foreground">{metaPayload.notes}</span>
+              ) : diffLines.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-muted-foreground">No field changes recorded.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  {/* Diff file header */}
+                  <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-3 py-1.5">
+                    <span className="font-mono text-[10px] text-muted-foreground">trail.json</span>
+                    <span className="ml-auto font-mono text-[10px] text-muted-foreground">
+                      {diffLines.filter(l => l.kind === 'removed').length > 0 && (
+                        <span className="text-red-500 dark:text-red-400">
+                          −{diffLines.filter(l => l.kind === 'removed').length}
+                        </span>
+                      )}
+                      {diffLines.filter(l => l.kind === 'removed').length > 0 && diffLines.filter(l => l.kind === 'added').length > 0 && ' '}
+                      {diffLines.filter(l => l.kind === 'added').length > 0 && (
+                        <span className="text-green-600 dark:text-green-400">
+                          +{diffLines.filter(l => l.kind === 'added').length}
+                        </span>
+                      )}
+                    </span>
                   </div>
-                )}
-              </div>
-            )}
+                  <table className="w-full border-collapse font-mono text-xs">
+                    <tbody>
+                      {diffLines.map((line, i) => {
+                        if (line.kind === 'spacer') {
+                          return (
+                            <tr key={i}>
+                              <td colSpan={3} className="h-2 bg-muted/20" />
+                            </tr>
+                          )
+                        }
+                        const isRemoved = line.kind === 'removed'
+                        const isAdded   = line.kind === 'added'
+                        return (
+                          <tr
+                            key={i}
+                            className={cn(
+                              isRemoved && 'bg-red-500/10 dark:bg-red-500/15',
+                              isAdded   && 'bg-green-500/10 dark:bg-green-500/15',
+                            )}
+                          >
+                            {/* Sign gutter */}
+                            <td className={cn(
+                              'select-none w-5 pl-2 pr-1 text-center font-bold',
+                              isRemoved && 'text-red-500 dark:text-red-400',
+                              isAdded   && 'text-green-600 dark:text-green-400',
+                              !isRemoved && !isAdded && 'text-muted-foreground',
+                            )}>
+                              {isRemoved ? '−' : isAdded ? '+' : ' '}
+                            </td>
+                            {/* Field name */}
+                            <td className={cn(
+                              'py-0.5 pr-3 text-right text-[11px] whitespace-nowrap',
+                              isRemoved && 'text-red-400 dark:text-red-500',
+                              isAdded   && 'text-green-500 dark:text-green-600',
+                              !isRemoved && !isAdded && 'text-muted-foreground',
+                            )}>
+                              {line.field}
+                            </td>
+                            {/* Value */}
+                            <td className={cn(
+                              'w-full py-0.5 pr-4 break-all',
+                              isRemoved && 'text-red-700 dark:text-red-300',
+                              isAdded   && 'text-green-700 dark:text-green-300',
+                              !isRemoved && !isAdded && 'text-foreground',
+                            )}>
+                              {line.value || <span className="italic text-muted-foreground">empty</span>}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
 
             {/* Comments list */}
             <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
