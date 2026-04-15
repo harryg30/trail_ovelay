@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import type {
   Ride,
   Trail,
@@ -79,6 +80,7 @@ interface LeftDrawerProps {
   onStartRedrawNetwork: () => void
   onOpenAnnouncement: () => void
   onOpenContact: () => void
+  onOpenCookiePolicy: () => void
   highResRideIds: Set<string>
   onFetchHighRes: (id: string) => Promise<void>
   fetchingHighResId: string | null
@@ -158,6 +160,7 @@ export default function LeftDrawer({
   onStartRedrawNetwork,
   onOpenAnnouncement,
   onOpenContact,
+  onOpenCookiePolicy,
   highResRideIds,
   onFetchHighRes,
   fetchingHighResId,
@@ -924,21 +927,34 @@ export default function LeftDrawer({
       )}
 
       {/* About / Contact footer */}
-      <div className="mt-auto px-4 py-3 border-t-2 border-border flex items-center gap-4">
+      <div className="mt-auto px-4 py-2 border-t-2 border-border flex items-center gap-2 flex-wrap">
         <button
           type="button"
           onClick={onOpenAnnouncement}
-          className="text-xs font-bold uppercase tracking-wider text-electric underline-offset-2 hover:underline"
+          className="text-[10px] font-bold uppercase tracking-wide text-electric underline-offset-1 hover:underline whitespace-nowrap"
         >
           About
         </button>
         <button
           type="button"
           onClick={onOpenContact}
-          className="text-xs font-bold uppercase tracking-wider text-electric underline-offset-2 hover:underline"
+          className="text-[10px] font-bold uppercase tracking-wide text-electric underline-offset-1 hover:underline whitespace-nowrap"
         >
           Contact
         </button>
+        <button
+          type="button"
+          onClick={onOpenCookiePolicy}
+          className="text-[10px] font-bold uppercase tracking-wide text-electric underline-offset-1 hover:underline whitespace-nowrap"
+        >
+          Cookies
+        </button>
+        <Link
+          href="/privacy"
+          className="text-[10px] font-bold uppercase tracking-wide text-electric underline-offset-1 hover:underline whitespace-nowrap"
+        >
+          Privacy
+        </Link>
       </div>
     </div>
   )

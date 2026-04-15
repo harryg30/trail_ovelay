@@ -40,6 +40,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBars, faCamera } from '@fortawesome/free-solid-svg-icons'
 import ThemeToggle from '@/components/ThemeToggle'
 import ContactModal from '@/components/ContactModal'
+import CookieModal from '@/components/CookieModal'
 
 const LeafletMap = dynamic(() => import('@/components/LeafletMap'), {
   ssr: false,
@@ -115,6 +116,7 @@ export default function ClientPage({
   const [showAnnouncement, setShowAnnouncement] = useState(false)
   const [showContact, setShowContact] = useState(initialContact)
   const [showAbout, setShowAbout] = useState(initialAbout)
+  const [showCookiePolicy, setShowCookiePolicy] = useState(false)
   const [photoLightboxSrc, setPhotoLightboxSrc] = useState<string | null>(null)
 
   useEffect(() => {
@@ -1395,6 +1397,14 @@ export default function ClientPage({
     }
   }, [router])
 
+  const handleOpenCookiePolicy = useCallback(() => {
+    setShowCookiePolicy(true)
+  }, [])
+
+  const handleCloseCookiePolicy = useCallback(() => {
+    setShowCookiePolicy(false)
+  }, [])
+
   const handleCloseAbout = useCallback(() => {
     setShowAbout(false)
     if (typeof window !== 'undefined' && window.location.pathname === '/about') {
@@ -1450,6 +1460,7 @@ export default function ClientPage({
           onStartRedrawNetwork={handleStartRedrawNetwork}
           onOpenAnnouncement={handleOpenAnnouncement}
           onOpenContact={handleOpenContact}
+          onOpenCookiePolicy={handleOpenCookiePolicy}
           highResRideIds={highResRideIds}
           onFetchHighRes={handleFetchHighRes}
           fetchingHighResId={fetchingHighResId}
@@ -1649,6 +1660,7 @@ export default function ClientPage({
 
       <AnnouncementModal isOpen={showAnnouncement || showAbout} onClose={showAbout ? handleCloseAbout : handleCloseAnnouncement} content={ANNOUNCEMENT} />
       <ContactModal isOpen={showContact} onClose={handleCloseContact} />
+      <CookieModal forceOpen={showCookiePolicy} onClose={handleCloseCookiePolicy} />
     </div>
   )
 }
