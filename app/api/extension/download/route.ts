@@ -6,6 +6,7 @@ import JSZip from 'jszip'
 export const runtime = 'nodejs'
 
 const ZIP_FILENAME = 'trail-overlay-strava-extension.zip'
+const PACKAGED_LATEST_ZIP = path.join(process.cwd(), 'extension-releases', 'latest.zip')
 
 /** True when `abs` is `root` or a path inside `root` (no traversal). */
 function isUnderRoot(root: string, abs: string): boolean {
@@ -43,10 +44,34 @@ async function collectExtensionFiles(rootResolved: string): Promise<{ rel: strin
   return out
 }
 
-export async function GET() {
-  const rootDir = path.join(process.cwd(), 'browser-extension')
-
+async function readPackagedLatestZip(): Promise<Buffer | null> {
   try {
+    const stat = await fs.stat(PACKAGED_LATEST_ZIP)
+    if (!stat.isFile()) return null
+    return await fs.readFile(PACKAGED_LATEST_ZIP)
+  } catch {
+    return null
+  }
+}
+
+export async function GET() {
+  try {
+    const packaged = await readPackagedLatestZip()
+    if (packaged) {
+      const ab = packaged.buffer as ArrayBuffer
+      const bytes = new Uint8Array(ab, packaged.byteOffset, packaged.byteLength)
+      return new NextResponse(new Blob([bytes]), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/zip',
+          'Content-Disposition': 'attachment; filename="trail-overlay-strava-extension-latest.zip"',
+          'Cache-Control': 'public, max-age=3600',
+          'X-Extension-Bundle-Source': 'release-cache',
+        },
+      })
+    }
+
+    const rootDir = path.join(process.cwd(), 'browser-extension')
     const rootResolved = path.resolve(rootDir)
     const stat = await fs.stat(rootResolved).catch(() => null)
     if (!stat?.isDirectory()) {
@@ -80,6 +105,7 @@ export async function GET() {
         'Content-Type': 'application/zip',
         'Content-Disposition': `attachment; filename="${ZIP_FILENAME}"`,
         'Cache-Control': 'public, max-age=3600',
+        'X-Extension-Bundle-Source': 'runtime-zip',
       },
     })
   } catch (e) {

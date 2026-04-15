@@ -35,7 +35,9 @@
       "Bash(cat c:/Users/gorde/Documents/GitHub/trail_ovelay/migrations/*.sql)",
       "Bash(wc -l /home/harry/GitHub/trail_ovelay/lib/*.ts)",
       "Bash(ls /home/harry/GitHub/trail_ovelay/app/api/trails/[id]/)",
-      "Bash(npx next *)"
+      "Bash(npx next *)",
+      "Bash(gh pr *)",
+      "Bash(git push *)"
     ]
   }
 }

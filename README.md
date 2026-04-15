@@ -211,6 +211,39 @@ TRAIL_DB_PGSSLMODE=disable
 
 `NEXT_PUBLIC_CHROME_WEBSTORE_URL` — optional full URL to your **Chrome Web Store** listing. When set, **Get extension** in the left drawer opens that URL in a new tab. When unset, the same control opens instructions for sideloading and a link to **`GET /api/extension/download`**, which returns a ZIP of [`browser-extension/`](browser-extension/) for **Load unpacked** in `chrome://extensions`.
 
+### Chrome extension release zips (versioned)
+
+Use this project script to build a publish-ready ZIP whenever `browser-extension/manifest.json` version changes:
+
+```bash
+npm run extension:release
+```
+
+What it does:
+
+- Reads `browser-extension/manifest.json` and uses the extension `name` + `version`.
+- Creates a versioned ZIP under `extension-releases/v<version>/`.
+- Updates `extension-releases/latest.zip` to point to that same artifact.
+- Updates `extension-releases/releases.json` with metadata (`version`, file path, size, sha256, timestamp).
+
+Example output:
+
+```text
+extension-releases/
+  latest.zip
+  releases.json
+  v1.0.1/
+    trail-overlay-for-strava-v1.0.1.zip
+```
+
+Recommended publish flow:
+
+1. Bump `version` in `browser-extension/manifest.json`.
+2. Run `npm run extension:release`.
+3. Upload the generated ZIP from `extension-releases/v<version>/...` in Chrome Web Store Developer Dashboard.
+
+`GET /api/extension/download` now serves `extension-releases/latest.zip` first (when present), and falls back to building a runtime ZIP from `browser-extension/` if no packaged release exists.
+
 ### Strava extension: API URL and local dev
 
 The overlay on `https://www.strava.com/maps/create/*` reads **`GET /api/trails`** and **`GET /api/networks`** from whatever origin you set in the **extension popup** (stored in `chrome.storage.sync` as `apiUrl`). The main-world script does **not** read page `localStorage` for the API base; it asks the isolated [`content-bridge.js`](browser-extension/content-bridge.js) for the resolved value used for fetches. Main-world and bridge communicate with `window.postMessage` using a private envelope (`__trailOverlayToBridge` / `__trailOverlayFromBridge`) so Strava’s own `message` traffic cannot be mistaken for overlay responses.
