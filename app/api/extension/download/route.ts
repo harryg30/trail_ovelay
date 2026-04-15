@@ -6,7 +6,7 @@ import JSZip from 'jszip'
 export const runtime = 'nodejs'
 
 const ZIP_FILENAME = 'trail-overlay-strava-extension.zip'
-const PACKAGED_LATEST_ZIP = path.join(process.cwd(), 'extension-releases', 'latest.zip')
+const PACKAGED_LATEST_ZIP = path.join(process.cwd(), 'public', 'extension-releases', 'latest.zip')
 
 /** True when `abs` is `root` or a path inside `root` (no traversal). */
 function isUnderRoot(root: string, abs: string): boolean {
