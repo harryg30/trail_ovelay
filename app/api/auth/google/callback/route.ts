@@ -29,7 +29,7 @@ function parseIdToken(idToken: string): GoogleUserProfile | null {
   try {
     const parts = idToken.split('.')
     if (parts.length !== 3) return null
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString())
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString())
     return payload as GoogleUserProfile
   } catch {
     return null
@@ -59,13 +59,13 @@ export async function GET(request: NextRequest): Promise<Response> {
   }
 
   try {
-    // Exchange authorization code for tokens
+    // Exchange authorization code for tokens (RFC 6749 requires form-encoded body)
     const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        client_id: process.env.GOOGLE_CLIENT_ID,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: process.env.GOOGLE_CLIENT_ID!,
+        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
         code,
         grant_type: 'authorization_code',
         redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/google/callback`,
@@ -87,16 +87,21 @@ export async function GET(request: NextRequest): Promise<Response> {
       return Response.redirect(new URL('/?auth_error=invalid_token', request.url))
     }
 
-    // Upsert user by google_sub
+    if (!profile.email_verified) {
+      console.error('Google account email not verified')
+      return Response.redirect(new URL('/?auth_error=email_not_verified', request.url))
+    }
+
+    // Upsert user by google_sub; preserve existing refresh_token if Google omits it
     const row = await queryOne<{ id: string }>(
       `INSERT INTO users (google_sub, name, email, profile_picture, provider, strava_athlete_id, access_token, refresh_token, token_expires_at)
        VALUES ($1, $2, $3, $4, 'google', NULL, $5, $6, to_timestamp($7))
-       ON CONFLICT (google_sub) DO UPDATE SET
+       ON CONFLICT (google_sub) WHERE google_sub IS NOT NULL DO UPDATE SET
          name = EXCLUDED.name,
          email = EXCLUDED.email,
          profile_picture = EXCLUDED.profile_picture,
          access_token = EXCLUDED.access_token,
-         refresh_token = EXCLUDED.refresh_token,
+         refresh_token = COALESCE(EXCLUDED.refresh_token, users.refresh_token),
          token_expires_at = EXCLUDED.token_expires_at,
          updated_at = now()
        RETURNING id`,

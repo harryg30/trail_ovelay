@@ -77,17 +77,16 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     name: string
     profile_picture: string | null
     strava_athlete_id: number | null
+    provider: string
   }>(
-    `SELECT id, name, profile_picture, strava_athlete_id FROM users WHERE id = $1`,
+    `SELECT id, name, profile_picture, strava_athlete_id, provider FROM users WHERE id = $1`,
     [userId]
   )
 
   if (!row) return null
 
-  // Derive provider from available fields (strava_athlete_id presence)
-  // After Phase 2 adds a 'provider' column, read directly from DB
-  const isStravaUser = row.strava_athlete_id !== null
-  const provider: AuthProvider = isStravaUser ? 'strava' : 'google'
+  const provider: AuthProvider =
+    row.provider === 'google' || row.provider === 'dev' ? row.provider : 'strava'
 
   return {
     id: row.id,

@@ -44,10 +44,12 @@ export async function decryptSession(token: string): Promise<SessionPayload | nu
   try {
     const { payload } = await jwtDecrypt(token, getKey())
     if (typeof payload.userId !== 'string') return null
-    return { 
-      userId: payload.userId,
-      provider: (payload.provider as AuthProvider) || 'strava'
-    }
+    const rawProvider = payload.provider
+    const provider: AuthProvider =
+      rawProvider === 'google' || rawProvider === 'dev' || rawProvider === 'strava'
+        ? rawProvider
+        : 'strava'
+    return { userId: payload.userId, provider }
   } catch {
     return null
   }
