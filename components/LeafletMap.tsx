@@ -123,6 +123,8 @@ export interface LeafletMapProps {
   initialCenter?: [number, number]
   /** Initial zoom level for restoring from URL. */
   initialZoom?: number
+  /** When true, skip the one-shot fit-to-trails-bounds on first load (URL already has position). */
+  skipInitialFit?: boolean
 }
 
 export default function LeafletMap({
@@ -190,6 +192,7 @@ export default function LeafletMap({
   onViewChange,
   initialCenter,
   initialZoom,
+  skipInitialFit = false,
 }: LeafletMapProps) {
   const drawToolActive = addTrailMode && staged?.activeTool === 'draw'
   const osmToolActive = addTrailMode && staged?.activeTool === 'osm'
@@ -751,15 +754,16 @@ export default function LeafletMap({
     }).addTo(userLocationLayerRef.current)
   }, [userLocation])
 
-  // Effect 2: initial fit-to-bounds — fires once when trails first load
+  // Effect 2: initial fit-to-bounds — fires once when trails first load (skipped when URL provides position)
   useEffect(() => {
     if (!mapRef.current || hasFitBoundsRef.current || trails.length === 0) return
+    hasFitBoundsRef.current = true
+    if (skipInitialFit) return
     const allPoints = trails.flatMap((t) => t.polyline)
     if (allPoints.length === 0) return
     const bounds = L.latLngBounds(allPoints)
     mapRef.current.flyToBounds(bounds, { padding: [40, 40], maxZoom: 15, duration: 1.2 })
-    hasFitBoundsRef.current = true
-  }, [trails])
+  }, [trails]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Effect 3: rides layer
   useEffect(() => {

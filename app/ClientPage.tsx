@@ -39,6 +39,7 @@ import { loadDemoRides } from '@/lib/demo-rides'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faBars, faCamera } from '@fortawesome/free-solid-svg-icons'
 import ThemeToggle from '@/components/ThemeToggle'
+import ContactModal from '@/components/ContactModal'
 
 const LeafletMap = dynamic(() => import('@/components/LeafletMap'), {
   ssr: false,
@@ -69,10 +70,14 @@ export default function ClientPage({
   user,
   initialTrail = null,
   initialParams,
+  initialContact = false,
+  initialAbout = false,
 }: {
   user: SessionUser | null
   initialTrail?: Trail | null
   initialParams?: InitialParams
+  initialContact?: boolean
+  initialAbout?: boolean
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -108,6 +113,8 @@ export default function ClientPage({
   const [hiddenNetworkIds, setHiddenNetworkIds] = useState<Set<string>>(new Set())
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [showAnnouncement, setShowAnnouncement] = useState(false)
+  const [showContact, setShowContact] = useState(initialContact)
+  const [showAbout, setShowAbout] = useState(initialAbout)
   const [photoLightboxSrc, setPhotoLightboxSrc] = useState<string | null>(null)
 
   useEffect(() => {
@@ -1376,6 +1383,25 @@ export default function ClientPage({
     setShowAnnouncement(true)
   }, [])
 
+  const handleOpenContact = useCallback(() => {
+    setShowContact(true)
+  }, [])
+
+  const handleCloseContact = useCallback(() => {
+    setShowContact(false)
+    // If we arrived via /contact, navigate back to /
+    if (typeof window !== 'undefined' && window.location.pathname === '/contact') {
+      router.replace('/')
+    }
+  }, [router])
+
+  const handleCloseAbout = useCallback(() => {
+    setShowAbout(false)
+    if (typeof window !== 'undefined' && window.location.pathname === '/about') {
+      router.replace('/')
+    }
+  }, [router])
+
   const handleOpenPhotoLightbox = useCallback((src: string) => {
     setPhotoLightboxSrc(src)
   }, [])
@@ -1423,6 +1449,7 @@ export default function ClientPage({
           onDeleteNetwork={handleDeleteNetwork}
           onStartRedrawNetwork={handleStartRedrawNetwork}
           onOpenAnnouncement={handleOpenAnnouncement}
+          onOpenContact={handleOpenContact}
           highResRideIds={highResRideIds}
           onFetchHighRes={handleFetchHighRes}
           fetchingHighResId={fetchingHighResId}
@@ -1568,6 +1595,7 @@ export default function ClientPage({
             : undefined
         }
         initialZoom={initialParams?.zoom ?? undefined}
+        skipInitialFit={initialParams?.lat != null && initialParams?.lng != null}
       />
 
       {photoLightboxSrc && (
@@ -1619,7 +1647,8 @@ export default function ClientPage({
         />
       )}
 
-      <AnnouncementModal isOpen={showAnnouncement} onClose={handleCloseAnnouncement} content={ANNOUNCEMENT} />
+      <AnnouncementModal isOpen={showAnnouncement || showAbout} onClose={showAbout ? handleCloseAbout : handleCloseAnnouncement} content={ANNOUNCEMENT} />
+      <ContactModal isOpen={showContact} onClose={handleCloseContact} />
     </div>
   )
 }

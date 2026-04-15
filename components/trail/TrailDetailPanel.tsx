@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import type { Trail, Network, TrailRevision, TrailRevisionComment, TrailPhoto } from '@/lib/types'
+import dynamic from 'next/dynamic'
+import type { Trail, Network, TrailRevision, TrailRevisionComment, TrailPhoto, TrailActivityItem } from '@/lib/types'
 import { DIFFICULTY_LABELS, DIFFICULTY_BADGE_VARIANT, DIRECTION_LABELS } from '@/lib/trail-constants'
 import type { SessionUser } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
@@ -18,6 +19,11 @@ import {
   faSpinner,
   faXmark,
 } from '@fortawesome/free-solid-svg-icons'
+
+const ChangeDetailModal = dynamic(
+  () => import('@/components/trail/ChangeDetailModal').then(m => ({ default: m.ChangeDetailModal })),
+  { ssr: false }
+)
 
 interface TrailDetailPanelProps {
   trail: Trail
@@ -69,6 +75,7 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit, onPho
 
   const [revisions, setRevisions] = useState<TrailRevision[] | null>(null)
   const [revisionsLoading, setRevisionsLoading] = useState(false)
+  const [diffRevision, setDiffRevision] = useState<TrailActivityItem | null>(null)
   const [rollbackId, setRollbackId] = useState<string | null>(null)
   const [rollbackError, setRollbackError] = useState<string | null>(null)
 
@@ -88,6 +95,7 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit, onPho
     setCommentError(null)
     setRollbackError(null)
     setLightboxIndex(null)
+    setDiffRevision(null)
     initialPhotoRestoredRef.current = false
     loadPhotos()
     loadComments()
@@ -419,39 +427,56 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit, onPho
                   const meta = ACTION_LABELS[rev.action] ?? { label: rev.action, cls: 'bg-border text-foreground border-border' }
                   const isRollingBack = rollbackId === rev.id
                   const isFirst = i === 0
+                  const item: TrailActivityItem = {
+                    revisionId: rev.id,
+                    trailId: trail.id,
+                    trailName: trail.name,
+                    action: rev.action,
+                    summary: rev.summary,
+                    createdAt: new Date(rev.createdAt),
+                  }
                   return (
-                    <li key={rev.id} className="flex items-start gap-2">
-                      <span
-                        className={cn(
-                          'mt-0.5 shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
-                          meta.cls
-                        )}
+                    <li key={rev.id}>
+                      <button
+                        type="button"
+                        onClick={() => setDiffRevision(item)}
+                        className="w-full flex items-start gap-2 rounded-sm px-1 py-0.5 -mx-1 text-left hover:bg-mud/40 transition-colors"
+                        title="View geometry diff"
                       >
-                        {meta.label}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline gap-1.5 flex-wrap">
-                          <span className="text-xs font-semibold text-foreground">{rev.createdByName ?? 'Unknown'}</span>
-                          <span className="text-[10px] text-muted-foreground">{formatRelativeTime(new Date(rev.createdAt))}</span>
-                        </div>
-                        {rev.summary && (
-                          <p className="mt-0.5 text-[11px] text-muted-foreground">{rev.summary}</p>
-                        )}
-                      </div>
-                      {user && !isFirst && rev.action !== 'delete' && (
-                        <button
-                          type="button"
-                          onClick={() => handleRollback(rev.id)}
-                          disabled={isRollingBack}
-                          title="Rollback to this version"
-                          className="shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-                        >
-                          {isRollingBack ? (
-                            <FontAwesomeIcon icon={faSpinner} spin className="w-3.5 h-3.5" />
-                          ) : (
-                            <FontAwesomeIcon icon={faRotateLeft} className="w-3.5 h-3.5" />
+                        <span
+                          className={cn(
+                            'mt-0.5 shrink-0 rounded border px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+                            meta.cls
                           )}
-                        </button>
+                        >
+                          {meta.label}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline gap-1.5 flex-wrap">
+                            <span className="text-xs font-semibold text-foreground">{rev.createdByName ?? 'Unknown'}</span>
+                            <span className="text-[10px] text-muted-foreground">{formatRelativeTime(new Date(rev.createdAt))}</span>
+                          </div>
+                          {rev.summary && (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">{rev.summary}</p>
+                          )}
+                        </div>
+                      </button>
+                      {user && !isFirst && rev.action !== 'delete' && (
+                        <div className="flex justify-end mt-0.5">
+                          <button
+                            type="button"
+                            onClick={() => handleRollback(rev.id)}
+                            disabled={isRollingBack}
+                            title="Rollback to this version"
+                            className="shrink-0 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+                          >
+                            {isRollingBack ? (
+                              <FontAwesomeIcon icon={faSpinner} spin className="w-3.5 h-3.5" />
+                            ) : (
+                              <FontAwesomeIcon icon={faRotateLeft} className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
                       )}
                     </li>
                   )
@@ -461,6 +486,17 @@ export function TrailDetailPanel({ trail, networks, user, onClose, onEdit, onPho
           )}
         </div>
       )}
+      {/* Revision geometry diff modal */}
+      {diffRevision && (
+        <ChangeDetailModal
+          item={diffRevision}
+          trails={[trail]}
+          sessionUser={user}
+          onClose={() => setDiffRevision(null)}
+          onOpenTrail={() => setDiffRevision(null)}
+        />
+      )}
+
       {/* Photo lightbox */}
       {lightboxIndex !== null && photos && photos[lightboxIndex] && (
         <div

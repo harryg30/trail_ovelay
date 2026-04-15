@@ -78,6 +78,7 @@ interface LeftDrawerProps {
   onDeleteNetwork: () => Promise<string | null>
   onStartRedrawNetwork: () => void
   onOpenAnnouncement: () => void
+  onOpenContact: () => void
   highResRideIds: Set<string>
   onFetchHighRes: (id: string) => Promise<void>
   fetchingHighResId: string | null
@@ -156,6 +157,7 @@ export default function LeftDrawer({
   onDeleteNetwork,
   onStartRedrawNetwork,
   onOpenAnnouncement,
+  onOpenContact,
   highResRideIds,
   onFetchHighRes,
   fetchingHighResId,
@@ -921,14 +923,21 @@ export default function LeftDrawer({
         </div>
       )}
 
-      {/* About footer */}
-      <div className="mt-auto px-4 py-3 border-t-2 border-border">
+      {/* About / Contact footer */}
+      <div className="mt-auto px-4 py-3 border-t-2 border-border flex items-center gap-4">
         <button
           type="button"
           onClick={onOpenAnnouncement}
           className="text-xs font-bold uppercase tracking-wider text-electric underline-offset-2 hover:underline"
         >
-          About Trail Overlay
+          About
+        </button>
+        <button
+          type="button"
+          onClick={onOpenContact}
+          className="text-xs font-bold uppercase tracking-wider text-electric underline-offset-2 hover:underline"
+        >
+          Contact
         </button>
       </div>
     </div>
