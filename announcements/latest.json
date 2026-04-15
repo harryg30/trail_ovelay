@@ -1,45 +1,37 @@
 {
-  "updatedAt": "2026-04-13T21:22:30.000Z",
+  "updatedAt": "2026-04-15T00:00:00.000Z",
   "headline": "Welcome to Trail Overlay",
   "whatsNew": [
     {
-      "title": "",
-      "summary": "Add and pin photos on the map, then view them full size with the app still visible around the image."
+      "title": "Version history",
+      "summary": "Every trail edit is now versioned — browse the full history of changes and restore any previous version.",
+      "screenshotUrl": ""
     },
     {
-      "title": "",
-      "summary": "Light and dark themes now span the site and map chrome so planning stays comfortable in any lighting."
+      "title": "Sign in with Google",
+      "summary": "You can now sign in with your Google account in addition to Strava.",
+      "screenshotUrl": ""
     },
     {
-      "title": "",
-      "summary": "We’ve shipped new map edit tools so you can sketch trails, tweak vertices, and stage saves before you publish."
+      "title": "OpenStreetMap edit mode",
+      "summary": "Switch the basemap to OpenStreetMap while editing so you can align trail lines to detailed street and path data."
     },
+
     {
       "title": "",
-      "summary": "Trail details now appear inside Strava route builder via the Chrome extension. (experimental)"
-    },
-    {
-      "title": "",
-      "summary": "Sandbox mode lets you try editing on the map before you sign in, and save drafts when you’re logged in."
+      "summary": "Trail details now appear inside Strava route builder via the Chrome extension (review pending).",
+      "screenshotUrl": "/screenshots/extension-strava.png"
     }
   ],
   "upcoming": [
     {
       "title": "",
       "status": "In progress",
-      "summary": "We’re updating how Trail Overlay talks to Strava as their API rules change."
+      "summary": "Strava API Key updates: We need a higher user limit"
     },
     {
       "title": "",
       "summary": "We’re planning a tutorials hub so you can learn the app from short videos inside Trail Overlay."
-    },
-    {
-      "title": "",
-      "summary": "We’re fixing the browser extension so trail lines show reliably on the Strava map again."
-    },
-    {
-      "title": "",
-      "summary": "We’re moving extension settings to a clearer spot on the plug-in icon."
     }
   ]
 }

@@ -8,6 +8,8 @@ export interface AnnouncementItem {
   notionUrl?: string;
   /** User-facing progress hint (upcoming only); use "In progress" when Notion Status is In Progress */
   status?: string;
+  /** Optional screenshot shown as a small thumbnail; click opens a full-size lightbox */
+  screenshotUrl?: string;
 }
 
 export interface AnnouncementLatestPayload {
