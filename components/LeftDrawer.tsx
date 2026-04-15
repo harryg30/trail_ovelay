@@ -360,6 +360,7 @@ export default function LeftDrawer({
           type="button"
           onClick={() => !showOnMapOnly && onToggleShowOnMapOnly()}
           disabled={!mapBounds}
+          suppressHydrationWarning
           className={cn(
             'flex-1 border-2 border-foreground py-1.5 text-xs font-bold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:opacity-40',
             showOnMapOnly

@@ -8,15 +8,18 @@ export async function GET(request: NextRequest): Promise<Response> {
     return new Response('Not found', { status: 404 })
   }
 
-  const row = await queryOne<{ id: string; name: string }>(
-    `SELECT id, name FROM users ORDER BY created_at LIMIT 1`
+  const row = await queryOne<{ id: string; name: string; strava_athlete_id: number | null }>(
+    `SELECT id, name, strava_athlete_id FROM users ORDER BY created_at LIMIT 1`
   )
 
   if (!row) {
     return new Response('No users in database', { status: 404 })
   }
 
-  const token = await encryptSession({ userId: row.id })
+  // Infer provider from user's identity (strava_athlete_id presence)
+  const provider = row.strava_athlete_id !== null ? 'strava' : 'google'
+
+  const token = await encryptSession({ userId: row.id, provider })
   const cookieStore = await cookies()
   cookieStore.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS)
 

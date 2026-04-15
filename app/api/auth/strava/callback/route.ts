@@ -68,7 +68,7 @@ export async function GET(request: NextRequest): Promise<Response> {
       return Response.redirect(new URL('/?auth_error=db', request.url))
     }
 
-    const token = await encryptSession({ userId: row.id })
+    const token = await encryptSession({ userId: row.id, provider: 'strava' })
     const cookieStore = await cookies()
     cookieStore.set(SESSION_COOKIE_NAME, token, SESSION_COOKIE_OPTIONS)
 

@@ -157,7 +157,7 @@ export async function POST(request: NextRequest) {
     const userId = await getSessionUserId()
     if (!userId) {
       return NextResponse.json(
-        { error: 'Sign in with Strava to upload trail photos to the server.' },
+        { error: 'Sign in to upload trail photos to the server.' },
         { status: 401 }
       )
     }
