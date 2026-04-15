@@ -25,7 +25,9 @@ import AuthButton from '@/components/AuthButton'
 import GetExtensionButton from '@/components/GetExtensionButton'
 import ThemeToggle from '@/components/ThemeToggle'
 import { TrailEditDrawer } from '@/components/trail/TrailEditDrawer'
+import { TrailDetailPanel } from '@/components/trail/TrailDetailPanel'
 import { TrailFormFields } from '@/components/shared/TrailFormFields'
+import { ActivityFeed } from '@/components/ActivityFeed'
 import { NetworkRow } from '@/components/network/NetworkRow'
 import { DrawNetworkContent } from '@/components/network/DrawNetworkContent'
 import { EditNetworkContent } from '@/components/network/EditNetworkContent'
@@ -121,6 +123,11 @@ interface LeftDrawerProps {
   onAlignmentMapPickChange: (handler: null | ((latlng: [number, number]) => void)) => void
   pendingDigitizationTask: { id: string; label: string } | null
   onPendingDigitizationTaskChange: (task: { id: string; label: string } | null) => void
+  /** Trail currently being viewed in the detail panel (not editing). */
+  viewingTrail: Trail | null
+  onOpenViewTrail: (trail: Trail) => void
+  onCloseViewTrail: () => void
+  onEditViewTrail: (trail: Trail) => void
 }
 
 export default function LeftDrawer({
@@ -192,6 +199,10 @@ export default function LeftDrawer({
   onAlignmentMapPickChange,
   pendingDigitizationTask,
   onPendingDigitizationTaskChange,
+  viewingTrail,
+  onOpenViewTrail,
+  onCloseViewTrail,
+  onEditViewTrail,
 }: LeftDrawerProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
@@ -222,6 +233,8 @@ export default function LeftDrawer({
 
   const [trailPhotoForAction, setTrailPhotoForAction] = useState<TrailPhoto | null>(null)
   const [expandedTrailPhotoTrails, setExpandedTrailPhotoTrails] = useState<Set<string>>(() => new Set())
+  type DrawerTab = 'trails' | 'activity' | 'networks' | 'rides'
+  const [drawerTab, setDrawerTab] = useState<DrawerTab>('trails')
 
   const visibleUnpinnedForPin = useMemo(() => {
     const pending = unpinnedTrailPhotos.filter((p) => trailPhotoNeedsMapPin(p))
@@ -365,7 +378,8 @@ export default function LeftDrawer({
         {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
       </div>
 
-      {/* Viewport filter toggle */}
+      {/* Viewport filter toggle — hidden when viewing trail detail */}
+      {!viewingTrail && (
       <div className="flex items-center gap-0 border-b-2 border-border px-4 py-2">
         <button
           type="button"
@@ -393,8 +407,56 @@ export default function LeftDrawer({
           On map
         </button>
       </div>
+      )}
 
-      {/* Trails list */}
+      {/* Tab navigation — hidden when viewing trail detail */}
+      {!viewingTrail && (
+      <div className="flex border-b-2 border-border">
+        {(['trails', 'activity', 'networks', 'rides'] as const).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => setDrawerTab(tab)}
+            className={cn(
+              'flex-1 py-2 text-[10px] font-bold uppercase tracking-wider transition-colors',
+              drawerTab === tab
+                ? 'border-b-2 border-foreground text-foreground -mb-0.5'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {tab === 'trails' ? 'Trails' :
+             tab === 'activity' ? 'Activity' :
+             tab === 'networks' ? 'Networks' : 'Rides'}
+          </button>
+        ))}
+      </div>
+      )}
+
+      {/* Trail detail panel — takes over the content area */}
+      {viewingTrail && (
+        <div className="flex-1 overflow-y-auto">
+          <TrailDetailPanel
+            trail={viewingTrail}
+            networks={networks}
+            user={user}
+            onClose={onCloseViewTrail}
+            onEdit={onEditViewTrail}
+          />
+        </div>
+      )}
+
+      {/* Activity tab */}
+      {!viewingTrail && drawerTab === 'activity' && (
+        <ActivityFeed
+          showOnMapOnly={showOnMapOnly}
+          mapBounds={mapBounds}
+          trails={trails}
+          onOpenViewTrail={onOpenViewTrail}
+        />
+      )}
+
+      {/* Trails tab */}
+      {!viewingTrail && drawerTab === 'trails' && (
       <div className="flex flex-col gap-2 border-b-2 border-border px-4 py-4">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
@@ -801,9 +863,10 @@ export default function LeftDrawer({
           )
         })()}
       </div>
+      )}
 
-      {/* Drafts section */}
-      {!focusedTrailSession && draftTrails.length > 0 && (
+      {/* Drafts section — inside Trails tab */}
+      {!viewingTrail && drawerTab === 'trails' && !focusedTrailSession && draftTrails.length > 0 && (
         <div className="px-4 py-4 border-t-2 border-border flex flex-col gap-2">
           <h2 className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
             Drafts ({draftTrails.length})
@@ -818,8 +881,8 @@ export default function LeftDrawer({
         </div>
       )}
 
-      {/* Networks section */}
-      {!focusedTrailSession && (
+      {/* Networks tab */}
+      {!viewingTrail && drawerTab === 'networks' && (
       <div className="px-4 py-4 border-t-2 border-border flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">
@@ -905,8 +968,8 @@ export default function LeftDrawer({
       </div>
       )}
 
-      {/* Rides list */}
-      {!focusedTrailSession && (
+      {/* Rides tab */}
+      {!viewingTrail && drawerTab === 'rides' && (
       <div className="px-4 py-4 border-t-2 border-border flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <h2 className="font-display text-xs font-normal uppercase tracking-[0.15em] text-muted-foreground">

@@ -195,6 +195,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
   const [mapBounds, setMapBounds] = useState<MapBounds | null>(null)
   const osmTooZoomedOut = addTrailMode && !!mapBounds && (mapBounds.north - mapBounds.south) > 0.15
   const [showOnMapOnly, setShowOnMapOnly] = useState(false)
+  const [viewingTrail, setViewingTrail] = useState<Trail | null>(null)
   const [mapFlyToRequest, setMapFlyToRequest] = useState<{
     seq: number
     kind: 'trail' | 'network'
@@ -814,6 +815,23 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
     setSelectedTrail(trail)
   }, [])
 
+  const handleOpenViewTrail = useCallback((trail: Trail) => {
+    setViewingTrail(trail)
+    // Exit any edit mode so the detail panel has full focus
+    setMode(null)
+    setSelectedTrail(null)
+  }, [setMode, setSelectedTrail])
+
+  const handleCloseViewTrail = useCallback(() => {
+    setViewingTrail(null)
+  }, [])
+
+  const handleEditFromViewTrail = useCallback((trail: Trail) => {
+    setViewingTrail(null)
+    setSelectedTrail(trail)
+    setMode('edit-trail')
+  }, [setMode, setSelectedTrail])
+
   const handlePolylineRefined = useCallback((polyline: [number, number][]) => {
     applyRefineTrailEdit(() => [...polyline])
   }, [applyRefineTrailEdit])
@@ -1313,6 +1331,10 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
           onAlignmentMapPickChange={setAlignMapHandler}
           pendingDigitizationTask={pendingDigitizationTask}
           onPendingDigitizationTaskChange={setPendingDigitizationTask}
+          viewingTrail={viewingTrail}
+          onOpenViewTrail={handleOpenViewTrail}
+          onCloseViewTrail={handleCloseViewTrail}
+          onEditViewTrail={handleEditFromViewTrail}
         />
       </div>
 
@@ -1406,6 +1428,7 @@ export default function ClientPage({ user }: { user: SessionUser | null }) {
         onClearTrimPoint={handleClearTrimPoint}
         canUploadGpx={!!user}
         onRidesUploaded={handleRidesUploaded}
+        onOpenViewTrail={handleOpenViewTrail}
       />
 
       {photoLightboxSrc && (

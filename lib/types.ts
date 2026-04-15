@@ -193,3 +193,66 @@ export type OfficialMapLayerPayload = {
   transform: MapOverlayTransformJson | null;
   visible: boolean;
 };
+
+// ─── Trail versioning ─────────────────────────────────────────────────────────
+
+export type TrailRevisionAction = 'create' | 'update' | 'delete' | 'rollback';
+
+/** Full trail snapshot stored in trail_revisions.payload */
+export interface TrailRevisionPayload {
+  name: string;
+  difficulty: Trail['difficulty'];
+  direction: Trail['direction'];
+  polyline: [number, number][];
+  distanceKm: number;
+  elevationGainFt: number;
+  notes?: string;
+  source: string;
+  sourceRideId?: string;
+  osmWayId?: number;
+}
+
+export interface TrailRevision {
+  id: string;
+  trailId: string;
+  createdAt: Date;
+  createdByUserId?: string;
+  createdByName?: string;
+  changeSetId?: string;
+  parentRevisionId?: string;
+  action: TrailRevisionAction;
+  summary?: string;
+  payload: TrailRevisionPayload;
+}
+
+export interface TrailChangeSet {
+  id: string;
+  createdByUserId: string;
+  createdByName?: string;
+  comment?: string;
+  createdAt: Date;
+}
+
+export interface TrailRevisionComment {
+  id: string;
+  trailId: string;
+  revisionId?: string;
+  authorUserId: string;
+  authorName?: string;
+  body: string;
+  createdAt: Date;
+}
+
+/** One row in the activity feed */
+export interface TrailActivityItem {
+  revisionId: string;
+  trailId: string;
+  trailName: string;
+  action: TrailRevisionAction;
+  summary?: string;
+  changeSetId?: string;
+  changeSetComment?: string;
+  createdAt: Date;
+  createdByUserId?: string;
+  createdByName?: string;
+}

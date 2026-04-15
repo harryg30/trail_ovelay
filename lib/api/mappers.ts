@@ -1,4 +1,4 @@
-import type { Trail, Network, Ride } from '@/lib/types'
+import type { Trail, Network, Ride, TrailRevision, TrailRevisionPayload, TrailRevisionAction, TrailActivityItem } from '@/lib/types'
 
 // ─── Trail ────────────────────────────────────────────────────────────────────
 
@@ -79,5 +79,63 @@ export function rowToRide(row: RideRow): Ride {
     pointCount: row.point_count,
     timestamp: row.timestamp ? new Date(row.timestamp) : new Date(0),
     stravaActivityId: row.strava_activity_id ?? undefined,
+  }
+}
+
+// ─── Trail revisions ──────────────────────────────────────────────────────────
+
+export type TrailRevisionRow = {
+  id: string
+  trail_id: string
+  created_at: string
+  created_by_user_id: string | null
+  created_by_name: string | null
+  change_set_id: string | null
+  parent_revision_id: string | null
+  action: string
+  summary: string | null
+  payload: TrailRevisionPayload
+}
+
+export function rowToRevision(row: TrailRevisionRow): TrailRevision {
+  return {
+    id: row.id,
+    trailId: row.trail_id,
+    createdAt: new Date(row.created_at),
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdByName: row.created_by_name ?? undefined,
+    changeSetId: row.change_set_id ?? undefined,
+    parentRevisionId: row.parent_revision_id ?? undefined,
+    action: row.action as TrailRevisionAction,
+    summary: row.summary ?? undefined,
+    payload: row.payload,
+  }
+}
+
+export type TrailActivityRow = {
+  revision_id: string
+  trail_id: string
+  trail_name: string
+  action: string
+  summary: string | null
+  change_set_id: string | null
+  change_set_comment: string | null
+  created_at: string
+  created_by_user_id: string | null
+  created_by_name: string | null
+}
+
+export function rowToActivityItem(row: TrailActivityRow): TrailActivityItem {
+  return {
+    revisionId: row.revision_id,
+    trailId: row.trail_id,
+    trailName: row.trail_name,
+    action: row.action as TrailRevisionAction,
+    summary: row.summary ?? undefined,
+    changeSetId: row.change_set_id ?? undefined,
+    changeSetComment: row.change_set_comment ?? undefined,
+    createdAt: new Date(row.created_at),
+    createdByUserId: row.created_by_user_id ?? undefined,
+    createdByName: row.created_by_name ?? undefined,
   }
 }

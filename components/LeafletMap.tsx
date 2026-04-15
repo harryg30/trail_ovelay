@@ -114,6 +114,8 @@ export interface LeafletMapProps {
   /** GPX tab: upload matches drawer /api/upload (session required). */
   canUploadGpx?: boolean
   onRidesUploaded?: (rides: Ride[]) => void
+  /** Open trail detail panel in sidebar (non-edit click). */
+  onOpenViewTrail?: (trail: Trail) => void
 }
 
 export default function LeafletMap({
@@ -177,6 +179,7 @@ export default function LeafletMap({
   onClearTrimPoint,
   canUploadGpx = false,
   onRidesUploaded,
+  onOpenViewTrail,
 }: LeafletMapProps) {
   const drawToolActive = addTrailMode && staged?.activeTool === 'draw'
   const osmToolActive = addTrailMode && staged?.activeTool === 'osm'
@@ -217,6 +220,7 @@ export default function LeafletMap({
   const editTrailModeRef = useRef(editTrailMode)
   const onTrimPointSelectedRef = useRef(onTrimPointSelected)
   const onTrailSelectedRef = useRef(onTrailSelected)
+  const onOpenViewTrailRef = useRef(onOpenViewTrail)
   const onPolylineRefinedRef = useRef(onPolylineRefined)
   const ridesRef = useRef(rides)
   const drawNetworkModeRef = useRef(drawNetworkMode)
@@ -261,6 +265,7 @@ export default function LeafletMap({
   editTrailModeRef.current = editTrailMode
   onTrimPointSelectedRef.current = onTrimPointSelected
   onTrailSelectedRef.current = onTrailSelected
+  onOpenViewTrailRef.current = onOpenViewTrail
   onPolylineRefinedRef.current = onPolylineRefined
   ridesRef.current = rides
   drawNetworkModeRef.current = drawNetworkMode
@@ -835,7 +840,11 @@ export default function LeafletMap({
           return
         }
         if (trimModeRef.current) return
-        L.popup().setLatLng(e.latlng).setContent(trailPopupContent).openOn(mapRef.current!)
+        if (onOpenViewTrailRef.current) {
+          onOpenViewTrailRef.current(trail)
+        } else {
+          L.popup().setLatLng(e.latlng).setContent(trailPopupContent).openOn(mapRef.current!)
+        }
       }
 
       const trailColor = trailLineColor(trail.difficulty, MAP)
