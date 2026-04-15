@@ -1,0 +1,31 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="a-clip">
+      <rect x="26" y="26" width="460" height="460" rx="92"/>
+    </clipPath>
+  </defs>
+
+  <rect x="26" y="26" width="460" height="460" rx="92" fill="#F3EBDD"/>
+  <rect x="26" y="26" width="460" height="460" rx="92" stroke="#262236" stroke-width="24"/>
+
+  <g clip-path="url(#a-clip)">
+    <path d="M26 26H486V260L26 436V26Z" fill="#E97C1A"/>
+    <path d="M26 436L486 260V486H26V436Z" fill="#2A7A4E"/>
+
+    <path d="M50 454L140 346L198 388L270 304L332 350L430 244" stroke="#EFE6D5" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <path d="M330 486C360 430 320 394 350 350C382 304 446 308 486 250" stroke="#B13BF3" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M330 486C360 430 320 394 350 350C382 304 446 308 486 250" stroke="#262236" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <path d="M26 338L486 154" stroke="#262236" stroke-width="14"/>
+    <path d="M26 370L486 186" stroke="#262236" stroke-width="8" stroke-opacity="0.35"/>
+
+    <rect x="34" y="44" width="130" height="20" fill="#262236"/>
+    <rect x="34" y="78" width="104" height="14" fill="#262236"/>
+  </g>
+
+  <g transform="rotate(-12 256 274)">
+    <text x="256" y="310" text-anchor="middle" fill="#262236" font-size="236" font-weight="900" font-family="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif" letter-spacing="-2">TO</text>
+    <text x="256" y="310" text-anchor="middle" fill="#F3EBDD" font-size="204" font-weight="900" font-family="Impact, Haettenschweiler, 'Arial Narrow Bold', sans-serif" letter-spacing="-2">TO</text>
+  </g>
+</svg>

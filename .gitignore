@@ -42,3 +42,11 @@ next-env.d.ts
 
 .vercel
 .env*.local
+
+# extension release artifacts
+extension-releases/**/*.zip
+
+# claude/cursor settings
+.cursor/
+.claude/
+.agent/

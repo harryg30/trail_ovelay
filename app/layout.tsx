@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Russo_One } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { ThemeProvider } from "@/components/theme-provider";
+import CookieModal from "@/components/CookieModal";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -36,8 +37,11 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${russoOne.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
-        <ThemeProvider>{children}</ThemeProvider>
+      <body className="min-h-full flex flex-col pb-48 sm:pb-32">
+        <ThemeProvider>
+          {children}
+          <CookieModal />
+        </ThemeProvider>
         <Analytics />
       </body>
     </html>
