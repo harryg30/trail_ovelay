@@ -242,8 +242,9 @@ Recommended publish flow:
 2. Run `npm run extension:release`.
 3. Upload the generated ZIP from `extension-releases/v<version>/...` in Chrome Web Store Developer Dashboard.
 
-`GET /api/extension/download` now serves `extension-releases/latest.zip` first (when present), and falls back to building a runtime ZIP from `browser-extension/` if no packaged release exists.
+`GET /api/extension/download` serves `extension-releases/latest.zip` first **only when that file has been generated and made available to the running server**. The ZIPs under `extension-releases/` are release artifacts (they are gitignored and are not expected to exist in a fresh clone or a source-only deployment by default).
 
+If you want the download route to return the packaged release ZIP in production, generate it as part of your release/deploy workflow (for example with `npm run extension:release`) and copy/package `extension-releases/latest.zip` into the deployed app so it is present on the server filesystem at runtime. If you deploy from git-tracked source only and do not ship that artifact, the route falls back to building a runtime ZIP from `browser-extension/`.
 ### Strava extension: API URL and local dev
 
 The overlay on `https://www.strava.com/maps/create/*` reads **`GET /api/trails`** and **`GET /api/networks`** from whatever origin you set in the **extension popup** (stored in `chrome.storage.sync` as `apiUrl`). The main-world script does **not** read page `localStorage` for the API base; it asks the isolated [`content-bridge.js`](browser-extension/content-bridge.js) for the resolved value used for fetches. Main-world and bridge communicate with `window.postMessage` using a private envelope (`__trailOverlayToBridge` / `__trailOverlayFromBridge`) so Strava’s own `message` traffic cannot be mistaken for overlay responses.

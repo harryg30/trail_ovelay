@@ -20,7 +20,9 @@ async function collectFiles(rootResolved) {
 
   async function walk(relDir) {
     const absDir = path.join(rootResolved, relDir)
-    const entries = await fs.readdir(absDir, { withFileTypes: true })
+    const entries = (await fs.readdir(absDir, { withFileTypes: true })).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    )
 
     for (const ent of entries) {
       if (ent.name.startsWith('.')) continue
@@ -37,6 +39,7 @@ async function collectFiles(rootResolved) {
   }
 
   await walk('')
+  out.sort((a, b) => a.rel.localeCompare(b.rel))
   return out
 }
 
