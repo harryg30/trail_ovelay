@@ -6,7 +6,10 @@ import JSZip from 'jszip'
 export const runtime = 'nodejs'
 
 const ZIP_FILENAME = 'trail-overlay-strava-extension.zip'
-const PACKAGED_LATEST_ZIP = path.join(process.cwd(), 'public', 'extension-releases', 'latest.zip')
+const PACKAGED_LATEST_ZIP_CANDIDATES = [
+  path.join(process.cwd(), 'extension-releases', 'latest.zip'),
+  path.join(process.cwd(), 'public', 'extension-releases', 'latest.zip'),
+]
 
 /** True when `abs` is `root` or a path inside `root` (no traversal). */
 function isUnderRoot(root: string, abs: string): boolean {
@@ -44,29 +47,34 @@ async function collectExtensionFiles(rootResolved: string): Promise<{ rel: strin
   return out
 }
 
-async function readPackagedLatestZip(): Promise<Buffer | null> {
-  try {
-    const stat = await fs.stat(PACKAGED_LATEST_ZIP)
-    if (!stat.isFile()) return null
-    return await fs.readFile(PACKAGED_LATEST_ZIP)
-  } catch {
-    return null
+async function readPackagedLatestZip(): Promise<{ data: Buffer; source: string } | null> {
+  for (const candidate of PACKAGED_LATEST_ZIP_CANDIDATES) {
+    try {
+      const stat = await fs.stat(candidate)
+      if (!stat.isFile()) continue
+      const data = await fs.readFile(candidate)
+      return { data, source: candidate }
+    } catch {
+      continue
+    }
   }
+  return null
 }
 
 export async function GET() {
   try {
     const packaged = await readPackagedLatestZip()
     if (packaged) {
-      const ab = packaged.buffer as ArrayBuffer
-      const bytes = new Uint8Array(ab, packaged.byteOffset, packaged.byteLength)
+      const ab = packaged.data.buffer as ArrayBuffer
+      const bytes = new Uint8Array(ab, packaged.data.byteOffset, packaged.data.byteLength)
       return new NextResponse(new Blob([bytes]), {
         status: 200,
         headers: {
           'Content-Type': 'application/zip',
           'Content-Disposition': 'attachment; filename="trail-overlay-strava-extension-latest.zip"',
           'Cache-Control': 'public, max-age=3600',
-          'X-Extension-Bundle-Source': 'release-cache',
+          'X-Extension-Bundle-Source': 'release-zip',
+          'X-Extension-Bundle-Path': packaged.source,
         },
       })
     }
